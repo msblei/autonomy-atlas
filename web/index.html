@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Autonomy Atlas</title>
+    <link rel="stylesheet" href="./src/style.css" />
+  </head>
+  <body>
+    <div id="map"></div>
+
+    <aside id="panel">
+      <header>
+        <h1>Autonomy Atlas</h1>
+        <p class="sub">How much of its own food does each European country produce?</p>
+      </header>
+
+      <label>
+        Product group
+        <select id="group"></select>
+      </label>
+
+      <label>
+        Indicator
+        <select id="indicator">
+          <option value="ssr">Self-sufficiency ratio (SSR)</option>
+          <option value="idr">Import dependency ratio (IDR)</option>
+        </select>
+      </label>
+
+      <label>
+        Basis
+        <select id="basis">
+          <option value="tonnes">Tonnes</option>
+          <option value="kcal">Calories</option>
+        </select>
+      </label>
+
+      <div id="legend"></div>
+
+      <section id="detail">
+        <p class="hint">Hover a country for details. Click to pin.</p>
+      </section>
+
+      <footer>
+        <p id="meta"></p>
+        <p class="attrib">
+          Data: FAOSTAT Food Balance Sheets (CC BY 4.0). Boundaries: © EuroGeographics.
+          SSR = production / domestic supply; IDR = imports / domestic supply.
+          "National" view: imports from other EU countries count as imports.
+        </p>
+      </footer>
+    </aside>
+
+    <script type="module" src="./src/main.js"></script>
+  </body>
+</html>

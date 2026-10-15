@@ -1,0 +1,26 @@
+# data (reproducible from `make all`)
+data/raw/*
+data/interim/*
+data/processed/*
+!data/*/.gitkeep
+web/public/data/*
+!web/public/data/.gitkeep
+
+# python
+.venv/
+__pycache__/
+*.pyc
+*.egg-info/
+.pytest_cache/
+.ruff_cache/
+build/
+dist/
+
+# node
+web/node_modules/
+web/dist/
+
+# editors / os
+.vscode/
+.idea/
+.DS_Store

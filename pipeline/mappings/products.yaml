@@ -1,0 +1,150 @@
+# User-facing product groups -> FAO Food Balance Sheet item names.
+#
+# FBS item names are the master product key. Trade (HS6/CN8) and Eurostat crop codes are
+# crosswalked *to* these items, not the other way round.
+#
+# Item names below are taken from the FBS (2010-) "Normalized" bulk file. Spelling matters
+# ("Soyabeans", "Pigmeat", "Rape and Mustardseed"). harmonise.py logs any item in the file that is
+# not listed here and any name listed here that does not appear in the file — fix the YAML, not
+# the code. Items not mapped to a group are kept at item level but excluded from group totals.
+#
+# "weight" is used only to order the UI; it is not a numeric weight.
+
+groups:
+  cereals:
+    label: Cereals
+    items:
+      - Wheat and products
+      - Rice and products
+      - Barley and products
+      - Maize and products
+      - Rye and products
+      - Oats
+      - Millet and products
+      - Sorghum and products
+      - Cereals, Other
+
+  potatoes_roots:
+    label: Potatoes & roots
+    items:
+      - Potatoes and products
+      - Cassava and products
+      - Sweet potatoes
+      - Roots, Other
+
+  sugar:
+    label: Sugar & sweeteners
+    items:
+      - Sugar (Raw Equivalent)
+      - Sweeteners, Other
+      - Honey
+    # Sugar beet / cane are feedstock, not food supply; keep them out of the group total.
+
+  pulses:
+    label: Pulses
+    items:
+      - Beans
+      - Peas
+      - Pulses, Other and products
+
+  oilseeds:
+    label: Oilseeds & protein crops
+    items:
+      - Soyabeans
+      - Sunflower seed
+      - Rape and Mustardseed
+      - Groundnuts
+      - Sesame seed
+      - Olives (including preserved)
+      - Oilcrops, Other
+    notes: >
+      Soy is the key feed-dependence indicator (EU soy SSR ~15%). Phase 4 uses this group for the
+      feed-adjusted livestock SSR.
+
+  vegetable_oils:
+    label: Vegetable oils
+    items:
+      - Soyabean Oil
+      - Sunflowerseed Oil
+      - Rape and Mustard Oil
+      - Olive Oil
+      - Palm Oil
+      - Palmkernel Oil
+      - Groundnut Oil
+      - Coconut Oil
+      - Sesameseed Oil
+      - Maize Germ Oil
+      - Oilcrops Oil, Other
+
+  vegetables:
+    label: Vegetables
+    items:
+      - Tomatoes and products
+      - Onions
+      - Vegetables, other
+
+  fruit:
+    label: Fruit
+    items:
+      - Apples and products
+      - Grapes and products (excl wine)
+      - Oranges, Mandarines
+      - Lemons, Limes and products
+      - Grapefruit and products
+      - Citrus, Other
+      - Bananas
+      - Plantains
+      - Pineapples and products
+      - Dates
+      - Fruits, other
+    notes: >
+      Aggregating fruit hides structure: apples (high SSR in the north) vs bananas/citrus (zero).
+      Always allow drill-down.
+
+  meat:
+    label: Meat
+    items:
+      - Bovine Meat
+      - Pigmeat
+      - Poultry Meat
+      - Mutton & Goat Meat
+      - Meat, Other
+      - Offals, Edible
+
+  dairy:
+    label: Dairy
+    items:
+      - Milk - Excluding Butter
+      - Butter, Ghee
+      - Cream
+
+  eggs:
+    label: Eggs
+    items:
+      - Eggs
+
+  fish:
+    label: Fish & seafood
+    items:
+      - Freshwater Fish
+      - Demersal Fish
+      - Pelagic Fish
+      - Marine Fish, Other
+      - Crustaceans
+      - Cephalopods
+      - Molluscs, Other
+      - Aquatic Animals, Others
+
+  stimulants:
+    label: Coffee, cocoa, tea
+    items:
+      - Coffee and products
+      - Cocoa Beans and products
+      - Tea (including mate)
+    notes: Structurally near-zero SSR for all of Europe; useful as a sanity check.
+
+  wine_beer:
+    label: Wine & beer
+    items:
+      - Wine
+      - Beer
