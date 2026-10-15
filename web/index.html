@@ -12,29 +12,36 @@
     <aside id="panel">
       <header>
         <h1>Autonomy Atlas</h1>
-        <p class="sub">How much of its own food does each European country produce?</p>
+        <p class="sub">Does each European country grow enough food for its own people?</p>
       </header>
 
       <label>
-        Product group
+        Food
         <select id="group"></select>
       </label>
 
-      <label>
-        Indicator
-        <select id="indicator">
-          <option value="ssr">Self-sufficiency ratio (SSR)</option>
-          <option value="idr">Import dependency ratio (IDR)</option>
-        </select>
-      </label>
+      <div class="mode" role="group" aria-label="View">
+        <button type="button" data-mode="simple" aria-pressed="true">Simple</button>
+        <button type="button" data-mode="expert" aria-pressed="false">Expert</button>
+      </div>
 
-      <label>
-        Basis
-        <select id="basis">
-          <option value="tonnes">Tonnes</option>
-          <option value="kcal">Calories</option>
-        </select>
-      </label>
+      <div id="expert-controls" hidden>
+        <label>
+          Indicator
+          <select id="indicator">
+            <option value="ssr">Self-sufficiency ratio (SSR)</option>
+            <option value="idr">Import dependency ratio (IDR)</option>
+          </select>
+        </label>
+
+        <label>
+          Basis
+          <select id="basis">
+            <option value="tonnes">Tonnes</option>
+            <option value="kcal">Calories</option>
+          </select>
+        </label>
+      </div>
 
       <div id="legend"></div>
 
@@ -43,12 +50,9 @@
       </section>
 
       <footer>
+        <h3>Sources</h3>
+        <ul id="sources"></ul>
         <p id="meta"></p>
-        <p class="attrib">
-          Data: FAOSTAT Food Balance Sheets (CC BY 4.0). Boundaries: © EuroGeographics.
-          SSR = production / domestic supply; IDR = imports / domestic supply.
-          "National" view: imports from other EU countries count as imports.
-        </p>
       </footer>
     </aside>
 

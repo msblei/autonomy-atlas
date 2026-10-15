@@ -19,6 +19,9 @@ from .harmonise import item_to_group
 log = logging.getLogger(__name__)
 
 COMPONENTS = ["production", "imports", "exports", "supply", "stock_variation", "feed", "food"]
+# Components shown per person (kg/person/year) in the plain-language view.
+PER_CAPITA = ["production", "imports", "exports", "supply", "feed", "food"]
+POPULATION_ITEM = "Population"
 
 
 # ------------------------------------------------------------------------------------------------
@@ -51,7 +54,7 @@ def window_mean(wide: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     """Average each component over [y0, y1] per iso3 × item. Ratios are computed afterwards."""
     y0, y1 = years
     sub = wide[(wide["year"] >= y0) & (wide["year"] <= y1)]
-    cols = [c for c in COMPONENTS + ["kcal"] if c in sub]
+    cols = [c for c in COMPONENTS + ["kcal", "population"] if c in sub]
     out = sub.groupby(["iso3", "item"], as_index=False)[cols].mean()
     out["years"] = f"{y0}-{y1}"
     return out
@@ -110,6 +113,19 @@ def group_kcal(items: pd.DataFrame) -> pd.DataFrame:
     return out
 
 
+def add_per_capita(df: pd.DataFrame, population: pd.DataFrame) -> pd.DataFrame:
+    """Attach population (1000 persons, window mean) and kg/person/year for PER_CAPITA columns.
+
+    FBS quantities are in 1000 t, so kg/person = 1000 t * 1e6 / (1000 persons * 1e3) =
+    value * 1000 / population.
+    """
+    df = df.drop(columns="population", errors="ignore").merge(population, on="iso3", how="left")
+    pop = df["population"].where(df["population"] > 0)
+    for c in PER_CAPITA:
+        df[f"{c}_kg_pc"] = df[c] * 1000.0 / pop
+    return df
+
+
 # ------------------------------------------------------------------------------------------------
 
 
@@ -124,11 +140,18 @@ def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None) -> dict[
     years = years or latest_window(wide)
     log.info("window %s", years)
 
-    items = add_ratios(window_mean(wide, years))
+    items = window_mean(wide, years)
+    if "population" not in items:
+        items["population"] = np.nan
+    is_pop = items["item"] == POPULATION_ITEM
+    population = items.loc[is_pop, ["iso3", "population"]]
+    items = add_ratios(items[~is_pop].drop(columns="population"))
     items["basis"] = "tonnes"
     items = items.merge(item_to_group(), on="item", how="left")
 
     groups = pd.concat([group_tonnes(items), group_kcal(items)], ignore_index=True)
+    items = add_per_capita(items, population)
+    groups = add_per_capita(groups, population)
 
     for df in (items, groups):
         df["source"] = "FAOSTAT FBS"

@@ -92,3 +92,31 @@ def test_nonpositive_supply_is_flagged_not_clipped():
     row = res["items"].iloc[0]
     assert np.isnan(row["ssr"]) and np.isnan(row["idr"])
     assert row["flag"] == "supply_nonpositive"
+
+
+def test_per_capita_uses_fbs_population():
+    # 8000 kt of wheat for 80 million people (80 000 thousand) -> 100 kg/person/year.
+    fbs = _long([
+        ("DEU", "Wheat and products", "Production", 2023, 8000.0),
+        ("DEU", "Wheat and products", "Domestic supply quantity", 2023, 4000.0),
+        ("DEU", "Wheat and products", "Food", 2023, 1600.0),
+        ("DEU", "Population", "Total Population - Both sexes", 2023, 80000.0),
+    ])
+    res = compute.compute(fbs, years=(2023, 2023))
+    row = res["items"].iloc[0]
+    assert len(res["items"]) == 1  # Population is not an item of its own
+    assert row["production_kg_pc"] == pytest.approx(100.0)
+    assert row["supply_kg_pc"] == pytest.approx(50.0)
+    assert row["food_kg_pc"] == pytest.approx(20.0)
+    g = res["groups"]
+    t = g[(g["group"] == "cereals") & (g["basis"] == "tonnes")].iloc[0]
+    assert t["production_kg_pc"] == pytest.approx(100.0)
+
+
+def test_per_capita_is_nan_without_population():
+    fbs = _long([
+        ("DEU", "Oats", "Production", 2023, 10.0),
+        ("DEU", "Oats", "Domestic supply quantity", 2023, 10.0),
+    ])
+    res = compute.compute(fbs, years=(2023, 2023))
+    assert np.isnan(res["items"].iloc[0]["production_kg_pc"])

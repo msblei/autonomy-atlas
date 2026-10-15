@@ -32,6 +32,32 @@ FBS_ELEMENTS: dict[str, str] = {
     "feed": "Feed",
     "food": "Food",
     "kcal": "Food supply (kcal/capita/day)",
+    # Item "Population" (2501) carries this element, unit 1000 No. Used for per-person figures.
+    "population": "Total Population - Both sexes",
+}
+
+# FAO's bulk catalogue: release date (DateUpdate) per file. Saved next to the raw ZIPs so export
+# can cite the exact release without going back to the network.
+FAOSTAT_CATALOGUE = "datasets_E.xml"
+
+# Citable sources, keyed by the id that export.py attaches to every number.
+SOURCES: dict[str, dict[str, str]] = {
+    "fao_fbs": {
+        "title": "Food Balances (2010-)",
+        "publisher": "Food and Agriculture Organization of the United Nations (FAO), FAOSTAT",
+        "url": "https://www.fao.org/faostat/en/#data/FBS",
+        "file_url": FAOSTAT_BULK_BASE + "FoodBalanceSheets_E_All_Data_(Normalized).zip",
+        "licence": "CC BY 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+        "catalogue_file": "FoodBalanceSheets_E_All_Data_(Normalized).zip",
+    },
+    "gisco_countries": {
+        "title": "Countries 2024, 1:20 million",
+        "publisher": "Eurostat GISCO",
+        "url": "https://ec.europa.eu/eurostat/web/gisco/geodata/administrative-units/countries",
+        "licence": "© EuroGeographics for the administrative boundaries (non-commercial use)",
+        "licence_url": "https://ec.europa.eu/eurostat/web/gisco/geodata/administrative-units/countries",
+    },
 }
 
 # --- Eurostat ------------------------------------------------------------------------------------

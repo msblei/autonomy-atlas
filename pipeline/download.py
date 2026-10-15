@@ -45,7 +45,9 @@ def fetch(url: str, dest: Path, *, force: bool = False, timeout: int = 60) -> Pa
 def faostat(keys: list[str] | None = None, *, force: bool = False) -> list[Path]:
     """FAOSTAT bulk ZIPs (Normalized layout). Default: fbs + production (trade_matrix is ~2 GB)."""
     keys = keys or ["fbs", "production"]
-    out = []
+    # Always refresh the catalogue: it is small and records which release we downloaded.
+    out = [fetch(config.FAOSTAT_BULK_BASE + config.FAOSTAT_CATALOGUE,
+                 config.RAW / "faostat" / config.FAOSTAT_CATALOGUE, force=True)]
     for key in keys:
         fname = config.FAOSTAT_FILES[key]
         out.append(fetch(config.FAOSTAT_BULK_BASE + fname, config.RAW / "faostat" / fname, force=force))
