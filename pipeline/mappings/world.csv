@@ -1,0 +1,183 @@
+# FAOSTAT FBS areas -> ISO3. Generated once from FoodBalanceSheets_E_AreaCodes.csv
+# (release 2025-10-28) via ISO 3166-1 numeric == M49 for countries (pycountry / Debian
+# iso-codes). FAO regional aggregates have no ISO code and are left out. Names shortened
+# for display ("Bolivia", not "Bolivia (Plurinational State of)"). Hand-edit to fix.
+m49,iso3,name
+004,AFG,Afghanistan
+008,ALB,Albania
+012,DZA,Algeria
+024,AGO,Angola
+028,ATG,Antigua and Barbuda
+031,AZE,Azerbaijan
+032,ARG,Argentina
+036,AUS,Australia
+040,AUT,Austria
+044,BHS,Bahamas
+048,BHR,Bahrain
+050,BGD,Bangladesh
+051,ARM,Armenia
+052,BRB,Barbados
+056,BEL,Belgium
+064,BTN,Bhutan
+068,BOL,Bolivia
+070,BIH,Bosnia and Herzegovina
+072,BWA,Botswana
+076,BRA,Brazil
+084,BLZ,Belize
+090,SLB,Solomon Islands
+100,BGR,Bulgaria
+104,MMR,Myanmar
+112,BLR,Belarus
+116,KHM,Cambodia
+120,CMR,Cameroon
+124,CAN,Canada
+132,CPV,Cabo Verde
+144,LKA,Sri Lanka
+152,CHL,Chile
+156,CHN,China
+158,TWN,Taiwan
+170,COL,Colombia
+174,COM,Comoros
+178,COG,Congo
+180,COD,DR Congo
+188,CRI,Costa Rica
+191,HRV,Croatia
+192,CUB,Cuba
+196,CYP,Cyprus
+203,CZE,Czechia
+208,DNK,Denmark
+214,DOM,Dominican Republic
+218,ECU,Ecuador
+222,SLV,El Salvador
+231,ETH,Ethiopia
+233,EST,Estonia
+242,FJI,Fiji
+246,FIN,Finland
+250,FRA,France
+258,PYF,French Polynesia
+262,DJI,Djibouti
+266,GAB,Gabon
+268,GEO,Georgia
+270,GMB,Gambia
+276,DEU,Germany
+288,GHA,Ghana
+296,KIR,Kiribati
+300,GRC,Greece
+308,GRD,Grenada
+320,GTM,Guatemala
+324,GIN,Guinea
+328,GUY,Guyana
+332,HTI,Haiti
+340,HND,Honduras
+344,HKG,Hong Kong
+348,HUN,Hungary
+352,ISL,Iceland
+356,IND,India
+360,IDN,Indonesia
+364,IRN,Iran
+368,IRQ,Iraq
+372,IRL,Ireland
+376,ISR,Israel
+380,ITA,Italy
+384,CIV,Côte d'Ivoire
+388,JAM,Jamaica
+398,KAZ,Kazakhstan
+400,JOR,Jordan
+404,KEN,Kenya
+408,PRK,North Korea
+410,KOR,South Korea
+414,KWT,Kuwait
+417,KGZ,Kyrgyzstan
+418,LAO,Laos
+422,LBN,Lebanon
+426,LSO,Lesotho
+428,LVA,Latvia
+430,LBR,Liberia
+434,LBY,Libya
+440,LTU,Lithuania
+442,LUX,Luxembourg
+446,MAC,Macao
+450,MDG,Madagascar
+454,MWI,Malawi
+458,MYS,Malaysia
+462,MDV,Maldives
+470,MLT,Malta
+478,MRT,Mauritania
+480,MUS,Mauritius
+484,MEX,Mexico
+496,MNG,Mongolia
+498,MDA,Moldova
+499,MNE,Montenegro
+504,MAR,Morocco
+508,MOZ,Mozambique
+512,OMN,Oman
+516,NAM,Namibia
+520,NRU,Nauru
+524,NPL,Nepal
+528,NLD,Netherlands
+540,NCL,New Caledonia
+548,VUT,Vanuatu
+554,NZL,New Zealand
+558,NIC,Nicaragua
+562,NER,Niger
+566,NGA,Nigeria
+578,NOR,Norway
+583,FSM,Micronesia
+584,MHL,Marshall Islands
+586,PAK,Pakistan
+591,PAN,Panama
+598,PNG,Papua New Guinea
+600,PRY,Paraguay
+604,PER,Peru
+608,PHL,Philippines
+616,POL,Poland
+620,PRT,Portugal
+624,GNB,Guinea-Bissau
+626,TLS,Timor-Leste
+634,QAT,Qatar
+642,ROU,Romania
+643,RUS,Russia
+646,RWA,Rwanda
+659,KNA,Saint Kitts and Nevis
+662,LCA,Saint Lucia
+670,VCT,Saint Vincent and the Grenadines
+678,STP,Sao Tome and Principe
+682,SAU,Saudi Arabia
+686,SEN,Senegal
+688,SRB,Serbia
+690,SYC,Seychelles
+694,SLE,Sierra Leone
+703,SVK,Slovakia
+704,VNM,Vietnam
+705,SVN,Slovenia
+710,ZAF,South Africa
+716,ZWE,Zimbabwe
+724,ESP,Spain
+740,SUR,Suriname
+748,SWZ,Eswatini
+752,SWE,Sweden
+756,CHE,Switzerland
+760,SYR,Syria
+762,TJK,Tajikistan
+764,THA,Thailand
+776,TON,Tonga
+780,TTO,Trinidad and Tobago
+784,ARE,United Arab Emirates
+788,TUN,Tunisia
+792,TUR,Türkiye
+795,TKM,Turkmenistan
+798,TUV,Tuvalu
+800,UGA,Uganda
+804,UKR,Ukraine
+807,MKD,North Macedonia
+818,EGY,Egypt
+826,GBR,United Kingdom
+834,TZA,Tanzania
+840,USA,United States
+854,BFA,Burkina Faso
+858,URY,Uruguay
+860,UZB,Uzbekistan
+862,VEN,Venezuela
+882,WSM,Samoa
+887,YEM,Yemen
+894,ZMB,Zambia

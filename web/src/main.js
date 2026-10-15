@@ -9,12 +9,15 @@ const state = {
   group: "all", // "all" = protein-weighted across every food, else a products.yaml group key
   indicator: "ssr", // ssr | idr (expert only; simple mode is always SSR in tonnes)
   basis: "tonnes", // tonnes | kcal
-  bloc: false, // true: EU members take the values of the EU27 bloc
+  bloc: false, // zoomed out: EU members take the values of the EU27 bloc (see EU_ZOOM)
   pinned: null, // iso3
   data: null, // ssr.json
+  items: null, // items.json (expert view), loaded on first use
 };
 
 const EU = "EU27";
+// Below this zoom the EU is drawn and described as one country; above it, its members appear.
+const EU_ZOOM = 2.3;
 
 const SCALES = {
   // SSR: diverging around 100 (below = net dependent, above = net exporter)
@@ -43,9 +46,9 @@ const NO_DATA = "#d9d9d4";
 const map = new maplibregl.Map({
   container: "map",
   style: "https://demotiles.maplibre.org/style.json",
-  center: [14, 53],
-  zoom: 3.3,
-  minZoom: 2.5,
+  center: [15, 30],
+  zoom: 1.5,
+  minZoom: 1,
   maxZoom: 7,
   attributionControl: { compact: true },
 });
@@ -69,7 +72,19 @@ map.on("load", async () => {
     console.error(e);
     return;
   }
+  // export.py drops empty fields to keep the file small; restore the ones the code walks.
+  for (const c of Object.values(data.countries)) {
+    c.indicators ??= {};
+    c.trend ??= {};
+  }
   state.data = data;
+  state.names = Object.fromEntries(geo.features.map((f) => [f.properties.iso3, f.properties.name]));
+
+  // The base style colours every country; ours replace them. Insert below the base labels.
+  for (const id of ["countries-fill", "countries-boundary", "crimea-fill"]) {
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
+  }
+  const labels = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
 
   map.addSource("countries", { type: "geojson", data: geo, promoteId: "iso3" });
   map.addLayer({
@@ -77,40 +92,44 @@ map.on("load", async () => {
     type: "fill",
     source: "countries",
     paint: { "fill-color": NO_DATA, "fill-opacity": 0.9 },
-  });
+  }, labels);
   map.addLayer({
     id: "atlas-line",
     type: "line",
     source: "countries",
     paint: { "line-color": "#ffffff", "line-width": 0.8 },
-  });
+  }, labels);
   map.addLayer({
     id: "atlas-hover",
     type: "line",
     source: "countries",
     paint: { "line-color": "#1f2a24", "line-width": 2 },
     filter: ["==", "iso3", ""],
-  });
+  }, labels);
 
   buildControls();
   renderSources();
+  state.bloc = map.getZoom() < EU_ZOOM;
   render();
 
+  map.on("zoom", () => {
+    const bloc = map.getZoom() < EU_ZOOM;
+    if (bloc !== state.bloc) { state.bloc = bloc; render(); }
+  });
   map.on("mousemove", "atlas-fill", (e) => {
     const f = e.features[0];
     map.getCanvas().style.cursor = "pointer";
-    map.setFilter("atlas-hover", ["==", "iso3", f.properties.iso3]);
+    highlight(f.properties.iso3);
     const id = entity(f.properties.iso3);
-    const text = state.mode === "simple" ? headline(id) : fmt(valueFor(id));
-    popup
-      .setLngLat(e.lngLat)
-      .setHTML(`<strong>${f.properties.name}</strong><br>${text}`)
-      .addTo(map);
+    const name = country(id)?.name ?? f.properties.name;
+    const text = !country(id) ? "No FAO food balance data."
+      : state.mode === "simple" ? headline(id) : fmt(valueFor(id));
+    popup.setLngLat(e.lngLat).setHTML(`<strong>${name}</strong><br>${text}`).addTo(map);
     if (!state.pinned) showDetail(f.properties.iso3);
   });
   map.on("mouseleave", "atlas-fill", () => {
     map.getCanvas().style.cursor = "";
-    map.setFilter("atlas-hover", ["==", "iso3", state.pinned ?? ""]);
+    highlight(state.pinned);
     popup.remove();
     if (!state.pinned) showDetail(null);
   });
@@ -119,14 +138,20 @@ map.on("load", async () => {
 
 function pin(iso3) {
   state.pinned = state.pinned === iso3 ? null : iso3;
-  map.setFilter("atlas-hover", ["==", "iso3", state.pinned ?? ""]);
+  highlight(state.pinned);
   showDetail(state.pinned);
+}
+
+// Outline a country, or every EU member when the EU is shown as one.
+function highlight(iso3) {
+  const members = iso3 && entity(iso3) === EU ? state.data.meta.eu_members : [iso3 ?? ""];
+  map.setFilter("atlas-hover", ["in", ["get", "iso3"], ["literal", members]]);
 }
 
 // ------------------------------------------------------------------------------------------------
 // data access
 
-// With the EU toggle on, every member state shows the EU27 bloc's figures.
+// Zoomed out, every member state shows the EU27 bloc's figures.
 function entity(iso3) {
   if (state.bloc && state.data.meta.eu_members.includes(iso3) && state.data.countries[EU]) return EU;
   return iso3;
@@ -157,8 +182,12 @@ function valueFor(id, indicator = mapIndicator(), basis = mapBasis()) {
   return v == null || Number.isNaN(v) ? null : v;
 }
 
+// kg/person/year from 1000 t and 1000 persons: kt * 1000 / population_k.
 function perCapita(id) {
-  return country(id)?.indicators?.[state.group]?.per_capita_kg ?? null;
+  const comp = country(id)?.indicators?.[state.group]?.components_kt;
+  const pop = country(id)?.population_k;
+  if (!comp || !pop) return null;
+  return Object.fromEntries(Object.entries(comp).map(([k, v]) => [k, (v * 1000) / pop]));
 }
 
 function fmt(v) {
@@ -256,7 +285,10 @@ function simpleGroupDetail(id) {
     : eatenTenths >= 9 ? "Almost all of it is eaten by people."
     : eatenTenths === 0 ? "Hardly any of it is eaten by people directly."
     : `Only ${eatenTenths} in every 10 kg is eaten by people directly.`;
-  const avg = state.data.meta.europe_avg?.[state.group]?.food_kg_pc;
+  const eur = state.data.meta.europe_avg?.[state.group]?.food_kg_pc;
+  const world = state.data.meta.world_avg?.[state.group]?.food_kg_pc;
+  const avgs = [eur != null ? `Europe ${kg(eur)}` : null, world != null ? `world ${kg(world)}` : null]
+    .filter(Boolean).join(", ");
   const perDay = pc.food != null ? Math.round((pc.food * 1000) / 365) : null;
   const trade = id === EU
     ? `<p class="small">Trade between EU countries isn't counted here — only what the EU as a whole grows and uses.</p>`
@@ -274,7 +306,7 @@ function simpleGroupDetail(id) {
       .map((u) => `<li><i style="background:${u.color}"></i>${kg(u.v)} ${u.label}</li>`)
       .join("")}</ul>
     ${eatenText ? `<p class="small">${eatenText}</p>` : ""}
-    ${perDay != null ? `<p class="small">The average person ${inPlace(id)} eats <strong>${kg(pc.food)}</strong> of ${food()} a year — about ${perDay.toLocaleString()} g a day${avg != null ? `. European average: ${kg(avg)}` : ""}.</p>` : ""}
+    ${perDay != null ? `<p class="small">The average person ${inPlace(id)} eats <strong>${kg(pc.food)}</strong> of ${food()} a year — about ${perDay.toLocaleString()} g a day${avgs ? `. Averages: ${avgs}` : ""}.</p>` : ""}
     ${trade}`;
 }
 
@@ -282,6 +314,7 @@ function simpleAllDetail(id) {
   const c = country(id);
   const p = c.indicators.all?.protein;
   const avg = state.data.meta.europe_avg?.all?.protein_g;
+  const world = state.data.meta.world_avg?.all?.protein_g;
   const rows = state.data.groups
     .filter((g) => g.key !== "all")
     .map((g) => ({ g, v: c.indicators[g.key]?.tonnes?.ssr }))
@@ -290,7 +323,7 @@ function simpleAllDetail(id) {
   return `
     <p class="lead">${headline(id)}</p>
     ${sparkline(trendFor(id), { label: "Protein that home-grown food could cover, each year" })}
-    ${p?.g_per_day != null ? `<p class="small">People ${inPlace(id)} eat about <strong>${Math.round(p.g_per_day)} g</strong> of protein a day${avg != null ? ` (European average: ${Math.round(avg)} g)` : ""}.</p>` : ""}
+    ${p?.g_per_day != null ? `<p class="small">People ${inPlace(id)} eat about <strong>${Math.round(p.g_per_day)} g</strong> of protein a day${avg != null ? ` (averages: Europe ${Math.round(avg)} g, world ${Math.round(world)} g)` : ""}.</p>` : ""}
     <p class="unit" style="margin-top:10px">Food by food — how much of what it uses does ${id === EU ? "the EU" : c.name} grow?</p>
     <table class="foods">${rows
       .map(({ g, v }) => `
@@ -306,8 +339,10 @@ function simpleAllDetail(id) {
 
 // Idle panel: who has the biggest surplus / shortfall for the selected food?
 function rankingDetail() {
+  // Zoomed out the EU competes as one country; zoomed in its members do.
+  const members = state.data.meta.eu_members;
   const rows = Object.entries(state.data.countries)
-    .filter(([id]) => id !== EU)
+    .filter(([id]) => (state.bloc ? !members.includes(id) : id !== EU))
     .map(([id, c]) => {
       if (isAll()) return { id, c, v: c.indicators.all?.protein?.share };
       const pc = c.indicators[state.group]?.per_capita_kg;
@@ -321,8 +356,8 @@ function rankingDetail() {
     .map((r) => `<li data-iso3="${r.id}"><span>${r.c.name}</span><strong>${fmtV(r.v)}</strong></li>`)
     .join("")}</ol>`;
   const [topTitle, bottomTitle] = isAll()
-    ? ["Most self-sufficient in protein", "Least self-sufficient in protein"]
-    : [`Biggest ${food()} surplus per person`, `Biggest ${food()} shortfall per person`];
+    ? ["Most self-sufficient in protein, worldwide", "Least self-sufficient in protein"]
+    : [`Biggest ${food()} surplus per person, worldwide`, `Biggest ${food()} shortfall per person`];
   return `
     <p class="hint">Hover a country for details. Click to pin.</p>
     <h3>${topTitle}</h3>${list(rows.slice(0, 5))}
@@ -347,6 +382,11 @@ function render() {
     if (iso3 === EU) continue;
     map.setFeatureState({ source: "countries", id: iso3 }, { v: valueFor(entity(iso3)) });
   }
+  // Zoomed out, drop borders between EU members so the bloc reads as one shape.
+  map.setFilter("atlas-line", state.bloc
+    ? ["!", ["in", ["get", "iso3"], ["literal", state.data.meta.eu_members]]]
+    : null);
+  highlight(state.pinned);
   renderLegend();
   document.getElementById("group").value = state.group;
   // "All food" has no tonnes basis: the same control picks protein vs calorie weighting.
@@ -375,7 +415,9 @@ function renderLegend() {
     label = `${ind === "ssr" ? "Self-sufficiency" : "Import dependency"} (${mapBasis()})`;
     tickText = ticks;
   }
-  const bloc = state.bloc ? `<div class="small">EU members show the EU-wide figure.</div>` : "";
+  const bloc = `<div class="small">${state.bloc
+    ? "Zoomed out, the EU is shown as one country. Zoom in to see its members."
+    : "Zoom out to see the EU as one country."} Grey: no FAO data.</div>`;
   document.getElementById("legend").innerHTML = `
     <div>${label}</div>
     <div class="bar" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
@@ -399,6 +441,11 @@ function showDetail(iso3) {
   const id = entity(iso3);
   const c = country(id);
   const g = groupInfo();
+  if (!c) {
+    el.innerHTML = `<h2>${state.names[iso3] ?? iso3}</h2>
+      <p class="small">FAO publishes no food balance sheet for this country or territory, so there is nothing to show.</p>`;
+    return;
+  }
   const viaBloc = id !== iso3 ? ` <small>(${state.data.countries[iso3].name} is a member)</small>` : "";
   const body = state.mode === "simple"
     ? (isAll() ? simpleAllDetail(id) : simpleGroupDetail(id))
@@ -442,7 +489,8 @@ function expertDetail(id) {
   const t = g.tonnes ?? {};
   const k = g.kcal ?? {};
   const comp = g.components_kt ?? {};
-  const items = (c.items?.[state.group] ?? [])
+  if (!state.items) loadItems();
+  const items = (state.items?.[id]?.[state.group] ?? [])
     .filter((i) => i.ssr != null)
     .sort((a, b) => (b.supply_kt ?? 0) - (a.supply_kt ?? 0))
     .slice(0, 8);
@@ -468,6 +516,13 @@ function expertDetail(id) {
     <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply.
       ${id === EU ? "EU bloc: members summed; intra-EU trade cancels out of supply." : "National view: imports from other EU countries count as imports."}</p>
     ${t.flag || k.flag ? `<p class="note">Flag: ${t.flag ?? k.flag}</p>` : ""}`;
+}
+
+let itemsLoading = null;
+function loadItems() {
+  itemsLoading ??= loadJSON("data/items.json")
+    .then((d) => { state.items = d; showDetail(state.pinned); })
+    .catch((e) => console.error(e));
 }
 
 function pop(c) {
@@ -516,10 +571,6 @@ function buildControls() {
   for (const b of document.querySelectorAll(".mode button")) {
     b.onclick = () => { state.mode = b.dataset.mode; render(); };
   }
-
-  const bloc = document.getElementById("bloc");
-  bloc.checked = state.bloc;
-  bloc.onchange = () => { state.bloc = bloc.checked; render(); };
 
   const ind = document.getElementById("indicator");
   ind.value = state.indicator;

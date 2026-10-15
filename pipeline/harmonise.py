@@ -23,10 +23,18 @@ log = logging.getLogger(__name__)
 
 
 def load_countries() -> pd.DataFrame:
+    """Every FBS country: the European core (countries.yaml: groups, Eurostat codes, notes) plus
+    the rest of the world (world.csv, group "World"). Column `europe` marks the core."""
     rows = yaml.safe_load((config.MAPPINGS / "countries.yaml").read_text(encoding="utf-8"))
-    df = pd.DataFrame(rows)
-    df["m49"] = df["m49"].astype(str).str.zfill(3)
-    return df
+    europe = pd.DataFrame(rows)
+    europe["m49"] = europe["m49"].astype(str).str.zfill(3)
+    europe["europe"] = True
+    world = pd.read_csv(config.MAPPINGS / "world.csv", comment="#", dtype=str, encoding="utf-8")
+    world["m49"] = world["m49"].str.zfill(3)
+    world = world[~world["iso3"].isin(europe["iso3"]) & ~world["m49"].isin(europe["m49"])]
+    world["group"] = "World"
+    world["europe"] = False
+    return pd.concat([europe, world], ignore_index=True)
 
 
 def load_products() -> dict:

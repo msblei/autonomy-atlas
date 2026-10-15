@@ -2,7 +2,8 @@
 
 Outputs (web/public/data/):
     countries.geojson   country polygons in scope, properties {iso3, name}
-    ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators{...}}}}
+    ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend}}}
+    items.json          {iso3: {group: [{item, ssr, supply_kt}]}}  (expert view, loaded lazily)
 """
 
 from __future__ import annotations
@@ -76,6 +77,16 @@ EU_ENTRY = {
 }
 
 
+def _compact(x):
+    """Drop None values and empty containers from dicts (lists keep None to stay aligned)."""
+    if isinstance(x, dict):
+        out = {k: _compact(v) for k, v in x.items()}
+        return {k: v for k, v in out.items() if v is not None and v != {} and v != []}
+    if isinstance(x, list):
+        return [_compact(v) for v in x]
+    return x
+
+
 def _trend_series(trends: pd.DataFrame, years: list[int]) -> dict:
     """{iso3: {group: [ssr per year, aligned to `years`]}}."""
     out: dict = {}
@@ -85,8 +96,8 @@ def _trend_series(trends: pd.DataFrame, years: list[int]) -> dict:
     return out
 
 
-def _europe_averages(groups: pd.DataFrame, overall: pd.DataFrame, national: list[str]) -> dict:
-    """Population-weighted averages across the in-scope countries (EU27 bloc excluded)."""
+def _averages(groups: pd.DataFrame, overall: pd.DataFrame, national: list[str]) -> dict:
+    """Population-weighted averages across `national` (EU27 bloc excluded)."""
     t = groups[(groups["basis"] == "tonnes") & groups["iso3"].isin(national)]
     avg = {}
     for group, sub in t.groupby("group"):
@@ -121,7 +132,8 @@ def export_ssr() -> None:
             "sources": sources(),
             "view": "national",
             "eu_members": sorted(config.EU27),
-            "europe_avg": _europe_averages(groups, overall, list(countries.index)),
+            "europe_avg": _averages(groups, overall, list(countries.index[countries["europe"]])),
+            "world_avg": _averages(groups, overall, list(countries.index)),
             "formulas": {
                 "ssr": "production / domestic supply * 100",
                 "idr": "imports / domestic supply * 100",
@@ -146,9 +158,11 @@ def export_ssr() -> None:
     if (groups["iso3"] == EU_BLOC).any():
         entries.append((EU_BLOC, dict(EU_ENTRY)))
 
+    item_tables: dict = {}  # expert-only detail, written to items.json and loaded on demand
     for iso3, entry in entries:
         entry.update({"view": "eu_bloc" if iso3 == EU_BLOC else "national",
-                      "indicators": {}, "items": {}, "trend": series.get(iso3, {})})
+                      "europe": bool(iso3 == EU_BLOC or countries.loc[iso3, "europe"]),
+                      "indicators": {}, "trend": series.get(iso3, {})})
         o = overall[overall["iso3"] == iso3]
         if len(o):
             r = o.iloc[0]
@@ -167,27 +181,35 @@ def export_ssr() -> None:
                 "flag": r.get("flag") or None,
             }
             if r["basis"] == "tonnes":
-                ind["components_kt"] = {k: _round(r[k], 0) for k in PER_CAPITA_KEYS}
-                ind["per_capita_kg"] = {k: _round(r[f"{k}_kg_pc"]) for k in PER_CAPITA_KEYS}
+                # kt with one decimal so small countries keep usable kg/person precision.
+                ind["components_kt"] = {k: _round(r[k], 1) for k in PER_CAPITA_KEYS}
         isub = items[(items["iso3"] == iso3) & items["group"].notna()]
         for _, r in isub.iterrows():
-            entry["items"].setdefault(r["group"], []).append(
+            item_tables.setdefault(iso3, {}).setdefault(r["group"], []).append(
                 {
                     "item": r["item"],
                     "ssr": _round(r["ssr"]),
-                    "idr": _round(r["idr"]),
                     "supply_kt": _round(r["supply"], 0),
-                    "production_kg_pc": _round(r["production_kg_pc"]),
-                    "supply_kg_pc": _round(r["supply_kg_pc"]),
-                    "flag": r.get("flag") or None,
                 }
             )
         out["countries"][iso3] = entry
 
     dest = config.WEB_DATA / "ssr.json"
-    dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    dest.write_text(json.dumps(_compact(out), ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8")
     log.info("wrote %s (%d countries, %.0f KB)", dest, len(out["countries"]),
              dest.stat().st_size / 1024)
+    dest = config.WEB_DATA / "items.json"
+    dest.write_text(json.dumps(_compact(item_tables), ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8")
+    log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)
+
+
+def _round_coords(c, nd: int = 3):
+    """Round nested coordinate arrays (3 decimals ~ 100 m; plenty at 1:20M)."""
+    if isinstance(c[0], (int, float)):
+        return [round(c[0], nd), round(c[1], nd)]
+    return [_round_coords(x, nd) for x in c]
 
 
 def export_countries_geojson() -> None:
@@ -199,18 +221,21 @@ def export_countries_geojson() -> None:
     if not src.exists():
         log.warning("no GISCO countries file at %s; run `atlas download --source boundaries`", src)
         return
-    scope = load_countries().set_index("iso3")["name"].to_dict()
+    known = load_countries().set_index("iso3")["name"].to_dict()
     gj = json.loads(src.read_text(encoding="utf-8"))
     feats = []
     for f in gj["features"]:
         p = f.get("properties", {})
         iso3 = p.get("ISO3_CODE")
-        if iso3 in scope:
-            feats.append({"type": "Feature", "geometry": f["geometry"],
-                          "properties": {"iso3": iso3, "name": scope[iso3]}})
-    missing = sorted(set(scope) - {f["properties"]["iso3"] for f in feats})
+        if not iso3 or iso3 == "ATA":
+            continue
+        geom = {"type": f["geometry"]["type"],
+                "coordinates": _round_coords(f["geometry"]["coordinates"])}
+        feats.append({"type": "Feature", "geometry": geom,
+                      "properties": {"iso3": iso3, "name": known.get(iso3, p.get("NAME_ENGL"))}})
+    missing = sorted(set(known) - {f["properties"]["iso3"] for f in feats})
     if missing:
-        log.warning("no polygon for: %s", missing)
+        log.warning("FBS countries with no polygon: %s", missing)
     dest = config.WEB_DATA / "countries.geojson"
     dest.write_text(
         json.dumps({"type": "FeatureCollection",
@@ -219,7 +244,7 @@ def export_countries_geojson() -> None:
                     "features": feats}, separators=(",", ":")),
         encoding="utf-8",
     )
-    log.info("wrote %s (%d features)", dest, len(feats))
+    log.info("wrote %s (%d features, %.0f KB)", dest, len(feats), dest.stat().st_size / 1024)
 
 
 def run() -> None:

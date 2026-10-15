@@ -10,15 +10,20 @@ Formulas and methodological rules: `docs/methodology.md`.
 
 ## Decisions already made (don't relitigate without asking)
 
-- **Scope:** EU27 + UK + EFTA (NO, CH, IS) + Western Balkans (AL, BA, ME, MK, RS) + UA, MD + BY, RU, TR
-  where data allows. ~41 countries. Country list in `pipeline/mappings/countries.yaml`.
+- **Scope:** global for everything FBS-based (~178 countries, `pipeline/mappings/world.csv`,
+  M49 → ISO3). The European core — EU27 + UK + EFTA (NO, CH, IS) + Western Balkans (AL, BA, ME,
+  MK, RS) + UA, MD + BY, RU, TR, ~41 countries in `pipeline/mappings/countries.yaml` (groups,
+  Eurostat codes, notes) — stays the focus for the Europe-only phases (Comext, NUTS, seasons).
+  Map: zoomed out, the EU27 is drawn as one country (bloc figures); zoomed in, its members.
+  (Changed from Europe-only on 2026-10-15 at the user's request.)
 - **Backbone dataset:** FAO Food Balance Sheets (FBS, 2010–) for self-sufficiency and import
   dependency. It is the only source that covers every country above with one methodology and already
   converts processed goods to primary equivalents.
 - **Product key:** FAO FBS item names/codes are the master key. Everything else (HS6/CN8 trade,
   Eurostat crop codes) is crosswalked *to* FAO items. User-facing groups (~14) are defined in
   `pipeline/mappings/products.yaml`.
-- **Country key:** ISO3. Mappings to FAO M49 codes and Eurostat geo codes live in `countries.yaml`.
+- **Country key:** ISO3. M49 → ISO3 for the world lives in `world.csv`; Europe-specific mappings
+  (Eurostat geo codes, groups, notes) in `countries.yaml`.
 - **Default time window:** 3-year average (latest three FBS years). Average the *components*
   (production, imports, exports, supply) over the window, then compute the ratio — never average
   ratios.
@@ -43,7 +48,7 @@ README.md               public-facing overview
 docs/                   research report, methodology
 pipeline/               Python package
   config.py             paths, URLs, dataset codes, default years
-  mappings/             countries.yaml, products.yaml (hand-maintained crosswalks)
+  mappings/             countries.yaml (Europe), world.csv (M49 -> ISO3), products.yaml
   download.py           fetch raw files into data/raw/<source>/
   harmonise.py          raw -> tidy Parquet in data/interim/ (ISO3, FAO item, year, element, value)
   compute.py            SSR / IDR / concentration indices -> data/processed/
@@ -67,8 +72,8 @@ make serve       # cd web && npm run dev
 
 ## Roadmap
 
-1. **Phase 1 (current):** country choropleth of FBS-based SSR and IDR for ~14 product groups across
-   ~41 countries, tonnes and kcal basis, national vs EU-bloc toggle, 3-year average.
+1. **Phase 1 (current):** world choropleth of FBS-based SSR and IDR for ~14 product groups plus
+   "all food" protein coverage, tonnes/kcal basis, EU bloc when zoomed out, 3-year average, trends.
 2. **Phase 2:** partner-flow arcs from Eurostat Comext (intra + extra EU, CN8) and CEPII BACI
    (non-EU reporters), with import-concentration (HHI) and share-from-RU/UA indicators.
 3. **Phase 3:** seasons (FAO Crop Calendar API, USDA IPAD, GGCMI) as a 12-month strip per
