@@ -31,7 +31,14 @@ FBS_ELEMENTS: dict[str, str] = {
     "stock_variation": "Stock Variation",
     "feed": "Feed",
     "food": "Food",
+    "seed": "Seed",
+    "losses": "Losses",
+    "processing": "Processing",  # turned into another FBS item (barley -> beer, seeds -> oil)
+    "other_uses": "Other uses (non-food)",  # biofuel, industrial
+    "tourist": "Tourist consumption",
+    "residuals": "Residuals",  # statistical balancing term, can be negative
     "kcal": "Food supply (kcal/capita/day)",
+    "protein": "Protein supply quantity (g/capita/day)",
     # Item "Population" (2501) carries this element, unit 1000 No. Used for per-person figures.
     "population": "Total Population - Both sexes",
 }

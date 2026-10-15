@@ -120,3 +120,86 @@ def test_per_capita_is_nan_without_population():
     ])
     res = compute.compute(fbs, years=(2023, 2023))
     assert np.isnan(res["items"].iloc[0]["production_kg_pc"])
+
+
+def test_overall_protein_share_caps_surpluses():
+    # Wheat 200% SSR, 60 g protein; soy 0% SSR, 40 g protein.
+    # Capped share: (60*100 + 40*0) / 100 = 60. Uncapped: (60*200 + 0) / 100 = 120.
+    fbs = _long([
+        ("POL", "Wheat and products", "Production", 2023, 20.0),
+        ("POL", "Wheat and products", "Domestic supply quantity", 2023, 10.0),
+        ("POL", "Wheat and products", "Protein supply quantity (g/capita/day)", 2023, 60.0),
+        ("POL", "Soyabeans", "Production", 2023, 0.0),
+        ("POL", "Soyabeans", "Domestic supply quantity", 2023, 10.0),
+        ("POL", "Soyabeans", "Protein supply quantity (g/capita/day)", 2023, 40.0),
+    ])
+    o = compute.compute(fbs, years=(2023, 2023))["overall"].iloc[0]
+    assert o["protein_share"] == pytest.approx(60.0)
+    assert o["protein_ssr"] == pytest.approx(120.0)
+    assert o["protein"] == pytest.approx(100.0)
+
+
+def test_overall_ignores_fao_aggregate_items():
+    fbs = _long([
+        ("POL", "Oats", "Production", 2023, 10.0),
+        ("POL", "Oats", "Domestic supply quantity", 2023, 10.0),
+        ("POL", "Oats", "Protein supply quantity (g/capita/day)", 2023, 5.0),
+        ("POL", "Grand Total", "Production", 2023, 0.0),
+        ("POL", "Grand Total", "Domestic supply quantity", 2023, 10.0),
+        ("POL", "Grand Total", "Protein supply quantity (g/capita/day)", 2023, 100.0),
+    ])
+    fbs["item_code"] = fbs["item"].map({"Oats": "2516", "Grand Total": "2901"})
+    o = compute.compute(fbs, years=(2023, 2023))["overall"].iloc[0]
+    assert o["protein_share"] == pytest.approx(100.0)
+    assert o["protein"] == pytest.approx(5.0)
+
+
+def _eu_frame(year=2023):
+    """Every EU27 member: 10 kt oats produced, 5 kt supplied, 1 kt traded each way, pop 1000 k.
+    Plus a non-member that must not be summed in."""
+    rows = []
+    for iso3 in sorted(compute.config.EU27):
+        rows += [
+            (iso3, "Oats", "Production", year, 10.0),
+            (iso3, "Oats", "Domestic supply quantity", year, 5.0),
+            (iso3, "Oats", "Import quantity", year, 1.0),
+            (iso3, "Oats", "Export quantity", year, 6.0),
+            (iso3, "Oats", "Protein supply quantity (g/capita/day)", year, 2.0),
+            (iso3, "Population", "Total Population - Both sexes", year, 1000.0),
+        ]
+    rows += [("NOR", "Oats", "Production", year, 999.0),
+             ("NOR", "Oats", "Domestic supply quantity", year, 1.0)]
+    return _long(rows)
+
+
+def test_eu_bloc_sums_members_and_blanks_gross_trade():
+    res = compute.compute(_eu_frame(), years=(2023, 2023))
+    eu = res["items"].set_index("iso3").loc["EU27"]
+    assert eu["production"] == pytest.approx(270.0)
+    assert eu["supply"] == pytest.approx(135.0)
+    assert eu["ssr"] == pytest.approx(200.0)
+    assert np.isnan(eu["imports"]) and np.isnan(eu["idr"])  # intra-EU trade not separable
+    assert eu["population"] == pytest.approx(27000.0)
+    assert eu["production_kg_pc"] == pytest.approx(10.0)
+    assert eu["protein"] == pytest.approx(2.0)  # population-weighted mean of per-capita values
+    assert eu["view"] == "eu_bloc"
+
+
+def test_eu_bloc_skipped_when_a_member_is_missing():
+    fbs = _eu_frame()
+    fbs = fbs[fbs["iso3"] != "MLT"]
+    res = compute.compute(fbs, years=(2023, 2023))
+    assert "EU27" not in set(res["items"]["iso3"])
+
+
+def test_trends_one_value_per_year():
+    fbs = _long([
+        ("DEU", "Oats", "Production", 2022, 10.0),
+        ("DEU", "Oats", "Domestic supply quantity", 2022, 10.0),
+        ("DEU", "Oats", "Production", 2023, 30.0),
+        ("DEU", "Oats", "Domestic supply quantity", 2023, 10.0),
+    ])
+    t = compute.compute(fbs)["trends"]
+    t = t[t["group"] == "cereals"].set_index("year")["ssr"]
+    assert t.loc[2022] == pytest.approx(100.0)
+    assert t.loc[2023] == pytest.approx(300.0)

@@ -61,6 +61,46 @@ as volatile.
 
 Always offer both. They answer different questions ("could France feed itself?" vs "could Europe?").
 
+**Implemented now (FBS only):** `compute.add_eu_bloc` adds a pseudo-country `EU27` by summing all
+27 members per item and year (years with a missing member are skipped). Intra-EU trade appears in
+both members' imports and exports, so it cancels out of D = P + M − X − ΔS: EU-wide SSR, per-person
+figures and net trade are valid. Gross M and X are blanked, so EU-bloc IDR stays NaN until
+partner-level trade (phase 2) gives M_extra. FAO's own "European Union (27)" area (M49 097) is the
+same plain sum of members (checked 2022: wheat imports 71 Mt, overwhelmingly intra-EU), so it has
+the same limitation.
+
+## Per-person figures
+
+kg/person/year = component (1000 t) × 1000 / population (1000 persons). Population is FBS item
+2501 "Population", element "Total Population - Both sexes", from the same file and window. "Food"
+in FBS is food available for consumption (incl. household waste), not intake.
+
+Utilisation of domestic supply: food, feed, seed, losses, processing (turned into another FBS
+item, e.g. barley → beer, soybeans → oil + cake), other uses (non-food: biofuel, industry),
+tourist consumption, residuals (balancing term, can be negative).
+
+## "All food" coverage
+
+    coverage_w = Σ_i w_i · min(SSR_i, 100) / Σ_i w_i
+
+over FBS leaf items (item code < 2900, Population excluded; FAO aggregates like "Grand Total" are
+29xx), with w = protein (g/cap/day) or kcal/cap/day. Capping stops a wheat surplus from offsetting
+a soy deficit; read it as "share of what people eat that own production could cover". The uncapped
+version is reported as `*_ssr`. Livestock products count as domestic regardless of feed origin
+(feed adjustment is phase 4).
+
+## Trends
+
+`ssr_trends.parquet` holds single-year values (tonnes SSR per group, protein coverage for "all")
+for 2010 onwards. Single years are volatile (droughts: DE cereals 2018 = 91%); the headline
+figures stay 3-year averages.
+
+## Scenario "without trade" (considered, not built)
+
+With all trade stopped a country keeps its production, so "available without trade" per person is
+just production per person — the SSR view already shows it. A useful scenario needs feed origin
+(phase 4) or partner-level trade to remove specific suppliers such as RU/UA (phase 2).
+
 ## Pitfalls checklist
 
 Tick these off before publishing any indicator.

@@ -38,6 +38,8 @@ select { font: inherit; color: var(--ink); padding: 6px 8px; border: 1px solid v
 #legend { display: flex; flex-direction: column; gap: 4px; font-size: 12px; }
 #legend .bar { height: 10px; border-radius: 5px; }
 #legend .ticks { display: flex; justify-content: space-between; color: var(--muted); }
+#legend .small { color: var(--muted); }
+label.check { flex-direction: row; align-items: center; gap: 6px; font-size: 13px; color: var(--ink); cursor: pointer; }
 
 #detail { border-top: 1px solid var(--line); padding-top: 12px; font-size: 13px; min-height: 60px; }
 #detail h2 { margin: 0 0 6px; font-size: 15px; }
@@ -48,10 +50,29 @@ select { font: inherit; color: var(--ink); padding: 6px 8px; border: 1px solid v
 #detail .row strong { font-variant-numeric: tabular-nums; }
 #detail .track { display: flex; height: 10px; background: var(--line); border-radius: 5px; overflow: hidden; margin: 3px 0 2px; }
 #detail .track .bar { display: block; height: 100%; }
-#detail .bar.grown { background: var(--accent); }
-#detail .bar.food { background: #c9822f; }
-#detail .bar.feed { background: #e3b47a; }
-#detail .bar.other { background: #b9b2a3; }
+#detail .uses { list-style: none; margin: 6px 0 0; padding: 0; font-size: 12px; color: var(--muted); }
+#detail .uses li { display: flex; align-items: center; gap: 6px; margin: 2px 0; }
+#detail .uses i { width: 9px; height: 9px; border-radius: 2px; flex: none; }
+#detail h3 { font-size: 12px; margin: 12px 0 4px; }
+#detail .rank { margin: 0; padding-left: 20px; }
+#detail .rank li { cursor: pointer; padding: 2px 0; }
+#detail .rank li span { display: inline-block; width: calc(100% - 80px); }
+#detail .rank li strong { float: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+#detail .rank li:hover span { text-decoration: underline; }
+#detail .foods tr { cursor: pointer; }
+#detail .foods tr:hover td:first-child { text-decoration: underline; }
+#detail .foods td.meter { width: 90px; position: relative; padding: 0 8px; }
+#detail .foods td.meter span { display: block; height: 8px; border-radius: 4px; }
+#detail .foods td.meter i { position: absolute; left: calc(8px + (100% - 16px) / 2); top: 2px; bottom: 2px; border-left: 1px dashed var(--ink); opacity: .5; }
+.spark { margin: 4px 0 10px; }
+.spark-head { display: flex; justify-content: space-between; font-size: 11px; color: var(--muted); }
+.spark svg { display: block; overflow: visible; }
+.spark .line { fill: none; stroke: var(--accent); stroke-width: 2; stroke-linejoin: round; }
+.spark .dot { fill: var(--accent); }
+.spark .ref { stroke: var(--ink); stroke-dasharray: 3 3; opacity: .4; }
+.spark-key { font-size: 10px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.spark-key i { width: 14px; border-top: 1px dashed var(--ink); opacity: .5; }
+.spark .val { font-size: 11px; fill: var(--ink); font-variant-numeric: tabular-nums; }
 #detail .small { font-size: 12px; color: var(--muted); margin: 6px 0 0; line-height: 1.4; }
 #detail .cite { font-size: 11px; color: var(--muted); margin: 10px 0 0; }
 #detail .big { font-size: 28px; font-weight: 600; margin: 2px 0 8px; }
