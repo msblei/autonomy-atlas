@@ -57,19 +57,19 @@ map.on("load", async () => {
 
   map.addSource("countries", { type: "geojson", data: geo, promoteId: "iso3" });
   map.addLayer({
-    id: "countries-fill",
+    id: "atlas-fill",
     type: "fill",
     source: "countries",
     paint: { "fill-color": NO_DATA, "fill-opacity": 0.9 },
   });
   map.addLayer({
-    id: "countries-line",
+    id: "atlas-line",
     type: "line",
     source: "countries",
     paint: { "line-color": "#ffffff", "line-width": 0.8 },
   });
   map.addLayer({
-    id: "countries-hover",
+    id: "atlas-hover",
     type: "line",
     source: "countries",
     paint: { "line-color": "#1f2a24", "line-width": 2 },
@@ -79,10 +79,10 @@ map.on("load", async () => {
   buildControls();
   render();
 
-  map.on("mousemove", "countries-fill", (e) => {
+  map.on("mousemove", "atlas-fill", (e) => {
     const f = e.features[0];
     map.getCanvas().style.cursor = "pointer";
-    map.setFilter("countries-hover", ["==", "iso3", f.properties.iso3]);
+    map.setFilter("atlas-hover", ["==", "iso3", f.properties.iso3]);
     const v = valueFor(f.properties.iso3);
     popup
       .setLngLat(e.lngLat)
@@ -90,13 +90,13 @@ map.on("load", async () => {
       .addTo(map);
     if (!state.pinned) showDetail(f.properties.iso3);
   });
-  map.on("mouseleave", "countries-fill", () => {
+  map.on("mouseleave", "atlas-fill", () => {
     map.getCanvas().style.cursor = "";
-    map.setFilter("countries-hover", ["==", "iso3", state.pinned ?? ""]);
+    map.setFilter("atlas-hover", ["==", "iso3", state.pinned ?? ""]);
     popup.remove();
     if (!state.pinned) showDetail(null);
   });
-  map.on("click", "countries-fill", (e) => {
+  map.on("click", "atlas-fill", (e) => {
     const iso3 = e.features[0].properties.iso3;
     state.pinned = state.pinned === iso3 ? null : iso3;
     showDetail(state.pinned);
@@ -124,7 +124,7 @@ function render() {
   const { stops, colors } = SCALES[state.indicator];
   const interp = ["interpolate", ["linear"], ["coalesce", ["feature-state", "v"], -1]];
   stops.forEach((s, i) => interp.push(s, colors[i]));
-  map.setPaintProperty("countries-fill", "fill-color", [
+  map.setPaintProperty("atlas-fill", "fill-color", [
     "case",
     ["==", ["coalesce", ["feature-state", "v"], -1], -1],
     NO_DATA,
