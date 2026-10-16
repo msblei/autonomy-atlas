@@ -22,6 +22,7 @@ const state = {
   group: "all", // "all" = protein-weighted across every food, else a products.yaml group key
   level: "intro", // intro | country | foods | food | trade | used | sources | table | about
   flow: "imports", // imports | exports (trade level)
+  grown: false, // imports traced back to where they were grown, instead of who sold them
   indicator: "ssr", // ssr | idr (table level only)
   basis: "tonnes", // tonnes | kcal (table level only)
   bloc: false, // zoomed out: EU members are coloured with the EU27 bloc's figures (see EU_ZOOM)
@@ -649,6 +650,9 @@ function wire(el) {
   for (const b of el.querySelectorAll("[data-go]")) {
     b.onclick = () => { location.hash = b.dataset.go; if (b.dataset.fly) flyTo(b.dataset.fly); };
   }
+  for (const b of el.querySelectorAll("[data-grown]")) {
+    b.onclick = () => { state.grown = b.dataset.grown === "1"; render(); fitTrade(); };
+  }
   for (const b of el.querySelectorAll("[data-flow]")) {
     b.onclick = () => {
       const changed = state.flow !== b.dataset.flow;
@@ -1237,12 +1241,17 @@ function loadTrade() {
 }
 
 // [total tonnes, [[partner, tonnes], ...]] or null.
-function tradeFor(id, group = state.group, flow = state.flow) {
+// The flow the trade view shows: imports by seller, imports by where they were grown, or exports.
+function tradeFlow() {
+  return state.flow === "imports" && state.grown ? "grown" : state.flow;
+}
+
+function tradeFor(id, group = state.group, flow = tradeFlow()) {
   return state.trade?.countries[id]?.[group]?.[flow] ?? null;
 }
 
 // Partner shares in percent, largest first.
-function shares(id, group = state.group, flow = state.flow) {
+function shares(id, group = state.group, flow = tradeFlow()) {
   const t = tradeFor(id, group, flow);
   if (!t || !t[0]) return [];
   return t[1].map(([p, v]) => ({ id: p, share: (v / t[0]) * 100, tonnes: v }));
@@ -1275,11 +1284,17 @@ function viewTrade() {
       where it comes from.</p>`;
   }
   const imports = state.flow === "imports";
+  const grown = imports && state.grown;
   const who = whoOf(id);
   const t = tradeFor(id);
   const rows = shares(id);
+  const toggle = imports ? `
+    <div class="seg two" role="group" aria-label="Who sold it or where it was grown">
+      <button type="button" data-grown="0" aria-pressed="${!grown}">Bought from</button>
+      <button type="button" data-grown="1" aria-pressed="${grown}">Grown in</button>
+    </div>` : "";
   if (!t || !t[0] || !rows.length) {
-    return `${head}<p>${cap(who)} ${imports ? "buys" : "sells"} almost no ${food()} abroad.</p>`;
+    return `${head}${toggle}<p>${cap(who)} ${imports ? "buys" : "sells"} almost no ${food()} abroad.</p>`;
   }
   // Totals from the food balance where there is one, so they match the other pages; the trade
   // records give the split by country.
@@ -1291,13 +1306,16 @@ function viewTrade() {
   const max = top[0].share;
   const members = state.data.meta.eu_members;
   const fromEu = isMember(id) ? rows.filter((r) => members.includes(r.id)).reduce((a, r) => a + r.share, 0) : null;
-  const hubs = top.slice(0, 5).filter((r) => ["NLD", "BEL"].includes(r.id) && r.id !== id);
+  const hubs = grown ? [] : top.slice(0, 5).filter((r) => ["NLD", "BEL"].includes(r.id) && r.id !== id);
   const mirror = state.trade.meta.mirror.includes(id);
   const Who = cap(who);
   return `
     ${head}
-    <p class="q">${Who} ${imports ? "buys" : "sells"} about <strong>${tonnes(total)}</strong> of
-      ${food()} ${imports ? "from" : "to"} other countries a year. Most of it ${imports ? "comes from" : "goes to"}:</p>
+    ${toggle}
+    <p class="q">${grown
+      ? `Where the ${food()} ${who} buys abroad was grown, following it back through the countries that sold it on:`
+      : `${Who} ${imports ? "buys" : "sells"} about <strong>${tonnes(total)}</strong> of ${food()}
+        ${imports ? "from" : "to"} other countries a year. Most of it ${imports ? "comes from" : "goes to"}:`}</p>
     <ol class="partners">${top.map((r) => `
       <li><a href="${hashFor({ iso3: r.id, group: state.group, level: "trade" })}">
         <span class="name">${nameOf(r.id)}</span>
@@ -1308,13 +1326,15 @@ function viewTrade() {
     </ol>
     <p class="small">On the map: the darker the blue, the bigger the share. Lines show the ${Math.min(ARCS, top.length)} biggest.
       Tap a country to see its own trade.</p>
-    ${fromEu != null && fromEu >= 1 ? `<p>About <strong>${Math.round(fromEu)}%</strong> of it ${imports ? "comes from" : "goes to"} other EU countries.</p>` : ""}
+    ${fromEu != null && fromEu >= 1 ? `<p>About <strong>${Math.round(fromEu)}%</strong> of it ${grown ? "was grown in" : imports ? "comes from" : "goes to"} other EU countries.</p>` : ""}
     ${id === EU ? `<p class="aside">Only trade with countries outside the EU counts here: what the EU as a whole buys and sells.</p>` : ""}
     ${hubs.length && imports ? `<p class="aside">${cap(namesList(hubs.map((r) => r.id)))} ${hubs.length > 1 ? "are" : "is"} often only
       where food arrives by ship: much of it was grown further away and passes through the port of
-      ${hubs.map((r) => PORTS[r.id]).join(" or ")}.</p>` : ""}
+      ${hubs.map((r) => PORTS[r.id]).join(" or ")}.
+      <button type="button" class="linkish" data-grown="1">See where it was grown ›</button></p>` : ""}
     <h3>Good to know</h3>
     <ul class="caveats">
+      ${grown ? `<li>Traced back by assuming that every country sells on an even mix of what it grows and what it buys. It is an estimate, not a shipping record.</li>` : ""}
       ${fbsTotal != null
         ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from FAO's trade records, which count tonnes as shipped (a tonne of juice counts like a tonne of fruit).</li>`
         : `<li>Counted in tonnes as shipped: a tonne of juice or cheese counts the same as a tonne of fruit or milk.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
@@ -1341,17 +1361,21 @@ function tradeTooltip(iso3) {
   const home = id === EU ? isMember(iso3) : iso3 === id;
   if (home) return `<strong>${nameOf(id === EU ? EU : iso3)}</strong>`;
   const r = shares(id).find((x) => x.id === iso3);
-  const what = state.flow === "imports"
-    ? `of the ${food()} ${whoOf(id)} buys abroad`
-    : `of the ${food()} ${whoOf(id)} sells abroad`;
+  const what = tradeFlow() === "grown"
+    ? `of the ${food()} ${whoOf(id)} buys abroad was grown here`
+    : state.flow === "imports"
+      ? `of the ${food()} ${whoOf(id)} buys abroad`
+      : `of the ${food()} ${whoOf(id)} sells abroad`;
   return `<strong>${nameOf(iso3)}</strong><br>${r ? `${r.share < 1 ? "<1" : Math.round(r.share)}% ${what}` : "little or none"}`;
 }
 
 function tradeLegend() {
   const id = state.iso3;
-  const title = state.flow === "imports"
-    ? `Where ${whoOf(id)} buys its ${food()}`
-    : `Where ${whoOf(id)} sells its ${food()}`;
+  const title = tradeFlow() === "grown"
+    ? `Where the ${food()} ${whoOf(id)} buys was grown`
+    : state.flow === "imports"
+      ? `Where ${whoOf(id)} buys its ${food()}`
+      : `Where ${whoOf(id)} sells its ${food()}`;
   const body = `<ul>${TRADE_STEPS.map((s) => `<li><i style="background:${s.color}"></i>${s.label}</li>`).join("")}
     <li><i style="background:${HOME}"></i>${nameOf(id)}</li>
     <li><i style="background:${NO_DATA}"></i>little or none</li></ul>`;

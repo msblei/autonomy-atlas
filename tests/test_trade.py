@@ -51,3 +51,25 @@ def test_trade_item_mapping_covers_the_main_foods():
         "cereals", "potatoes_roots", "sugar", "pulses", "oilseeds", "vegetable_oils", "vegetables",
         "fruit", "meat", "dairy", "eggs", "fish", "stimulants", "wine_beer",
     }
+
+
+def test_trace_origins_sees_through_a_hub():
+    # Brazil grows coffee and sells it to the Netherlands; the Netherlands grows none and sells
+    # half of what it has to Germany. Germany's coffee "from the Netherlands" was grown in Brazil.
+    p = pd.DataFrame([
+        ("NLD", "stimulants", "imports", "BRA", 100.0, "reported"),
+        ("DEU", "stimulants", "imports", "NLD", 50.0, "reported"),
+        ("DEU", "stimulants", "imports", "COL", 50.0, "reported"),
+    ], columns=["iso3", "group", "flow", "partner", "tonnes", "source"])
+    fbs = pd.DataFrame([
+        ("BRA", "stimulants", 1.0, 0.0),
+        ("COL", "stimulants", 1.0, 0.0),
+        ("NLD", "stimulants", 0.0, 0.1),
+        ("DEU", "stimulants", 0.0, 0.1),
+    ], columns=["iso3", "group", "production", "imports"])  # 1000 t
+    o = trade.trace_origins(p, fbs)
+    deu = o[o["iso3"] == "DEU"].set_index("partner")["tonnes"]
+    assert set(deu.index) == {"BRA", "COL"}
+    assert deu["BRA"] == pytest.approx(50.0)
+    assert deu["COL"] == pytest.approx(50.0)
+    assert (o["flow"] == "grown").all()

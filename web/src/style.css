@@ -114,6 +114,10 @@ select {
 .seg button + button { border-left: 1px solid #cfcabe; }
 .seg button[aria-pressed="true"] { background: #1f4a6e; color: #fff; font-weight: 600; }
 
+.seg.two { display: grid; grid-template-columns: 1fr 1fr; }
+.linkish { font: inherit; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 4px 0 0; cursor: pointer; display: block; }
+.linkish:hover { text-decoration: underline; }
+
 .partners { list-style: none; margin: 6px 0 12px; padding: 0; }
 .partners a, .partners .rest {
   display: grid; grid-template-columns: 1fr 90px 44px; gap: 10px; align-items: center;

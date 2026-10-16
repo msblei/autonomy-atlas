@@ -145,6 +145,31 @@ other than groundnuts are left out). FAO's trade data has no fish.
 - **Export file:** `trade.json` keeps, per country × group × flow, the total and every partner with
   at least 0.5% (at most 24), plus "all food" = all groups added up by weight.
 
+## Where imports were grown (re-export tracing)
+
+The trade view's "Grown in" switch follows imports back through transit and processing hubs
+(`pipeline/trade.trace_origins`), with the proportional allocation of Kastner et al. (2011): every
+country sells on an even mix of what it has, its own production plus its imports.
+
+For one food group, with Z[i, j] the flow from i to j, P the production and x = max(P + imports,
+exports) what each country has:
+
+    A = Z / x          (row i divided by x_i)
+    C = diag(P) · (I − A)⁻¹      C[k, i] = country k's production that ends up in i
+    origin[k, j] = Σ_i C[k, i] / x_i · Z[i, j]
+
+- Bilateral splits come from the trade matrix and are scaled to each importer's FBS import total,
+  so production and trade are both in FBS primary equivalents. Trade-only countries (Japan,
+  Singapore) keep trade-matrix totals and count as producing nothing.
+- The importer itself is dropped from its own origins (re-imports).
+- EU27: members' imports from non-members, traced back, non-EU origins only.
+- It is an estimate: a hub does not really ship an even mix, and processing (cocoa to chocolate)
+  is treated like repacking. The page says so.
+
+Example, 2021–2023: Germany's coffee, cocoa and tea are bought 17% from the Netherlands and 11%
+from Belgium, but traced back they were grown 23% in Brazil, 19% in Côte d'Ivoire and 13% in
+Vietnam. Countries that grow most of what they sell (the US, Brazil) look the same either way.
+
 ## Trends
 
 `ssr_trends.parquet` holds single-year values (tonnes SSR per group, protein coverage for "all")

@@ -1,7 +1,8 @@
 """FAOSTAT Detailed Trade Matrix -> who each country buys its food from and sells it to.
 
 Output data/processed/trade_partners.parquet, one row per country × group × flow × partner:
-    iso3, group, flow (imports | exports), partner, tonnes, source (reported | mirror), years
+    iso3, group, flow (imports | exports | grown), partner, tonnes,
+    source (reported | mirror | traced), years
 
 `tonnes` is the yearly mean over the same window as the FBS figures, in product weight as traded
 (a tonne of flour or cheese counts as a tonne; mappings/trade_items.csv). That is fine for "which
@@ -13,6 +14,9 @@ others say they sent it become its imports ("mirror" flows), and vice versa.
 
 The EU27 bloc gets only trade with non-members: what the EU as a whole buys from and sells to the
 rest of the world.
+
+flow "grown" traces imports back to where they were grown (`trace_origins`): coffee Germany buys
+from the Netherlands mostly counts as Brazilian, Vietnamese, ... coffee.
 """
 
 from __future__ import annotations
@@ -21,6 +25,7 @@ import csv
 import logging
 import zipfile
 
+import numpy as np
 import pandas as pd
 import pyarrow as pa
 import pyarrow.compute as pc
@@ -145,6 +150,62 @@ def add_eu_bloc(p: pd.DataFrame) -> pd.DataFrame:
     return pd.concat([p, bloc], ignore_index=True)
 
 
+def trace_origins(p: pd.DataFrame, fbs: pd.DataFrame) -> pd.DataFrame:
+    """Where the food each country buys abroad was grown, as rows (iso3, group, partner = country
+    of origin, tonnes), flow "grown".
+
+    Proportional re-export allocation (Kastner et al. 2011): every country sells on an even mix of
+    what it has, its own production plus its imports. For one food group, with Z[i, j] the flow
+    i -> j and x the amount each country has, A = Z / x (row-wise) and C = diag(P) (I - A)^-1 gives
+    C[k, i], how much of country k's production ends up in country i. The origin of j's imports is
+    then sum_i C[k, i] / x[i] * Z[i, j].
+
+    Units: bilateral splits come from the trade matrix (product weight), scaled to each importer's
+    FBS import total so production and trade are both in FBS primary equivalents. Countries without
+    a food balance (Japan, Singapore) keep their trade-matrix totals and count as producing nothing.
+
+    `fbs`: tonnes-basis rows of ssr_groups (iso3, group, production, imports in 1000 t).
+    """
+    imp = p[(p["flow"] == "imports") & (p["iso3"] != EU_BLOC)]
+    fbs = fbs.set_index(["group", "iso3"])
+    rows = []
+    for group, sub in imp.groupby("group"):
+        f = fbs.loc[group] if group in fbs.index.get_level_values(0) else pd.DataFrame()
+        names = sorted(set(sub["iso3"]) | set(sub["partner"]) | set(f.index))
+        idx = {c: i for i, c in enumerate(names)}
+        n = len(names)
+        z = np.zeros((n, n))
+        for j, r in sub.groupby("iso3"):
+            if r["tonnes"].sum() <= 0:
+                continue
+            fbs_m = f["imports"].get(j) if len(f) else None
+            total = fbs_m * 1000 if fbs_m is not None and pd.notna(fbs_m) else r["tonnes"].sum()
+            z[r["partner"].map(idx).to_numpy(), idx[j]] = total * r["tonnes"].to_numpy() / r["tonnes"].sum()
+        prod = np.zeros(n)
+        if len(f):
+            have = f["production"].fillna(0) * 1000
+            prod[[idx[c] for c in have.index]] = have.to_numpy()
+        # A country cannot sell more than it has; trade records and balances do not always agree.
+        avail = np.maximum(prod + z.sum(axis=0), z.sum(axis=1))
+        safe = np.where(avail > 0, avail, 1.0)
+        a = z / safe[:, None]
+        c = prod[:, None] * np.linalg.inv(np.eye(n) - a)  # c[k, i]: k's production available in i
+        share = c / safe[None, :]  # share[k, i]: part of what i has that k grew
+        origin = share @ z  # origin[k, j]: k's production in j's imports
+        eu = np.array([x in config.EU27 for x in names])
+        # The EU as a whole: its members' imports from non-members, traced back, non-EU origins.
+        eu_origin = share[:, ~eu] @ z[~eu][:, eu].sum(axis=1)
+        for j_name, j in idx.items():
+            col = origin[:, j]
+            for k in np.nonzero(col > 0.5)[0]:
+                if k != j:
+                    rows.append((j_name, group, names[k], col[k]))
+        for k in np.nonzero((eu_origin > 0.5) & ~eu)[0]:
+            rows.append((EU_BLOC, group, names[k], eu_origin[k]))
+    out = pd.DataFrame(rows, columns=["iso3", "group", "partner", "tonnes"])
+    return out.assign(flow="grown", source="traced")
+
+
 def fbs_window() -> tuple[int, int]:
     """The window of the processed FBS figures, so trade and balances cover the same years."""
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet", columns=["years"])
@@ -158,7 +219,11 @@ def run() -> None:
         return
     years = fbs_window()
     raw = to_iso3(read_matrix(years, load_item_groups()))
-    out = add_eu_bloc(partners(raw, years)).assign(years=f"{years[0]}-{years[1]}")
+    p = add_eu_bloc(partners(raw, years))
+    groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
+    groups = groups[groups["basis"] == "tonnes"][["iso3", "group", "production", "imports"]]
+    out = pd.concat([p, trace_origins(p, groups)], ignore_index=True)
+    out = out.assign(years=f"{years[0]}-{years[1]}")
     dest = config.PROCESSED / "trade_partners.parquet"
     out.to_parquet(dest, index=False)
     log.info("wrote %s (%d rows)", dest, len(out))
