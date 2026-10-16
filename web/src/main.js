@@ -215,18 +215,30 @@ map.on("load", async () => {
     if (bloc !== state.bloc) { state.bloc = bloc; paintMap(); renderLegend(); }
   });
   // Hover only shows a small label; the panel changes on a click, so it never jumps around
-  // while the mouse moves.
-  map.on("mousemove", "atlas-fill", (e) => {
-    const iso3 = e.features[0].properties.iso3;
+  // while the mouse moves. The label follows the map too: zooming or panning under a still mouse
+  // updates it (crossing EU_ZOOM turns "France" into "European Union" and back).
+  let mouse = null; // last pointer position over the map, in pixels
+  const hoverAt = (point) => {
+    const f = map.queryRenderedFeatures(point, { layers: ["atlas-fill"] })[0];
+    if (!f) {
+      map.getCanvas().style.cursor = "";
+      map.setFilter("atlas-hover", ["==", ["get", "iso3"], ""]);
+      popup.remove();
+      return;
+    }
+    const iso3 = f.properties.iso3;
     map.getCanvas().style.cursor = "pointer";
-    const members = entity(iso3) === EU ? state.data.meta.eu_members : [iso3];
+    const members = state.level !== "trade" && entity(iso3) === EU ? state.data.meta.eu_members : [iso3];
     map.setFilter("atlas-hover", ["in", ["get", "iso3"], ["literal", members]]);
-    popup.setLngLat(e.lngLat).setHTML(tooltip(iso3)).addTo(map);
-  });
-  map.on("mouseleave", "atlas-fill", () => {
-    map.getCanvas().style.cursor = "";
-    map.setFilter("atlas-hover", ["==", ["get", "iso3"], ""]);
-    popup.remove();
+    popup.setLngLat(map.unproject(point)).setHTML(tooltip(iso3)).addTo(map);
+  };
+  map.on("mousemove", (e) => { mouse = e.point; hoverAt(e.point); });
+  map.getCanvas().addEventListener("mouseleave", () => { mouse = null; hoverAt([-1, -1]); });
+  let queued = false;
+  map.on("move", () => {
+    if (!mouse || queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; if (mouse) hoverAt(mouse); });
   });
   map.on("click", "atlas-fill", (e) => select(e.features[0].properties.iso3));
 });
