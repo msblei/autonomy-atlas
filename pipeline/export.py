@@ -1,7 +1,7 @@
 """processed Parquet -> small JSON/GeoJSON files for the web frontend.
 
 Outputs (web/public/data/):
-    countries.geojson   country polygons in scope, properties {iso3, name}
+    countries.geojson   country polygons in scope, properties {iso3, iso2, name}
     ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend}}}
     items.json          {iso3: {group: [{item, ssr, supply_kt}]}}  (expert view, loaded lazily)
 """
@@ -65,6 +65,8 @@ PER_CAPITA_KEYS = (
 ALL_FOOD = {
     "key": "all",
     "label": "All food",
+    "plain": "Counted by protein, the part of food that is hardest to replace. Meat, milk and "
+    "eggs count as produced here even when the animals ate imported feed.",
     "notes": "Protein-weighted across every FBS commodity. Each food's self-sufficiency is capped "
     "at 100% so a surplus of one food cannot hide a shortage of another. Meat, milk and eggs count "
     "as home-grown even when the animals ate imported feed.",
@@ -112,6 +114,16 @@ def _averages(groups: pd.DataFrame, overall: pd.DataFrame, national: list[str]) 
     return avg
 
 
+def group_entries(products: dict) -> list[dict]:
+    """Food groups for the UI. `items` are the FAO item names summed into each group, so readers
+    can look the figures up in FAOSTAT themselves."""
+    return [ALL_FOOD] + [
+        {"key": k, "label": g["label"], "plain": g.get("plain"),
+         "notes": " ".join(g.get("notes", "").split()) or None, "items": list(g["items"])}
+        for k, g in products.items()
+    ]
+
+
 def export_ssr() -> None:
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
     items = pd.read_parquet(config.PROCESSED / "ssr_items.parquet")
@@ -129,6 +141,8 @@ def export_ssr() -> None:
             "years": years[-1] if years else None,
             "trend_years": trend_years,
             "source": "fao_fbs",
+            "elements": {k: config.FBS_ELEMENTS[k]
+                         for k in ("production", "imports", "exports", "supply", "population")},
             "sources": sources(),
             "view": "national",
             "eu_members": sorted(config.EU27),
@@ -140,10 +154,7 @@ def export_ssr() -> None:
                 "protein_share": "sum(protein_i * min(ssr_i, 100)) / sum(protein_i), FBS leaf items",
             },
         },
-        "groups": [ALL_FOOD] + [
-            {"key": k, "label": g["label"], "notes": " ".join(g.get("notes", "").split()) or None}
-            for k, g in products.items()
-        ],
+        "groups": group_entries(products),
         "countries": {},
     }
 
@@ -212,6 +223,10 @@ def _round_coords(c, nd: int = 3):
     return [_round_coords(x, nd) for x in c]
 
 
+# GISCO country ids are ISO 3166-1 alpha-2 except for Greece and the UK.
+GISCO_ISO2 = {"EL": "GR", "UK": "GB"}
+
+
 def export_countries_geojson() -> None:
     src = (
         config.RAW
@@ -232,7 +247,8 @@ def export_countries_geojson() -> None:
         geom = {"type": f["geometry"]["type"],
                 "coordinates": _round_coords(f["geometry"]["coordinates"])}
         feats.append({"type": "Feature", "geometry": geom,
-                      "properties": {"iso3": iso3, "name": known.get(iso3, p.get("NAME_ENGL"))}})
+                      "properties": {"iso3": iso3, "iso2": GISCO_ISO2.get(p["CNTR_ID"], p["CNTR_ID"]),
+                                     "name": known.get(iso3, p.get("NAME_ENGL"))}})
     missing = sorted(set(known) - {f["properties"]["iso3"] for f in feats})
     if missing:
         log.warning("FBS countries with no polygon: %s", missing)

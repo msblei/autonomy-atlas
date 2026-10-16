@@ -1,30 +1,42 @@
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
+import { SEASONS, lasts, season, strip } from "./calendar.js";
 
 // ------------------------------------------------------------------------------------------------
 // state
+//
+// The panel is a stack of levels; each one has its own URL hash so Back works and links can be
+// shared. Every level adds detail to the one before it:
+//   #               intro       pick a country
+//   #DEU            country     one date: how long its own food would last
+//   #DEU/foods      foods       the same date for every food
+//   #DEU/cereals    food        one food: trend, per person, where the harvest goes
+//   #DEU/cereals/sources        how do we know: FAO figures, the sum, check-it-yourself
+//   #DEU/cereals/table          all the numbers (SSR, IDR, tonnes/kcal, FAO items)
+//   #about                      sources without a country
 
 const state = {
-  mode: "simple", // simple | expert
+  iso3: null,
   group: "all", // "all" = protein-weighted across every food, else a products.yaml group key
-  indicator: "ssr", // ssr | idr (expert only; simple mode is always SSR in tonnes)
-  basis: "tonnes", // tonnes | kcal
-  bloc: false, // zoomed out: EU members take the values of the EU27 bloc (see EU_ZOOM)
-  pinned: null, // iso3
+  level: "intro", // intro | country | foods | food | sources | table | about
+  indicator: "ssr", // ssr | idr (table level only)
+  basis: "tonnes", // tonnes | kcal (table level only)
+  bloc: false, // zoomed out: EU members are coloured with the EU27 bloc's figures (see EU_ZOOM)
   data: null, // ssr.json
-  items: null, // items.json (expert view), loaded on first use
+  items: null, // items.json (table level), loaded on first use
+  names: {}, // iso3 -> name for every polygon, including places without FAO data
+  iso3By2: {}, // ISO2 -> ISO3, to preselect the reader's country from the browser language
+  bbox: {}, // iso3 -> [w, s, e, n]
 };
 
 const EU = "EU27";
-// Below this zoom the EU is drawn and described as one country; above it, its members appear.
+// Below this zoom the EU is coloured as one country; above it, its members appear.
 const EU_ZOOM = 2.3;
 
+// Gradients for the table level, where readers choose indicator and basis.
 const SCALES = {
-  // SSR: diverging around 100 (below = net dependent, above = net exporter)
   ssr: { stops: [0, 50, 100, 150, 200], colors: ["#b84a2a", "#e8a46a", "#f2efe6", "#7fb58b", "#1e6b45"], ticks: ["0%", "100%", "200%+"] },
-  // IDR: sequential
   idr: { stops: [0, 25, 50, 75, 100], colors: ["#f2efe6", "#f6d1a8", "#e89a62", "#c95f33", "#7a2a12"], ticks: ["0%", "50%", "100%"] },
-  // Coverage share for "all food" (capped at 100)
   share: { stops: [20, 50, 75, 90, 100], colors: ["#b84a2a", "#e8a46a", "#f2efe6", "#7fb58b", "#1e6b45"], ticks: ["20% or less", "75%", "100%"] },
 };
 
@@ -38,7 +50,8 @@ const USES = [
   { key: "losses", label: "lost after harvest", color: "#b9b2a3" },
 ];
 
-const NO_DATA = "#d9d9d4";
+const NO_DATA = "#ebe9e3";
+const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
 
 // ------------------------------------------------------------------------------------------------
 // map
@@ -62,12 +75,42 @@ async function loadJSON(path) {
   return r.json();
 }
 
+// Diagonal hatching for "no figures", so it never looks like a colour on the scale.
+function hatch() {
+  const n = 8;
+  const c = document.createElement("canvas");
+  c.width = c.height = n;
+  const ctx = c.getContext("2d");
+  ctx.fillStyle = NO_DATA;
+  ctx.fillRect(0, 0, n, n);
+  ctx.strokeStyle = "#b9b5aa";
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.moveTo(0, n); ctx.lineTo(n, 0);
+  ctx.moveTo(-1, 1); ctx.lineTo(1, -1);
+  ctx.moveTo(n - 1, n + 1); ctx.lineTo(n + 1, n - 1);
+  ctx.stroke();
+  return { width: n, height: n, data: ctx.getImageData(0, 0, n, n).data };
+}
+
+function bboxOf(geometry) {
+  const b = [180, 90, -180, -90];
+  const walk = (c) => {
+    if (typeof c[0] === "number") {
+      b[0] = Math.min(b[0], c[0]); b[1] = Math.min(b[1], c[1]);
+      b[2] = Math.max(b[2], c[0]); b[3] = Math.max(b[3], c[1]);
+    } else c.forEach(walk);
+  };
+  walk(geometry.coordinates);
+  return b;
+}
+
 map.on("load", async () => {
   let geo, data;
   try {
     [geo, data] = await Promise.all([loadJSON("data/countries.geojson"), loadJSON("data/ssr.json")]);
   } catch (e) {
-    document.getElementById("detail").innerHTML =
+    document.getElementById("view").innerHTML =
       `<p class="hint">No data yet. Run <code>make all</code> in the repo root to download FAOSTAT and build <code>web/public/data/</code>.</p>`;
     console.error(e);
     return;
@@ -78,163 +121,262 @@ map.on("load", async () => {
     c.trend ??= {};
   }
   state.data = data;
-  state.names = Object.fromEntries(geo.features.map((f) => [f.properties.iso3, f.properties.name]));
+  for (const f of geo.features) {
+    const { iso3, iso2, name } = f.properties;
+    state.names[iso3] = name;
+    if (iso2) state.iso3By2[iso2] = iso3;
+    state.bbox[iso3] = bboxOf(f.geometry);
+  }
 
-  // The base style colours every country and draws equator/tropics; ours replace them.
-  for (const id of ["countries-fill", "countries-boundary", "crimea-fill", "geolines", "geolines-label"]) {
+  // The base style colours every country and draws coastlines and equator/tropics; ours replace
+  // them.
+  for (const id of ["countries-fill", "countries-boundary", "crimea-fill", "coastline", "geolines", "geolines-label"]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
   }
-  const labels = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
+  const labels = map.getStyle().layers.find((l) => l.type === "symbol" && l.layout?.visibility !== "none")?.id;
 
+  map.addImage("hatch", hatch());
   map.addSource("countries", { type: "geojson", data: geo, promoteId: "iso3" });
+  map.addLayer({ id: "atlas-fill", type: "fill", source: "countries", paint: { "fill-color": NO_DATA } }, labels);
   map.addLayer({
-    id: "atlas-fill",
-    type: "fill",
-    source: "countries",
-    paint: { "fill-color": NO_DATA, "fill-opacity": 0.9 },
+    id: "atlas-nodata", type: "fill", source: "countries",
+    paint: { "fill-pattern": "hatch" }, filter: ["in", ["get", "iso3"], ["literal", []]],
   }, labels);
   map.addLayer({
-    id: "atlas-line",
-    type: "line",
-    source: "countries",
+    id: "atlas-line", type: "line", source: "countries",
     paint: { "line-color": "#ffffff", "line-width": 0.8 },
   }, labels);
   map.addLayer({
-    id: "atlas-hover",
-    type: "line",
-    source: "countries",
-    paint: { "line-color": "#1f2a24", "line-width": 2 },
-    filter: ["==", "iso3", ""],
+    id: "atlas-hover", type: "line", source: "countries",
+    paint: { "line-color": "#1f2a24", "line-width": 1.2 }, filter: ["==", ["get", "iso3"], ""],
+  }, labels);
+  map.addLayer({
+    id: "atlas-selected", type: "line", source: "countries",
+    paint: { "line-color": "#1f2a24", "line-width": 2.5 }, filter: ["==", ["get", "iso3"], ""],
   }, labels);
 
-  buildControls();
-  renderSources();
+  buildCountryPicker();
   state.bloc = map.getZoom() < EU_ZOOM;
-  render();
+
+  if (!location.hash) {
+    const own = readersCountry();
+    if (own) history.replaceState(null, "", `#${own}`);
+  }
+  window.addEventListener("hashchange", () => route());
+  route({ fly: true });
 
   map.on("zoom", () => {
     const bloc = map.getZoom() < EU_ZOOM;
-    if (bloc !== state.bloc) { state.bloc = bloc; render(); }
+    if (bloc !== state.bloc) { state.bloc = bloc; paintMap(); renderLegend(); }
   });
+  // Hover only shows a small label; the panel changes on a click, so it never jumps around
+  // while the mouse moves.
   map.on("mousemove", "atlas-fill", (e) => {
-    const f = e.features[0];
+    const iso3 = e.features[0].properties.iso3;
     map.getCanvas().style.cursor = "pointer";
-    highlight(f.properties.iso3);
-    const id = entity(f.properties.iso3);
-    const name = country(id)?.name ?? f.properties.name;
-    const text = !country(id) ? "No FAO food balance data."
-      : state.mode === "simple" ? headline(id) : fmt(valueFor(id));
-    popup.setLngLat(e.lngLat).setHTML(`<strong>${name}</strong><br>${text}`).addTo(map);
-    if (!state.pinned) showDetail(f.properties.iso3);
+    const members = entity(iso3) === EU ? state.data.meta.eu_members : [iso3];
+    map.setFilter("atlas-hover", ["in", ["get", "iso3"], ["literal", members]]);
+    popup.setLngLat(e.lngLat).setHTML(tooltip(iso3)).addTo(map);
   });
   map.on("mouseleave", "atlas-fill", () => {
     map.getCanvas().style.cursor = "";
-    highlight(state.pinned);
+    map.setFilter("atlas-hover", ["==", ["get", "iso3"], ""]);
     popup.remove();
-    if (!state.pinned) showDetail(null);
   });
-  map.on("click", "atlas-fill", (e) => pin(e.features[0].properties.iso3));
+  map.on("click", "atlas-fill", (e) => select(e.features[0].properties.iso3));
 });
 
-function pin(iso3) {
-  state.pinned = state.pinned === iso3 ? null : iso3;
-  highlight(state.pinned);
-  showDetail(state.pinned);
+// The reader's country, guessed from the browser languages (de-DE -> Germany, de -> Germany).
+// An English-language browser in Berlin says en-US, so a language whose country is on another
+// continent than the time zone is skipped.
+function readersCountry() {
+  const zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
+  const continent = zone.split("/")[0];
+  for (const lang of navigator.languages ?? [navigator.language]) {
+    try {
+      const iso3 = state.iso3By2[new Intl.Locale(lang).maximize().region];
+      if (!iso3 || !country(iso3)) continue;
+      const europe = country(iso3).europe === true;
+      if ((continent === "Europe" && !europe) || (continent === "America" && europe)) continue;
+      return iso3;
+    } catch { /* malformed tag */ }
+  }
+  return null;
 }
 
-// Outline a country, or every EU member when the EU is shown as one.
-function highlight(iso3) {
-  const members = iso3 && entity(iso3) === EU ? state.data.meta.eu_members : [iso3 ?? ""];
-  map.setFilter("atlas-hover", ["in", ["get", "iso3"], ["literal", members]]);
+// ------------------------------------------------------------------------------------------------
+// routing
+
+function parseHash() {
+  const [a, b, c] = decodeURIComponent(location.hash.slice(1)).split("/");
+  const intro = { iso3: null, group: "all", level: "intro" };
+  if (a === "about") return { ...intro, level: "about" };
+  if (!a || !(country(a) || state.names[a])) return intro;
+  if (!b) return { iso3: a, group: "all", level: "country" };
+  if (b === "foods") return { iso3: a, group: "all", level: "foods" };
+  const group = state.data.groups.some((g) => g.key === b) ? b : "all";
+  if (c === "sources" || c === "table") return { iso3: a, group, level: c };
+  return group === "all" ? { iso3: a, group, level: "country" } : { iso3: a, group, level: "food" };
+}
+
+function hashFor({ iso3, group = "all", level }) {
+  if (level === "about") return "#about";
+  if (!iso3 || level === "intro") return "#";
+  if (level === "country") return `#${iso3}`;
+  if (level === "foods") return `#${iso3}/foods`;
+  if (level === "food") return `#${iso3}/${group}`;
+  return `#${iso3}/${group}/${level}`;
+}
+
+function link(view) {
+  return hashFor({ iso3: state.iso3, group: state.group, level: state.level, ...view });
+}
+
+function route({ fly = false } = {}) {
+  const prev = state.iso3;
+  Object.assign(state, parseHash());
+  render();
+  document.getElementById("panel").scrollTop = 0;
+  if (fly && state.iso3 && state.iso3 !== prev) flyTo(state.iso3);
+}
+
+// A click on the map keeps the reader on the same level (and food) for the new country.
+function select(iso3) {
+  const level = ["intro", "about"].includes(state.level) || !country(iso3) ? "country" : state.level;
+  location.hash = hashFor({ iso3, group: level === "country" || level === "foods" ? "all" : state.group, level });
+}
+
+function flyTo(iso3) {
+  // The EU only reads as one shape when zoomed out past EU_ZOOM.
+  if (iso3 === EU) { map.flyTo({ center: [10, 50], zoom: EU_ZOOM - 0.2, duration: 900 }); return; }
+  const b = state.bbox[iso3];
+  if (!b) return;
+  // Wide or antimeridian-crossing countries (Russia, the US) would zoom out to the whole world.
+  if (b[2] - b[0] > 180) return;
+  const panel = document.getElementById("panel");
+  const left = window.innerWidth > 640 ? panel.offsetWidth + 40 : 20;
+  const bottom = window.innerWidth > 640 ? 20 : panel.offsetHeight + 20;
+  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], {
+    padding: { left, right: 60, top: 40, bottom }, maxZoom: 4, duration: 900,
+  });
 }
 
 // ------------------------------------------------------------------------------------------------
 // data access
 
-// Zoomed out, every member state shows the EU27 bloc's figures.
+// Zoomed out, every member state is coloured with the EU27 bloc's figures.
 function entity(iso3) {
   if (state.bloc && state.data.meta.eu_members.includes(iso3) && state.data.countries[EU]) return EU;
   return iso3;
 }
 
 function country(id) {
-  return state.data.countries[id];
+  return state.data?.countries[id];
 }
 
-function isAll() {
-  return state.group === "all";
+function nameOf(id) {
+  return country(id)?.name ?? state.names[id] ?? id;
 }
 
-// Simple mode always maps SSR on a tonnes basis: "how much of what it uses does it grow?"
-function mapIndicator() {
-  if (isAll()) return state.mode === "expert" && state.indicator === "idr" ? "idr" : "share";
-  return state.mode === "simple" ? "ssr" : state.indicator;
+function groupInfo(group = state.group) {
+  return state.data.groups.find((x) => x.key === group) ?? { label: group };
 }
 
-function mapBasis() {
-  if (isAll()) return state.mode === "expert" && state.basis === "kcal" ? "kcal" : "protein";
-  return state.mode === "simple" ? "tonnes" : state.basis;
-}
-
-function valueFor(id, indicator = mapIndicator(), basis = mapBasis()) {
-  const ind = country(id)?.indicators?.[state.group]?.[basis];
-  const v = ind?.[indicator];
+// The figure every calendar is built from: protein coverage for "all food", else the tonnes SSR.
+function pctFor(id, group = state.group) {
+  const ind = country(id)?.indicators?.[group];
+  const v = group === "all" ? ind?.protein?.share : ind?.tonnes?.ssr;
   return v == null || Number.isNaN(v) ? null : v;
 }
 
+// Table level: the reader picks indicator and basis.
+function tableIndicator() {
+  if (state.group === "all") return state.indicator === "idr" ? "idr" : "share";
+  return state.indicator;
+}
+
+function tableBasis() {
+  if (state.group === "all") return state.basis === "kcal" ? "kcal" : "protein";
+  return state.basis;
+}
+
+function valueFor(id, indicator = tableIndicator(), basis = tableBasis()) {
+  const v = country(id)?.indicators?.[state.group]?.[basis]?.[indicator];
+  return v == null || Number.isNaN(v) ? null : v;
+}
+
+function mapValue(id) {
+  return state.level === "table" ? valueFor(id) : pctFor(id);
+}
+
 // kg/person/year from 1000 t and 1000 persons: kt * 1000 / population_k.
-function perCapita(id) {
-  const comp = country(id)?.indicators?.[state.group]?.components_kt;
+function perCapita(id, group = state.group) {
+  const comp = country(id)?.indicators?.[group]?.components_kt;
   const pop = country(id)?.population_k;
   if (!comp || !pop) return null;
   return Object.fromEntries(Object.entries(comp).map(([k, v]) => [k, (v * 1000) / pop]));
 }
 
+function isMember(iso3) {
+  return state.data.meta.eu_members.includes(iso3);
+}
+
+// ------------------------------------------------------------------------------------------------
+// formatting
+
 function fmt(v) {
   return v == null ? "no data" : `${v.toFixed(0)}%`;
 }
 
-function groupInfo() {
-  return state.data.groups.find((x) => x.key === state.group) ?? { label: state.group };
+function food(group = state.group) {
+  return group === "all" ? "food" : groupInfo(group).label.toLowerCase();
 }
 
-function food() {
-  return isAll() ? "food" : groupInfo().label.toLowerCase();
-}
-
-// "in Germany" / "in the EU"
-function inPlace(id) {
-  return id === EU ? "in the EU" : `in ${country(id).name}`;
-}
-
-function subject(id) {
-  return id === EU ? "The EU" : country(id).name;
-}
-
-// ------------------------------------------------------------------------------------------------
-// plain-language text (simple mode)
-
-function headline(id) {
-  const who = subject(id);
-  if (isAll()) {
-    const s = valueFor(id, "share", "protein");
-    if (s == null) return `No reliable figures for ${country(id).name}.`;
-    if (s >= 97) return `Food grown ${inPlace(id)} could cover nearly all the protein people eat there.`;
-    return `Food grown ${inPlace(id)} could cover ${Math.round(s)}% of the protein people eat there.`;
-  }
-  const ssr = valueFor(id, "ssr", "tonnes");
-  if (ssr == null) return `No reliable figures for ${food()} ${inPlace(id)}.`;
-  if (ssr < 5) return `${who} grows almost none of the ${food()} it uses.`;
-  if (ssr < 90) return `${who} grows only ${Math.round(ssr)}% of the ${food()} it uses.`;
-  if (ssr <= 110) return `${who} grows about as much ${food()} as it uses.`;
-  if (ssr < 195) return `${who} grows ${Math.round(ssr - 100)}% more ${food()} than it uses.`;
-  return `${who} grows ${(ssr / 100).toFixed(1)}× as much ${food()} as it uses.`;
+// "there would be enough until 23 November" / "… enough for the whole year"
+function enough(pct) {
+  const s = lasts(pct);
+  return s.startsWith("until") ? `enough ${s}` : `enough for ${s}`;
 }
 
 function kg(v) {
   if (v == null) return "–";
   if (v > 0 && v < 1) return "<1 kg";
-  return `${Math.round(v).toLocaleString()} kg`;
+  return `${Math.round(v).toLocaleString("en-GB")} kg`;
+}
+
+// 1000 t -> "42.1 million tonnes" / "350 thousand tonnes" / "800 tonnes"
+function tonnes(kt) {
+  if (kt == null) return "–";
+  const a = Math.abs(kt);
+  if (a >= 1000) return `${(kt / 1000).toLocaleString("en-GB", { maximumFractionDigits: 1 })} million tonnes`;
+  if (a >= 1) return `${Math.round(kt).toLocaleString("en-GB")} thousand tonnes`;
+  return `${Math.round(kt * 1000).toLocaleString("en-GB")} tonnes`;
+}
+
+function people(popK) {
+  if (popK == null) return "–";
+  return popK >= 1000
+    ? `${(popK / 1000).toLocaleString("en-GB", { maximumFractionDigits: 1 })} million people`
+    : `${Math.round(popK).toLocaleString("en-GB")} thousand people`;
+}
+
+function longDate(iso) {
+  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
+    day: "numeric", month: "long", year: "numeric", timeZone: "UTC",
+  });
+}
+
+function years() {
+  const [a, b] = state.data.meta.years.split("-").map(Number);
+  return Array.from({ length: b - a + 1 }, (_, i) => a + i);
+}
+
+function kt(v) {
+  return v == null ? "–" : `${Math.round(v).toLocaleString("en-GB")} kt`;
+}
+
+function pop(c) {
+  return c.population_k == null ? "–" : `${(c.population_k / 1000).toFixed(1)} m`;
 }
 
 function bar(value, max, color) {
@@ -242,239 +384,506 @@ function bar(value, max, color) {
   return `<span class="bar" style="width:${w}%;background:${color}"></span>`;
 }
 
-function sparkline(values, { ref = 100, label = "" } = {}) {
-  const years = state.data.meta.trend_years;
-  const pts = values.map((v, i) => [i, v]).filter(([, v]) => v != null);
-  if (pts.length < 2) return "";
-  // Axis fits the data plus the 100% line, so year-to-year swings stay visible.
-  const vals = pts.map(([, v]) => v);
-  const lo = Math.max(0, Math.min(ref, ...vals) - 10);
-  const hi = Math.max(ref, ...vals) + 10;
-  const W = 288, H = 64, P = 6, PX = 34;
-  const x = (i) => PX + (i / (years.length - 1)) * (W - 2 * PX);
-  const y = (v) => H - P - ((v - lo) / (hi - lo)) * (H - 2 * P);
-  const path = pts.map(([i, v], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
-  const [fi, fv] = pts[0];
-  const [li, lv] = pts[pts.length - 1];
-  return `
-    <div class="spark">
-      <div class="spark-head"><span>${label}</span><span>${years[fi]}–${years[li]}</span></div>
-      <div class="spark-key"><i></i> ${ref}%</div>
-      <svg viewBox="0 0 ${W} ${H}" width="100%" height="${H}" role="img" aria-label="${label}">
-        <line x1="${PX}" x2="${W - PX}" y1="${y(ref)}" y2="${y(ref)}" class="ref" />
-        <path d="${path}" class="line" />
-        <circle cx="${x(li)}" cy="${y(lv)}" r="3" class="dot" />
-        <text x="${x(fi) - 4}" y="${y(fv) + 3}" class="val" text-anchor="end">${Math.round(fv)}%</text>
-        <text x="${x(li) + 5}" y="${y(lv) + 3}" class="val">${Math.round(lv)}%</text>
-      </svg>
-    </div>`;
-}
-
-function trendFor(id) {
-  return country(id)?.trend?.[state.group] ?? [];
-}
-
-function simpleGroupDetail(id) {
-  const pc = perCapita(id);
-  if (!pc || pc.supply == null) return `<p class="lead">${headline(id)}</p>`;
-  const max = Math.max(pc.production ?? 0, pc.supply ?? 0);
-  const uses = USES.map((u) => ({ ...u, v: pc[u.key] ?? 0 })).filter((u) => u.v >= 0.5);
-  const eatenTenths = pc.supply > 0 ? Math.round(((pc.food ?? 0) / pc.supply) * 10) : null;
-  const eatenText =
-    eatenTenths == null ? ""
-    : eatenTenths >= 9 ? "Almost all of it is eaten by people."
-    : eatenTenths === 0 ? "Hardly any of it is eaten by people directly."
-    : `Only ${eatenTenths} in every 10 kg is eaten by people directly.`;
-  const eur = state.data.meta.europe_avg?.[state.group]?.food_kg_pc;
-  const world = state.data.meta.world_avg?.[state.group]?.food_kg_pc;
-  const avgs = [eur != null ? `Europe ${kg(eur)}` : null, world != null ? `world ${kg(world)}` : null]
-    .filter(Boolean).join(", ");
-  const perDay = pc.food != null ? Math.round((pc.food * 1000) / 365) : null;
-  const trade = id === EU
-    ? `<p class="small">Trade between EU countries isn't counted here — only what the EU as a whole grows and uses.</p>`
-    : `<p class="small">Bought from abroad: <strong>${kg(pc.imports)}</strong> · Sold abroad: <strong>${kg(pc.exports)}</strong> per person</p>`;
-
-  return `
-    <p class="lead">${headline(id)}</p>
-    ${sparkline(trendFor(id), { label: "Share grown at home, each year" })}
-    <p class="unit">Per person, per year:</p>
-    <div class="row"><span>Grown here</span><strong>${kg(pc.production)}</strong></div>
-    <div class="track">${bar(pc.production, max, "var(--accent)")}</div>
-    <div class="row"><span>Used here</span><strong>${kg(pc.supply)}</strong></div>
-    <div class="track">${uses.map((u) => bar(u.v, max, u.color)).join("")}</div>
-    <ul class="uses">${uses
-      .map((u) => `<li><i style="background:${u.color}"></i>${kg(u.v)} ${u.label}</li>`)
-      .join("")}</ul>
-    ${eatenText ? `<p class="small">${eatenText}</p>` : ""}
-    ${perDay != null ? `<p class="small">The average person ${inPlace(id)} eats <strong>${kg(pc.food)}</strong> of ${food()} a year — about ${perDay.toLocaleString()} g a day${avgs ? `. Averages: ${avgs}` : ""}.</p>` : ""}
-    ${trade}`;
-}
-
-function simpleAllDetail(id) {
-  const c = country(id);
-  const p = c.indicators.all?.protein;
-  const avg = state.data.meta.europe_avg?.all?.protein_g;
-  const world = state.data.meta.world_avg?.all?.protein_g;
-  const rows = state.data.groups
-    .filter((g) => g.key !== "all")
-    .map((g) => ({ g, v: c.indicators[g.key]?.tonnes?.ssr }))
-    .filter((r) => r.v != null)
-    .sort((a, b) => a.v - b.v);
-  return `
-    <p class="lead">${headline(id)}</p>
-    ${sparkline(trendFor(id), { label: "Protein that home-grown food could cover, each year" })}
-    ${p?.g_per_day != null ? `<p class="small">People ${inPlace(id)} eat about <strong>${Math.round(p.g_per_day)} g</strong> of protein a day${avg != null ? ` (averages: Europe ${Math.round(avg)} g, world ${Math.round(world)} g)` : ""}.</p>` : ""}
-    <p class="unit" style="margin-top:10px">Food by food — how much of what it uses does ${id === EU ? "the EU" : c.name} grow?</p>
-    <table class="foods">${rows
-      .map(({ g, v }) => `
-        <tr data-group="${g.key}">
-          <td>${g.label}</td>
-          <td class="meter"><span style="width:${Math.min(100, v / 2)}%;background:${v >= 100 ? "var(--accent)" : "#d28a55"}"></span><i></i></td>
-          <td>${fmt(v)}</td>
-        </tr>`)
-      .join("")}</table>
-    <p class="small">The line marks 100%: growing exactly what is used. Click a food for details.</p>
-    <p class="small">Meat, milk and eggs count as home-grown even when the animals ate imported feed such as soy.</p>`;
-}
-
-// Idle panel: who has the biggest surplus / shortfall for the selected food?
-function rankingDetail() {
-  // Zoomed out the EU competes as one country; zoomed in its members do.
-  const members = state.data.meta.eu_members;
-  const rows = Object.entries(state.data.countries)
-    .filter(([id]) => (state.bloc ? !members.includes(id) : id !== EU))
-    .map(([id, c]) => {
-      if (isAll()) return { id, c, v: c.indicators.all?.protein?.share };
-      const pc = c.indicators[state.group]?.per_capita_kg;
-      return { id, c, v: pc?.production != null && pc?.supply != null ? pc.production - pc.supply : null };
-    })
-    .filter((r) => r.v != null)
-    .sort((a, b) => b.v - a.v);
-  if (!rows.length) return `<p class="hint">Hover a country for details. Click to pin.</p>`;
-  const fmtV = (v) => (isAll() ? fmt(v) : `${v > 0 ? "+" : "−"}${kg(Math.abs(v))}`);
-  const list = (rs) => `<ol class="rank">${rs
-    .map((r) => `<li data-iso3="${r.id}"><span>${r.c.name}</span><strong>${fmtV(r.v)}</strong></li>`)
-    .join("")}</ol>`;
-  const [topTitle, bottomTitle] = isAll()
-    ? ["Most self-sufficient in protein, worldwide", "Least self-sufficient in protein"]
-    : [`Biggest ${food()} surplus per person, worldwide`, `Biggest ${food()} shortfall per person`];
-  return `
-    <p class="hint">Hover a country for details. Click to pin.</p>
-    <h3>${topTitle}</h3>${list(rows.slice(0, 5))}
-    <h3>${bottomTitle}</h3>${list(rows.slice(-5).reverse())}
-    ${isAll() ? "" : `<p class="small">Grown minus used, kg per person per year.</p>`}`;
+function tooltip(iso3) {
+  const id = entity(iso3);
+  if (!country(id)) return `<strong>${nameOf(iso3)}</strong><br>No figures from FAO.`;
+  const v = mapValue(id);
+  const text = v == null ? "no figures for this food"
+    : state.level === "table" ? fmt(v)
+    : `${state.group === "all" ? "Own food" : groupInfo().label}: ${lasts(v, { short: true })}`;
+  return `<strong>${nameOf(id)}</strong><br>${text}`;
 }
 
 // ------------------------------------------------------------------------------------------------
 // rendering
 
 function render() {
-  const { stops, colors } = SCALES[mapIndicator()] ?? SCALES.ssr;
-  const interp = ["interpolate", ["linear"], ["coalesce", ["feature-state", "v"], -1]];
-  stops.forEach((s, i) => interp.push(s, colors[i]));
-  map.setPaintProperty("atlas-fill", "fill-color", [
-    "case",
-    ["==", ["coalesce", ["feature-state", "v"], -1], -1],
-    NO_DATA,
-    interp,
-  ]);
-  for (const iso3 of Object.keys(state.data.countries)) {
-    if (iso3 === EU) continue;
-    map.setFeatureState({ source: "countries", id: iso3 }, { v: valueFor(entity(iso3)) });
+  paintMap();
+  renderLegend();
+  renderCrumbs();
+  document.getElementById("country").value = country(state.iso3) ? state.iso3 : "";
+  const views = { intro: viewIntro, about: viewAbout, country: viewCountry, foods: viewFoods,
+    food: viewFood, sources: viewSources, table: viewTable };
+  const el = document.getElementById("view");
+  el.innerHTML = state.iso3 && !country(state.iso3) && state.level !== "about"
+    ? viewNoData() : views[state.level]();
+  wire(el);
+  renderFoot();
+}
+
+function paintMap() {
+  let paint;
+  if (state.level === "table") {
+    const { stops, colors } = SCALES[tableIndicator()] ?? SCALES.ssr;
+    paint = ["interpolate", ["linear"], ["feature-state", "v"]];
+    stops.forEach((s, i) => paint.push(s, colors[i]));
+  } else {
+    paint = ["step", ["feature-state", "v"], SEASONS[0].color];
+    SEASONS.slice(1).forEach((s, i) => paint.push(SEASONS[i].max, s.color));
   }
+  map.setPaintProperty("atlas-fill", "fill-color", [
+    "case", ["==", ["typeof", ["feature-state", "v"]], "number"], paint, NO_DATA,
+  ]);
+  const noData = [];
+  for (const iso3 of Object.keys(state.names)) {
+    const v = country(entity(iso3)) ? mapValue(entity(iso3)) : null;
+    map.setFeatureState({ source: "countries", id: iso3 }, { v });
+    if (v == null) noData.push(iso3);
+  }
+  map.setFilter("atlas-nodata", ["in", ["get", "iso3"], ["literal", noData]]);
   // Zoomed out, drop borders between EU members so the bloc reads as one shape.
   map.setFilter("atlas-line", state.bloc
     ? ["!", ["in", ["get", "iso3"], ["literal", state.data.meta.eu_members]]]
     : null);
-  highlight(state.pinned);
-  renderLegend();
-  document.getElementById("group").value = state.group;
-  // "All food" has no tonnes basis: the same control picks protein vs calorie weighting.
-  document.querySelector('#basis option[value="tonnes"]').textContent = isAll() ? "Protein" : "Tonnes";
-  document.getElementById("expert-controls").hidden = state.mode !== "expert";
-  for (const b of document.querySelectorAll(".mode button")) {
-    b.setAttribute("aria-pressed", String(b.dataset.mode === state.mode));
-  }
-  showDetail(state.pinned);
+  const sel = state.iso3 === EU ? state.data.meta.eu_members : [state.iso3 ?? ""];
+  map.setFilter("atlas-selected", ["in", ["get", "iso3"], ["literal", sel]]);
 }
 
+// The key is a <details> box: open on desktop, folded on phones where it would cover the map.
 function renderLegend() {
-  const ind = mapIndicator();
-  const { colors, ticks } = SCALES[ind] ?? SCALES.ssr;
-  let label, tickText;
-  if (state.mode === "simple" && isAll()) {
-    label = "How much of the protein people eat could home-grown food cover?";
-    tickText = ["20% or less", "75%", "all of it"];
-  } else if (state.mode === "simple") {
-    label = `How much of the ${food()} it uses does each country grow?`;
-    tickText = ["none", "all of it", "twice that"];
-  } else if (isAll()) {
-    label = ind === "idr" ? "Import dependency is not defined for all food" : `Coverage of food supply (${mapBasis()}, capped per food)`;
-    tickText = ticks;
+  const el = document.getElementById("legend");
+  state.legendOpen ??= !matchMedia("(max-width: 640px)").matches;
+  const bloc = state.bloc
+    ? "Zoomed out, the EU is coloured as one. Zoom in to see each country."
+    : "";
+  const hatchKey = `<li><i class="hatch"></i>no figures</li>`;
+  let title, body;
+  if (state.level === "table") {
+    const { colors, ticks } = SCALES[tableIndicator()] ?? SCALES.ssr;
+    title = `${tableIndicator().toUpperCase()}, ${tableBasis()}`;
+    body = `
+      <div class="grad" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
+      <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>
+      <ul>${hatchKey}</ul>`;
   } else {
-    label = `${ind === "ssr" ? "Self-sufficiency" : "Import dependency"} (${mapBasis()})`;
-    tickText = ticks;
+    // "All food" is capped at 100%, so "more than enough" cannot occur.
+    const seasons = state.group === "all" ? SEASONS.slice(0, -1) : SEASONS;
+    title = `If each country ate only its own ${food()}, it would…`;
+    body = `<ul>${seasons.map((s) => `<li><i style="background:${s.color}"></i>${s.label}</li>`).join("")}${hatchKey}</ul>`;
   }
-  const bloc = `<div class="small">${state.bloc
-    ? "Zoomed out, the EU is shown as one country. Zoom in to see its members."
-    : "Zoom out to see the EU as one country."} Grey: no FAO data.</div>`;
-  document.getElementById("legend").innerHTML = `
-    <div>${label}</div>
-    <div class="bar" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
-    <div class="ticks">${tickText.map((t) => `<span>${t}</span>`).join("")}</div>${bloc}`;
+  el.innerHTML = `<details ${state.legendOpen ? "open" : ""}>
+    <summary>${title}</summary>${body}${bloc ? `<p>${bloc}</p>` : ""}</details>`;
+  el.querySelector("details").ontoggle = (e) => { state.legendOpen = e.target.open; };
 }
 
-function sourceLine() {
+function renderCrumbs() {
+  const el = document.getElementById("crumbs");
+  if (state.level === "intro") { el.innerHTML = ""; return; }
+  const trail = [];
+  if (state.iso3) {
+    trail.push([nameOf(state.iso3), link({ level: "country", group: "all" })]);
+    if (["foods", "food"].includes(state.level) || state.group !== "all") {
+      trail.push(["Food by food", link({ level: "foods", group: "all" })]);
+    }
+    if (state.group !== "all") trail.push([groupInfo().label, link({ level: "food" })]);
+  }
+  if (["sources", "table", "about"].includes(state.level)) {
+    trail.push(["How do we know?", state.iso3 ? link({ level: "sources" }) : "#about"]);
+  }
+  if (state.level === "table") trail.push(["All the numbers", link({ level: "table" })]);
+  const up = trail.length > 1 ? trail[trail.length - 2][1] : "#";
+  el.innerHTML = `
+    <a class="back" href="${up}">‹ Back</a>
+    <ol>${trail.map(([t, h], i) => i === trail.length - 1
+      ? `<li aria-current="page">${t}</li>` : `<li><a href="${h}">${t}</a></li>`).join("")}</ol>`;
+}
+
+function renderFoot() {
+  const m = state.data.meta;
+  const href = state.iso3 && country(state.iso3) ? link({ level: "sources" }) : "#about";
+  document.getElementById("foot").innerHTML = ["sources", "table", "about"].includes(state.level)
+    ? `Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.`
+    : `Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.
+       <a href="${href}">How do we know? ›</a>`;
+}
+
+// Clickable rows (foods, rankings, examples) navigate; selects in the table level re-render.
+function wire(el) {
+  for (const b of el.querySelectorAll("[data-go]")) {
+    b.onclick = () => { location.hash = b.dataset.go; if (b.dataset.fly) flyTo(b.dataset.fly); };
+  }
+  const ind = el.querySelector("#indicator");
+  if (ind) ind.onchange = () => { state.indicator = ind.value; render(); };
+  const basis = el.querySelector("#basis");
+  if (basis) basis.onchange = () => { state.basis = basis.value; render(); };
+}
+
+// ------------------------------------------------------------------------------------------------
+// views
+
+function viewIntro() {
+  return `
+    <p class="lead">Choose your country above, or tap it on the map.</p>
+    <p>For each country we work out how long the food from its own farms would last its people,
+      if it had to manage without buying anything from abroad, and show it as a date in the calendar.</p>
+    <p class="small">For example:</p>
+    <div class="chips">${EXAMPLES.filter(country)
+      .map((id) => `<button type="button" data-go="#${id}" data-fly="${id}">${nameOf(id)}</button>`)
+      .join("")}</div>`;
+}
+
+function viewNoData() {
+  return `
+    <h2>${nameOf(state.iso3)}</h2>
+    <p>The UN Food and Agriculture Organization publishes no food figures for this country or
+      territory, so we cannot show anything here.</p>`;
+}
+
+function euLine(iso3, group = state.group) {
+  if (!isMember(iso3)) return "";
+  const v = pctFor(EU, group);
+  if (v == null) return "";
+  return `<p class="aside">All 27 EU countries together would have ${enough(v)}.
+    <a href="${hashFor({ iso3: EU, group, level: group === "all" ? "country" : "food" })}">See the EU ›</a></p>`;
+}
+
+// Level 0: one date.
+function viewCountry() {
+  const id = state.iso3;
+  const v = pctFor(id, "all");
+  const who = id === EU ? "the 27 EU countries" : nameOf(id);
+  if (v == null) {
+    return `<h2>${nameOf(id)}</h2><p>There are not enough figures for ${nameOf(id)} to work this out.</p>
+      <a class="next" href="${link({ level: "foods" })}">Look food by food ›</a>`;
+  }
+  return `
+    <h2>${nameOf(id)}</h2>
+    <p class="q">If ${who} ate only food from ${id === EU ? "their" : "its"} own farms, starting on 1&nbsp;January,
+      there would be …</p>
+    <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${enough(v)}</a>.</p>
+    ${strip(v)}
+    ${euLine(id, "all")}
+    <a class="next" href="${link({ level: "foods" })}">Which foods run out first? ›</a>`;
+}
+
+// Level 1: the same date for every food, plus how the country compares.
+function viewFoods() {
+  const id = state.iso3;
+  const c = country(id);
+  const rows = state.data.groups
+    .filter((g) => g.key !== "all")
+    .map((g) => ({ g, v: pctFor(id, g.key) }))
+    .filter((r) => r.v != null)
+    .sort((a, b) => a.v - b.v);
+  const who = id === EU ? "the EU" : c.name;
+  return `
+    <h2>${nameOf(id)}: food by food</h2>
+    <p class="q">If ${who} used only what ${id === EU ? "its" : "its own"} farms and fishing boats produce, there would be enough …</p>
+    <ul class="foodlist">${rows.map(({ g, v }) => `
+      <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
+        <span class="name">${g.label}</span>
+        ${strip(v, { small: true })}
+        <span class="when">${lasts(v, { short: true })}</span>
+      </a></li>`).join("")}</ul>
+    <p class="small">Tap a food to see more.</p>
+    ${compareAll(id)}`;
+}
+
+// Countries ranked by the "all food" date; zoomed out the EU takes part as one country.
+function compareAll(id) {
+  const rows = rankable()
+    .map((r) => ({ ...r, v: pctFor(r.id, "all") }))
+    .filter((r) => r.v != null)
+    .sort((a, b) => b.v - a.v);
+  const me = pctFor(id, "all");
+  if (!rows.length || me == null) return "";
+  const shorter = rows.filter((r) => r.v < me - 0.5).length;
+  return `
+    <h3>How does ${id === EU ? "the EU" : nameOf(id)} compare?</h3>
+    <p>Its own food would last longer than in <strong>${shorter}</strong> of ${rows.length} countries.</p>
+    <div class="cols">
+      <div><p class="small">Runs out soonest</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
+      <div><p class="small">Lasts longest</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
+    </div>`;
+}
+
+function rankable() {
+  const members = state.data.meta.eu_members;
+  return Object.entries(state.data.countries)
+    .filter(([id]) => (state.bloc ? !members.includes(id) : id !== EU))
+    .map(([id, c]) => ({ id, c }));
+}
+
+function rankList(rows, fmtV) {
+  return `<ol class="rank">${rows
+    .map((r) => `<li><a href="#${r.id}${state.group === "all" ? "" : `/${state.group}`}">${r.c.name}</a> <strong>${fmtV(r.v)}</strong></li>`)
+    .join("")}</ol>`;
+}
+
+// Level 2: one food.
+function viewFood() {
+  const id = state.iso3;
+  const v = pctFor(id);
+  const g = groupInfo();
+  const who = id === EU ? "the EU" : nameOf(id);
+  const head = v == null
+    ? `<p>There are no reliable figures for ${food()} in ${who}.</p>`
+    : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, starting on 1&nbsp;January, there would be …</p>
+       <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${enough(v)}</a>.</p>
+       ${strip(v)}`;
+  return `
+    <h2>${nameOf(id)} · ${g.label}</h2>
+    ${head}
+    ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
+    ${euLine(id)}
+    ${trend(id)}
+    ${perPerson(id)}
+    ${compareFood(id)}
+    <a class="next" href="${link({ level: "sources" })}">How do we know? ›</a>`;
+}
+
+// "Was it always like this?": single years since 2010, labelled with the same short dates.
+function trend(id) {
+  const values = country(id)?.trend?.[state.group] ?? [];
+  const yrs = state.data.meta.trend_years;
+  const pts = values.map((v, i) => [i, v]).filter(([, v]) => v != null);
+  if (pts.length < 2) return "";
+  const vals = pts.map(([, v]) => v);
+  const lo = Math.max(0, Math.min(100, ...vals) - 10);
+  const hi = Math.max(100, ...vals) + 10;
+  const W = 300, H = 70, P = 8, PX = 58;
+  const x = (i) => PX + (i / (yrs.length - 1)) * (W - 2 * PX);
+  const y = (v) => H - P - ((v - lo) / (hi - lo)) * (H - 2 * P);
+  const path = pts.map(([i, v], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const [fi, fv] = pts[0];
+  const [li, lv] = pts[pts.length - 1];
+  return `
+    <h3>Was it always like this?</h3>
+    <div class="spark">
+      <svg viewBox="0 0 ${W} ${H + 14}" width="100%" height="${H + 14}" role="img"
+        aria-label="${yrs[fi]}: ${lasts(fv)}; ${yrs[li]}: ${lasts(lv)}">
+        <line x1="${PX}" x2="${W - PX}" y1="${y(100)}" y2="${y(100)}" class="ref" />
+        <text x="${PX}" y="${y(100) - 4}" class="refl">whole year</text>
+        <path d="${path}" class="line" />
+        <circle cx="${x(fi)}" cy="${y(fv)}" r="3" class="dot" />
+        <circle cx="${x(li)}" cy="${y(lv)}" r="3" class="dot" />
+        <text x="${x(fi)}" y="${H + 12}" class="yr" text-anchor="middle">${yrs[fi]}</text>
+        <text x="${x(li)}" y="${H + 12}" class="yr" text-anchor="middle">${yrs[li]}</text>
+        <text x="${x(fi) - 6}" y="${y(fv) + 4}" class="val" text-anchor="end">${lasts(fv, { short: true }).replace("until ", "")}</text>
+        <text x="${x(li) + 6}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true }).replace("until ", "")}</text>
+      </svg>
+    </div>
+    <p class="small">One year at a time. Droughts and good harvests move the date by weeks; the
+      date above is the ${state.data.meta.years.replace("-", "–")} average.</p>`;
+}
+
+function perPerson(id) {
+  const pc = perCapita(id);
+  if (!pc || pc.supply == null) return "";
+  const max = Math.max(pc.production ?? 0, pc.supply ?? 0);
+  const uses = USES.map((u) => ({ ...u, v: pc[u.key] ?? 0 })).filter((u) => u.v >= 0.5);
+  const tenths = pc.supply > 0 ? Math.round(((pc.food ?? 0) / pc.supply) * 10) : null;
+  const eaten =
+    tenths == null ? ""
+    : tenths >= 9 ? "Almost all of it is eaten by people."
+    : tenths === 0 ? "Hardly any of it is eaten by people directly."
+    : `Of every 10 kg used here, ${tenths} ${tenths === 1 ? "is" : "are"} eaten by people directly.`;
+  const eur = state.data.meta.europe_avg?.[state.group]?.food_kg_pc;
+  const world = state.data.meta.world_avg?.[state.group]?.food_kg_pc;
+  const avgs = [eur != null ? `Europe ${kg(eur)}` : null, world != null ? `world ${kg(world)}` : null]
+    .filter(Boolean).join(", ");
+  const perDay = pc.food != null ? Math.round((pc.food * 1000) / 365) : null;
+  const where = id === EU ? "in the EU" : `in ${nameOf(id)}`;
+  const trade = id === EU
+    ? `<p class="small">Trade between EU countries is not counted here, only what the EU as a whole produces and uses.</p>`
+    : `<p class="small">Bought from abroad: <strong>${kg(pc.imports)}</strong> · Sold abroad: <strong>${kg(pc.exports)}</strong> per person.</p>`;
+  return `
+    <h3>Per person, per year</h3>
+    <div class="row"><span>Produced here</span><strong>${kg(pc.production)}</strong></div>
+    <div class="track">${bar(pc.production, max, "var(--accent)")}</div>
+    <div class="row"><span>Used here</span><strong>${kg(pc.supply)}</strong></div>
+    <div class="track">${uses.map((u) => bar(u.v, max, u.color)).join("")}</div>
+    <ul class="uses">${uses
+      .map((u) => `<li><i style="background:${u.color}"></i>${kg(u.v)} ${u.label}</li>`)
+      .join("")}</ul>
+    ${eaten ? `<p class="small">${eaten}</p>` : ""}
+    ${perDay != null ? `<p class="small">The average person ${where} eats <strong>${kg(pc.food)}</strong> of ${food()} a year,
+      about ${perDay.toLocaleString("en-GB")} g a day${avgs ? ` (averages: ${avgs})` : ""}.</p>` : ""}
+    ${trade}`;
+}
+
+// Biggest surplus and shortfall per person for one food (produced minus used, kg/person/year).
+function compareFood(id) {
+  const rows = rankable()
+    .map((r) => {
+      const pc = perCapita(r.id);
+      return { ...r, v: pc?.production != null && pc?.supply != null ? pc.production - pc.supply : null };
+    })
+    .filter((r) => r.v != null)
+    .sort((a, b) => b.v - a.v);
+  if (rows.length < 10) return "";
+  const signed = (v) => `${v > 0 ? "+" : "−"}${kg(Math.abs(v))}`;
+  return `
+    <h3>Who has ${food()} to spare?</h3>
+    <p class="small">Produced minus used, per person per year.</p>
+    <div class="cols">
+      <div><p class="small">Most to spare</p>${rankList(rows.slice(0, 5), signed)}</div>
+      <div><p class="small">Most missing</p>${rankList(rows.slice(-5).reverse(), signed)}</div>
+    </div>`;
+}
+
+// Level 3: the receipt. Every figure behind the date, the sum, and how to look it up at FAO.
+function viewSources() {
+  const id = state.iso3;
+  const g = groupInfo();
+  const v = pctFor(id);
+  return `
+    <h2>How do we know?</h2>
+    ${aboutFao()}
+    ${state.group === "all" ? receiptAll(id, v) : receiptGroup(id, v)}
+    ${checkYourself(id)}
+    ${caveats(id, g)}
+    ${mapSource()}
+    <a class="next" href="${link({ level: "table" })}">Show all the numbers ›</a>`;
+}
+
+function viewAbout() {
+  return `
+    <h2>How do we know?</h2>
+    ${aboutFao()}
+    <h3>The sum</h3>
+    <p>For each country and food we divide what its farms and fishing boats produce by what the
+      country uses, then turn that share into days of the year: 90% of 365 days is 329 days,
+      which takes you to 25 November. Choose a country to see its own figures worked out.</p>
+    ${caveats(null, groupInfo("all"))}
+    ${mapSource()}`;
+}
+
+function aboutFao() {
   const s = state.data.meta.sources[state.data.meta.source];
-  const released = s.released ? `, released ${longDate(s.released)}` : "";
-  return `Source: <a href="${s.url}" target="_blank" rel="noopener">FAO ${s.title}</a>,
-    ${state.data.meta.years.replace("-", "–")} average${released}.`;
+  return `
+    <p>All food figures come from the <a href="${s.url}" target="_blank" rel="noopener">Food Balances</a>
+      of the UN Food and Agriculture Organization (FAO). Every country reports what it produces,
+      buys, sells and uses each year; FAO checks the figures and publishes them for free.</p>
+    <p class="small">Edition used: released ${s.released ? longDate(s.released) : "–"}.
+      We use the average of ${years().join(", ")}.
+      Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>
+      (free to reuse with credit).</p>`;
 }
 
-function showDetail(iso3) {
-  const el = document.getElementById("detail");
-  if (!iso3) {
-    el.innerHTML = state.mode === "simple" ? rankingDetail() : `<p class="hint">Hover a country for details. Click to pin.</p>`;
-    wireDetail(el);
-    return;
-  }
-  const id = entity(iso3);
+function receiptGroup(id, v) {
+  const comp = country(id)?.indicators?.[state.group]?.components_kt ?? {};
+  const el = state.data.meta.elements;
+  const row = (label, fao, val) => val == null ? ""
+    : `<tr><td>${label}<br><small>FAO: “${fao}”</small></td><td>${val}</td></tr>`;
+  const ratio = comp.production != null && comp.supply > 0 ? (comp.production / comp.supply) * 100 : null;
+  const sum = v == null || ratio == null ? "" : `
+    <h3>The sum</h3>
+    <p class="sum">${tonnes(comp.production)} produced<br>÷ ${tonnes(comp.supply)} used<br>= <strong>${Math.round(ratio)}%</strong> of what is used</p>
+    <p>${v >= 99.5
+      ? `That is at least a whole year's worth${v > 104 ? `: ${lasts(v)}` : ""}.`
+      : `${Math.round(v)}% of 365 days is ${Math.round((v / 100) * 365)} days. Counting from 1 January, that is ${lasts(v)}.`}</p>`;
+  return `
+    <h3>The figures for ${nameOf(id)}, ${food()}</h3>
+    <p class="small">Per year, average of ${years().join(", ")}.</p>
+    <table class="receipt">
+      ${row("Produced here", el.production, tonnes(comp.production))}
+      ${row("Bought from abroad", el.imports, tonnes(comp.imports))}
+      ${row("Sold abroad", el.exports, tonnes(comp.exports))}
+      ${row("Used here", el.supply, tonnes(comp.supply))}
+      ${row("Population", el.population, people(country(id)?.population_k))}
+    </table>
+    ${sum}`;
+}
+
+function receiptAll(id, v) {
+  const p = country(id)?.indicators?.all?.protein;
+  if (v == null) return "";
+  return `
+    <h3>The sum for ${nameOf(id)}</h3>
+    <p>“All food” cannot be added up in tonnes: a tonne of lettuce is not a tonne of cheese. So we
+      count protein, the part of food that is hardest to replace. People ${id === EU ? "in the EU" : `in ${nameOf(id)}`}
+      get about <strong>${Math.round(p?.g_per_day ?? 0)} g</strong> of protein a day.</p>
+    <p>For each of about 85 foods we take what is produced at home divided by what is used, at
+      most 100% (a surplus of wheat cannot make up for missing soy), and weigh it by how much of
+      that protein the food provides. Together that gives <strong>${Math.round(v)}%</strong>.</p>
+    <p>${Math.round(v)}% of 365 days is ${Math.round((v / 100) * 365)} days. Counting from 1 January,
+      that is ${lasts(v)}.</p>
+    <p class="small">Food by food, with tonnes for each, is on the
+      <a href="${link({ level: "foods", group: "all" })}">food-by-food page</a>.</p>`;
+}
+
+function checkYourself(id) {
+  const s = state.data.meta.sources[state.data.meta.source];
+  const el = state.data.meta.elements;
+  const g = groupInfo();
+  const items = state.group === "all"
+    ? "all items"
+    : `${g.items.map((i) => `“${i}”`).join(", ")}, then add them up`;
+  const elements = state.group === "all"
+    ? `“${el.production}”, “${el.supply}” and “Protein supply quantity (g/capita/day)”`
+    : `“${el.production}” and “${el.supply}”`;
+  return `
+    <h3>Check it yourself</h3>
+    <ol class="steps">
+      <li>Open <a href="${s.url}" target="_blank" rel="noopener">FAOSTAT Food Balances</a>.</li>
+      <li>Countries: <strong>${id === EU ? "European Union (27)" : nameOf(id)}</strong>
+        <span class="small">(FAO sometimes uses the longer official name).</span></li>
+      <li>Elements: ${elements}.</li>
+      <li>Items: ${items}.</li>
+      <li>Years: ${years().join(", ")}, then take the average.</li>
+    </ol>
+    <p class="small">Or download the whole table:
+      <a href="${s.file_url}">FAO data file</a> (zip, about 55 MB).</p>`;
+}
+
+function caveats(id, g) {
+  return `
+    <h3>What this leaves out</h3>
+    <ul class="caveats">
+      <li>It is a thought experiment. Real stores are not eaten from 1 January onwards, and fresh
+        food cannot be kept all year.</li>
+      <li>It assumes people keep eating the same mix of foods.</li>
+      ${g.plain ? `<li>${g.plain}</li>` : ""}
+      ${id === EU ? `<li>For the EU, trade between member countries is left out: only what the EU as a whole produces and uses counts.</li>` : ""}
+      ${id && isMember(id) ? `<li>Food bought from other EU countries counts as bought from abroad.</li>` : ""}
+    </ul>`;
+}
+
+function mapSource() {
+  const s = state.data.meta.sources.gisco_countries;
+  if (!s) return "";
+  return `
+    <h3>The map</h3>
+    <p class="small">Borders: <a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>.
+      Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.
+      Background map: MapLibre demo tiles.</p>`;
+}
+
+// Level 4: everything, in the vocabulary of the methodology (SSR, IDR, tonnes, kcal).
+function viewTable() {
+  const id = state.iso3;
   const c = country(id);
   const g = groupInfo();
-  if (!c) {
-    el.innerHTML = `<h2>${state.names[iso3] ?? iso3}</h2>
-      <p class="small">FAO publishes no food balance sheet for this country or territory, so there is nothing to show.</p>`;
-    return;
-  }
-  const viaBloc = id !== iso3 ? ` <small>(${state.data.countries[iso3].name} is a member)</small>` : "";
-  const body = state.mode === "simple"
-    ? (isAll() ? simpleAllDetail(id) : simpleGroupDetail(id))
-    : expertDetail(id);
-  el.innerHTML = `
-    <h2>${c.name} <small>· ${g.label}</small>${viaBloc}</h2>
-    ${body}
-    ${g.notes && state.mode === "expert" ? `<p class="note">${g.notes}</p>` : ""}
-    ${c.notes && (state.mode === "expert" || id === EU) ? `<p class="note">⚠ ${c.notes}</p>` : ""}
-    <p class="cite">${sourceLine()}</p>`;
-  wireDetail(el);
-}
-
-// Clickable rows inside the detail panel: foods (switch group) and rankings (pin country).
-function wireDetail(el) {
-  for (const tr of el.querySelectorAll("[data-group]")) {
-    tr.onclick = () => { state.group = tr.dataset.group; render(); };
-  }
-  for (const li of el.querySelectorAll("[data-iso3]")) {
-    li.onclick = () => pin(li.dataset.iso3);
-  }
+  const isAll = state.group === "all";
+  return `
+    <h2>${nameOf(id)} · ${g.label}</h2>
+    <div class="controls">
+      <label>Indicator
+        <select id="indicator">
+          <option value="ssr" ${state.indicator === "ssr" ? "selected" : ""}>${isAll ? "Coverage (capped SSR)" : "Self-sufficiency ratio (SSR)"}</option>
+          <option value="idr" ${state.indicator === "idr" ? "selected" : ""}>Import dependency ratio (IDR)</option>
+        </select>
+      </label>
+      <label>Basis
+        <select id="basis">
+          <option value="tonnes" ${state.basis === "tonnes" ? "selected" : ""}>${isAll ? "Protein" : "Tonnes"}</option>
+          <option value="kcal" ${state.basis === "kcal" ? "selected" : ""}>Calories</option>
+        </select>
+      </label>
+    </div>
+    <p class="small">The map now shows this indicator.</p>
+    ${expertDetail(id)}
+    ${g.notes ? `<p class="note">${g.notes}</p>` : ""}
+    ${c.notes ? `<p class="note">⚠ ${c.notes}</p>` : ""}`;
 }
 
 function expertDetail(id) {
   const c = country(id);
-  if (isAll()) {
+  if (state.group === "all") {
     const a = c.indicators.all ?? {};
     return `
-      <div class="big">${fmt(valueFor(id))}<small>coverage, ${mapBasis()}</small></div>
+      <div class="big">${fmt(valueFor(id))}<small>coverage, ${tableBasis()}</small></div>
       <table>
         <tr><td>Protein: coverage (capped) / SSR</td><td>${fmt(a.protein?.share)} / ${fmt(a.protein?.ssr)}</td></tr>
         <tr><td>Calories: coverage (capped) / SSR</td><td>${fmt(a.kcal?.share)} / ${fmt(a.kcal?.ssr)}</td></tr>
@@ -496,8 +905,7 @@ function expertDetail(id) {
     .slice(0, 8);
 
   return `
-    <div class="big">${fmt(valueFor(id))}<small>${mapIndicator().toUpperCase()}, ${mapBasis()}</small></div>
-    ${sparkline(trendFor(id), { label: "SSR (tonnes), each year" })}
+    <div class="big">${fmt(valueFor(id))}<small>${tableIndicator().toUpperCase()}, ${tableBasis()}</small></div>
     <table>
       <tr><td>SSR (tonnes / kcal)</td><td>${fmt(t.ssr)} / ${fmt(k.ssr)}</td></tr>
       <tr><td>IDR (tonnes / kcal)</td><td>${id === EU ? "n/a" : `${fmt(t.idr)} / ${fmt(k.idr)}`}</td></tr>
@@ -510,7 +918,7 @@ function expertDetail(id) {
       <tr><td>losses / residuals</td><td>${kt(comp.losses)} / ${kt(comp.residuals)}</td></tr>
       <tr><td>Population</td><td>${pop(c)}</td></tr>
     </table>
-    ${items.length ? `<table style="margin-top:8px">${items
+    ${items.length ? `<h3>Largest FAO items</h3><table>${items
       .map((i) => `<tr><td>${i.item}</td><td>${fmt(i.ssr)}</td></tr>`)
       .join("")}</table>` : ""}
     <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply.
@@ -521,62 +929,24 @@ function expertDetail(id) {
 let itemsLoading = null;
 function loadItems() {
   itemsLoading ??= loadJSON("data/items.json")
-    .then((d) => { state.items = d; showDetail(state.pinned); })
+    .then((d) => { state.items = d; if (state.level === "table") render(); })
     .catch((e) => console.error(e));
-}
-
-function pop(c) {
-  return c.population_k == null ? "–" : `${(c.population_k / 1000).toFixed(1)} m`;
-}
-
-function renderSources() {
-  const link = (url, text) => `<a href="${url}" target="_blank" rel="noopener">${text}</a>`;
-  document.getElementById("sources").innerHTML = Object.values(state.data.meta.sources)
-    .map((s) => {
-      const parts = [
-        `${link(s.url, s.title)} — ${s.publisher}.`,
-        s.released ? `Released ${longDate(s.released)}.` : "",
-        s.file_url ? link(s.file_url, "Data file") + "." : "",
-        `Licence: ${link(s.licence_url, s.licence)}.`,
-      ];
-      return `<li>${parts.filter(Boolean).join(" ")}</li>`;
-    })
-    .join("");
-  const m = state.data.meta;
-  document.getElementById("meta").textContent =
-    `Figures are ${m.years.replace("-", "–")} averages; trend lines show single years. Built ${longDate(m.generated.slice(0, 10))}.`;
-}
-
-function longDate(iso) {
-  return new Date(`${iso}T00:00:00Z`).toLocaleDateString("en-GB", {
-    day: "numeric", month: "short", year: "numeric", timeZone: "UTC",
-  });
-}
-
-function kt(v) {
-  return v == null ? "–" : `${Math.round(v).toLocaleString()} kt`;
 }
 
 // ------------------------------------------------------------------------------------------------
 // controls
 
-function buildControls() {
-  const sel = document.getElementById("group");
-  sel.innerHTML = state.data.groups
-    .map((g) => `<option value="${g.key}">${g.label}</option>`)
-    .join("");
-  sel.value = state.group;
-  sel.onchange = () => { state.group = sel.value; render(); };
-
-  for (const b of document.querySelectorAll(".mode button")) {
-    b.onclick = () => { state.mode = b.dataset.mode; render(); };
-  }
-
-  const ind = document.getElementById("indicator");
-  ind.value = state.indicator;
-  ind.onchange = () => { state.indicator = ind.value; render(); };
-
-  const basis = document.getElementById("basis");
-  basis.value = state.basis;
-  basis.onchange = () => { state.basis = basis.value; render(); };
+function buildCountryPicker() {
+  const sel = document.getElementById("country");
+  const opts = Object.entries(state.data.countries)
+    .map(([id, c]) => [id, c.name])
+    .sort((a, b) => a[1].localeCompare(b[1], "en"));
+  sel.innerHTML = `<option value="">Choose a country…</option>` +
+    opts.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
+  sel.onchange = () => {
+    if (!sel.value) return;
+    const level = ["food", "sources", "table"].includes(state.level) ? state.level : state.level === "foods" ? "foods" : "country";
+    location.hash = hashFor({ iso3: sel.value, group: state.group, level });
+    flyTo(sel.value);
+  };
 }

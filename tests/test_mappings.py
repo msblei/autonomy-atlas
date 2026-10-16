@@ -10,3 +10,17 @@ def test_countries_unique_and_europe_core_kept():
     # Europe rows keep their hand-maintained names and groups, not the FAO/world ones.
     nld = c.set_index("iso3").loc["NLD"]
     assert nld["name"] == "Netherlands" and nld["group"] == "EU27"
+
+
+def test_exported_groups_carry_fao_items_and_plain_notes():
+    from pipeline.export import group_entries
+    from pipeline.harmonise import load_products
+
+    groups = {g["key"]: g for g in group_entries(load_products()["groups"])}
+    assert next(iter(groups)) == "all"
+    assert "Wheat and products" in groups["cereals"]["items"]
+    assert all(g["items"] for k, g in groups.items() if k != "all")
+    # Plain notes are what non-experts read: no jargon from the expert notes.
+    for g in groups.values():
+        assert "SSR" not in (g.get("plain") or "")
+    assert groups["meat"]["plain"]

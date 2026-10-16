@@ -89,6 +89,22 @@ a soy deficit; read it as "share of what people eat that own production could co
 version is reported as `*_ssr`. Livestock products count as domestic regardless of feed origin
 (feed adjustment is phase 4).
 
+## Running-out day (what the UI shows first)
+
+The first figure readers see is a date, not a ratio:
+
+    days = min(p, 100) / 100 × 365,   last day with food = 1 January + days − 1
+
+with p = protein coverage for "all food" and tonnes SSR for a single food. Above 100% the UI says
+"the whole year, with N months to spare", N = round((p − 100) / 100 × 12); from 200% it says
+"p/100 years". Map colours use the same date bands (before July, July–September,
+October–November, December, whole year, more than enough), so map and text always agree
+(`web/src/calendar.js`).
+
+It is a thought experiment and the "How do we know?" page says so: stores spread evenly over the
+year, seasons and perishability ignored, the diet stays the same. It adds no information beyond
+SSR, so the methodology above still applies unchanged.
+
 ## Trends
 
 `ssr_trends.parquet` holds single-year values (tonnes SSR per group, protein coverage for "all")

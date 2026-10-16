@@ -9,10 +9,12 @@
 # the code. Items not mapped to a group are kept at item level but excluded from group totals.
 #
 # "weight" is used only to order the UI; it is not a numeric weight.
+# "plain" is a one-line caveat shown to non-expert readers; "notes" is for the expert view.
 
 groups:
   cereals:
     label: Cereals
+    plain: Includes grain fed to animals, brewed into beer or turned into biofuel, not just bread and pasta.
     items:
       - Wheat and products
       - Rice and products
@@ -49,6 +51,7 @@ groups:
 
   oilseeds:
     label: Oilseeds & protein crops
+    plain: Much of this is soy fed to animals. Europe produces only a small part of the soy it uses.
     items:
       - Soyabeans
       - Sunflower seed
@@ -63,6 +66,7 @@ groups:
 
   vegetable_oils:
     label: Vegetable oils
+    plain: Oil pressed here from imported seeds counts as produced here.
     items:
       - Soyabean Oil
       - Sunflowerseed Oil
@@ -85,6 +89,7 @@ groups:
 
   fruit:
     label: Fruit
+    plain: Mixes fruit that grows here (apples, plums) with fruit that cannot (bananas, oranges).
     items:
       - Apples and products
       - Grapes and products (excl wine)
@@ -103,6 +108,7 @@ groups:
 
   meat:
     label: Meat
+    plain: Counts as produced here even when the animals ate imported feed such as soy.
     items:
       - Bovine Meat
       - Pigmeat
@@ -113,6 +119,7 @@ groups:
 
   dairy:
     label: Dairy
+    plain: Counts as produced here even when the cows ate imported feed such as soy.
     items:
       - Milk - Excluding Butter
       - Butter, Ghee
@@ -120,11 +127,13 @@ groups:
 
   eggs:
     label: Eggs
+    plain: Counts as produced here even when the hens ate imported feed such as soy.
     items:
       - Eggs
 
   fish:
     label: Fish & seafood
+    plain: Fish caught by the country's own boats plus fish farms.
     items:
       - Freshwater Fish
       - Demersal Fish
@@ -137,6 +146,7 @@ groups:
 
   stimulants:
     label: Coffee, cocoa, tea
+    plain: These grow only in warm climates, so most countries produce almost none.
     items:
       - Coffee and products
       - Cocoa Beans and products
@@ -145,6 +155,7 @@ groups:
 
   wine_beer:
     label: Wine & beer
+    plain: Beer brewed here from imported barley counts as produced here.
     items:
       - Wine
       - Beer

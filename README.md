@@ -13,13 +13,12 @@ product, with every number traceable to its source.
 
 ## Status
 
-**Scaffold.** The structure, data sources, formulas and roadmap are in place; the pipeline is a
-skeleton that downloads FAOSTAT bulk files and computes self-sufficiency ratios, and the frontend is
-a minimal MapLibre choropleth waiting for data.
-
-Phase 1 target: a country choropleth of self-sufficiency (SSR) and import-dependency (IDR) ratios for
-~14 product groups across ~41 European countries, on a tonnes and a calorie basis, with a
-"national vs EU-bloc" toggle.
+**Phase 1 working locally.** The pipeline builds FAO Food Balance figures for ~178 countries plus
+the EU as a bloc. The map opens on one plain question: if a country ate only what its own farms
+produce, starting on 1 January, until which date would the food last? Readers then dig deeper
+one level at a time: food by food, a single food (trend, per person, where the harvest goes),
+"How do we know?" (the FAO figures, the sum worked out, how to check it on FAOSTAT) and finally
+all the numbers (SSR/IDR, tonnes/kcal, FAO items).
 
 ## Quick start
 
