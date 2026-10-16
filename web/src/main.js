@@ -424,6 +424,29 @@ function perCapita(id, group = state.group) {
   return Object.fromEntries(Object.entries(comp).map(([k, v]) => [k, (v * 1000) / pop]));
 }
 
+// FAO balances that contradict themselves (pipeline/checks.py) carry no ratio and no
+// components_kt, only FAO's raw lines under `withheld`, so no ranking, map or chart can use them.
+function withheld(id, group = state.group) {
+  return country(id)?.indicators?.[group]?.withheld ?? null;
+}
+
+// Why: in FAO's own words and figures, for the food page and the receipt.
+function whyWithheld(id, group = state.group) {
+  const w = withheld(id, group);
+  if (!w) return "";
+  const c = w.components_kt ?? {};
+  const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, S = c.stock_variation ?? 0;
+  const who = id === EU ? "the EU" : nameOf(id);
+  if (w.reason === "supply_missing" || c.supply == null) {
+    return `FAO publishes no complete balance for ${food(group)} in ${who}.`;
+  }
+  const more = X > P + M - S
+    ? `they list more ${food(group)} sold abroad (${tonnes(X)}) than was produced (${tonnes(P)}) and bought abroad (${tonnes(M)}) together${S ? "" : ", with nothing taken out of storage"}`
+    : `production (${tonnes(P)}) plus imports (${tonnes(M)}) minus exports (${tonnes(X)}) leaves ${tonnes(c.supply)} for use at home`;
+  const resid = c.residuals ? ` FAO closes the gap with an unexplained “Residuals” line of ${tonnes(c.residuals)}.` : "";
+  return `FAO's figures for ${food(group)} in ${who} do not add up: ${more}.${resid}`;
+}
+
 function isMember(iso3) {
   return state.data.meta.eu_members.includes(iso3);
 }
@@ -672,7 +695,7 @@ function wire(el) {
 function viewIntro() {
   return `
     <p class="lead">Choose your country above, or tap it on the map.</p>
-    <p>For each country we work out how long the food from its own farms would last its people,
+    <p>For each country we work out how long the food produced there would last its people,
       if it had to manage without buying anything from abroad, counted in months of the year.</p>
     <p class="small">For example:</p>
     <div class="chips">${EXAMPLES.filter(country)
@@ -718,7 +741,7 @@ function viewCountry() {
   }
   return `
     <h2>${nameOf(id)}</h2>
-    <p class="q">If ${who} ate only food from ${id === EU ? "their" : "its"} own farms, there would be enough protein …</p>
+    <p class="q">If ${who} ate only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough protein …</p>
     <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
     ${strip(v)}
     ${menuLine(id, v)}
@@ -738,7 +761,7 @@ function viewFoods() {
   const who = id === EU ? "the EU" : c.name;
   return `
     <h2>${nameOf(id)}: food by food</h2>
-    <p class="q">If ${who} used only what ${id === EU ? "its" : "its own"} farms and fishing boats produce, there would be enough …</p>
+    <p class="q">If ${who} used only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough …</p>
     <ul class="foodlist">${rows.map(({ g, v }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
         <span class="name">${g.label}</span>
@@ -786,8 +809,12 @@ function viewFood() {
   const v = pctFor(id);
   const g = groupInfo();
   const who = id === EU ? "the EU" : nameOf(id);
-  const head = v == null
-    ? `<p>There are no reliable figures for ${food()} in ${who}.</p>`
+  const w = withheld(id);
+  const head = w
+    ? `<p>${whyWithheld(id)} So we show no figure for it here, and leave ${who} out of every
+        comparison for ${food()}.</p>`
+    : v == null
+    ? `<p>There are no figures for ${food()} in ${who}.</p>`
     : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be ${v < 0.5 ? "…" : "enough …"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
@@ -796,7 +823,7 @@ function viewFood() {
     ${head}
     ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
     ${euLine(id)}
-    ${trend(id)}
+    ${w ? "" : trend(id)}
     ${compareFood(id)}
     <a class="next" href="${link({ level: "sources" })}">How do we know? ›</a>`;
 }
@@ -839,6 +866,17 @@ function perPerson(id) {
   const pc = perCapita(id);
   if (!pc || pc.supply == null) return "";
   const max = Math.max(pc.production ?? 0, pc.supply ?? 0);
+  // FAO's uses do not add up to what is used (pipeline/checks.py): no breakdown, no kg eaten.
+  if (country(id)?.indicators?.[state.group]?.uses_withheld) {
+    return `
+    <h3>Per person, per year</h3>
+    <div class="row"><span>Produces</span><strong>${kg(pc.production)}</strong></div>
+    <div class="track">${bar(pc.production, max, "var(--accent)")}</div>
+    <div class="row"><span>Uses</span><strong>${kg(pc.supply)}</strong></div>
+    <div class="track">${bar(pc.supply, max, "var(--muted)")}</div>
+    <p class="small">FAO's breakdown of uses for ${food()} (eaten, fed to animals, …) does not
+      add up to this total: a large part is left unexplained. So we do not show it.</p>`;
+  }
   const uses = USES.map((u) => ({ ...u, v: pc[u.key] ?? 0 })).filter((u) => u.v >= 0.5);
   const tenths = pc.supply > 0 ? Math.round(((pc.food ?? 0) / pc.supply) * 10) : null;
   const eaten =
@@ -927,7 +965,7 @@ function viewAbout() {
     <h2>How do we know?</h2>
     ${aboutFao()}
     <h3>The sum</h3>
-    <p>For each country and food we divide what its farms and fishing boats produce by what the
+    <p>For each country and food we divide what is produced there (farmed, fished or made, like wine) by what the
       country uses, then turn that share into months of the year: 85% of 12 months is about
       10 months. Choose a country to see its own figures worked out.</p>
     ${caveats(null, groupInfo("all"))}
@@ -986,8 +1024,9 @@ function aboutFao() {
   const s = state.data.meta.sources[state.data.meta.source];
   return `
     <p>All food figures come from the <a href="${s.url}" target="_blank" rel="noopener">Food Balances</a>
-      of the UN Food and Agriculture Organization (FAO). Every country reports what it produces,
-      buys, sells and uses each year; FAO checks the figures and publishes them for free.</p>
+      of the UN Food and Agriculture Organization (FAO). Countries report what they produce,
+      buy, sell and use each year; FAO fills gaps with its own estimates and publishes the figures for free.
+      We take them as published and leave out figures that contradict themselves.</p>
     <p class="small">Edition used: released ${s.released ? longDate(s.released) : "–"}.
       We use the average of ${years().join(", ")}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>
@@ -1000,10 +1039,28 @@ function receiptGroup(id, v) {
   const jrc = fromJrc(id);
   const row = (label, fao, val) => val == null ? ""
     : `<tr><td>${label}<br><small>${jrc && fao !== el.population ? "in milk equivalent (European Commission)" : `FAO: “${fao}”`}</small></td><td>${val}</td></tr>`;
-  const ratio = comp.production != null && comp.supply > 0 ? (comp.production / comp.supply) * 100 : null;
-  const sum = v == null || ratio == null ? "" : `
+  const w = withheld(id);
+  if (w) {
+    const raw = w.components_kt ?? {};
+    return `
+    <h3>FAO's figures for ${nameOf(id)}, ${food()}</h3>
+    <p class="small">Per year, average of ${years().join(", ")}, exactly as FAO publishes them.</p>
+    <table class="receipt">
+      ${row("Produced", el.production, tonnes(raw.production))}
+      ${row("Bought abroad", el.imports, tonnes(raw.imports))}
+      ${row("Sold abroad", el.exports, tonnes(raw.exports))}
+      ${raw.stock_variation ? row("Change in stocks", el.stock_variation, tonnes(raw.stock_variation)) : ""}
+      ${row("Left for use at home", el.supply, tonnes(raw.supply))}
+      ${raw.residuals ? row("Unexplained remainder", el.residuals, tonnes(raw.residuals)) : ""}
+    </table>
+    <h3>Why we show no figure</h3>
+    <p>${whyWithheld(id)} A share worked out from these figures would not mean anything, so we
+      leave ${food()} in ${whoOf(id)} out of the map and all comparisons.</p>`;
+  }
+  // The share is the precomputed one (`v`), so this page and the map can never disagree.
+  const sum = v == null ? "" : `
     <h3>The sum</h3>
-    <p class="sum">${tonnes(comp.production)} produced<br>÷ ${tonnes(comp.supply)} used<br>= <strong>${Math.round(ratio)}%</strong> of what is used</p>
+    <p class="sum">${tonnes(comp.production)} produced<br>÷ ${tonnes(comp.supply)} used<br>= <strong>${Math.round(v)}%</strong> of what is used</p>
     ${inMonths(id, v)}`;
   return `
     <h3>The figures for ${nameOf(id)}, ${food()}</h3>
@@ -1189,6 +1246,9 @@ function summaryRows(id) {
   const go = (level, extra = {}) => ({ hash: hashFor({ iso3: id, group: state.group, level }), ...extra });
   const prodGo = go(state.group === "all" ? "country" : "food");
   const tm = (flow) => tradeFor(id, state.group, flow);
+  // A withheld balance (FAO's figures contradict themselves) gets no card: trade records by
+  // weight as shipped would sit next to FAO's balance figures and disagree with them.
+  if (withheld(id)) return { rows: [] };
   if (state.group === "all" || !c || !(c.supply > 0)) {
     // No single tonnes figure for "all food" (or no food balance at all, as for Japan): months for
     // own production, trade totals by weight as shipped.
@@ -1197,7 +1257,7 @@ function summaryRows(id) {
     const v = pctFor(id, "all");
     if (state.group === "all" && v != null) {
       rows.push({ key: "produced", label: "Own food lasts", value: lasts(v, { short: true }), bar: [0, Math.min(v, 100)],
-        title: "How long the protein from its own farms would last", ...prodGo });
+        title: "How long the protein produced here would last", ...prodGo });
     }
     const M = tm("imports")?.[0], X = tm("exports")?.[0];
     const top = Math.max(M ?? 0, X ?? 0) || 1;

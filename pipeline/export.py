@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from . import config, jrc
+from . import checks, config, jrc
 from .compute import EU_BLOC
 from .harmonise import load_countries, load_products
 from .trade import load_trade_only
@@ -63,6 +63,7 @@ def sources() -> dict:
     return out
 
 
+USE_KEYS = ("food", "feed", "seed", "losses", "processing", "other_uses", "tourist", "residuals")
 PER_CAPITA_KEYS = (
     "production", "imports", "exports", "supply",
     "food", "feed", "seed", "losses", "processing", "other_uses", "tourist", "residuals",
@@ -156,7 +157,8 @@ def export_ssr() -> None:
             "trend_years": trend_years,
             "source": "fao_fbs",
             "elements": {k: config.FBS_ELEMENTS[k]
-                         for k in ("production", "imports", "exports", "supply", "population")},
+                         for k in ("production", "imports", "exports", "supply", "population",
+                                   "stock_variation", "residuals")},
             "sources": sources(),
             "view": "national",
             "eu_members": sorted(config.EU27),
@@ -198,16 +200,34 @@ def export_ssr() -> None:
                          "per_day": _round(r["kcal"], 0)},
             }
             entry["population_k"] = _round(r["population"], 0)
-        for _, r in groups[groups["iso3"] == iso3].iterrows():
+        g_rows = groups[groups["iso3"] == iso3]
+        g_rows = g_rows.assign(uses_bad=checks.uses_problem(g_rows))
+        # One verdict per balance (pipeline/checks.py), set by the tonnes row and applied to both
+        # bases: a withheld food has no ratio and no per-person figures anywhere in the UI, only
+        # FAO's raw lines under "withheld" so the receipt can show why.
+        withheld = {r["group"]: r["flag"] for _, r in g_rows.iterrows()
+                    if r["basis"] == "tonnes" and r.get("flag")}
+        for _, r in g_rows.iterrows():
             ind = entry["indicators"].setdefault(r["group"], {})
+            reason = withheld.get(r["group"])
             ind[r["basis"]] = {
-                "ssr": _round(r["ssr"]),
-                "idr": _round(r["idr"]),
-                "flag": r.get("flag") or None,
+                "ssr": None if reason else _round(r["ssr"]),
+                "idr": None if reason else _round(r["idr"]),
+                "flag": reason or None,
             }
             if r["basis"] == "tonnes":
                 # kt with one decimal so small countries keep usable kg/person precision.
-                ind["components_kt"] = {k: _round(r[k], 1) for k in PER_CAPITA_KEYS}
+                comp = {k: _round(r[k], 1) for k in (*PER_CAPITA_KEYS, "stock_variation")}
+                if reason:
+                    ind["withheld"] = {"reason": reason, "components_kt": comp}
+                else:
+                    ind["components_kt"] = {k: comp[k] for k in PER_CAPITA_KEYS}
+                    # FAO's uses (food, feed, ...) do not add up to domestic supply: keep the
+                    # ratio, drop the breakdown (pipeline/checks.py).
+                    if r["uses_bad"]:
+                        ind["uses_withheld"] = checks.RESIDUALS_LARGE
+                        for k in USE_KEYS:
+                            ind["components_kt"].pop(k, None)
                 foods = jrc_foods.get(iso3, set())
                 if r["group"] == "dairy" and "dairy" in foods:
                     ind["source"] = "jrc_bal"
@@ -221,6 +241,7 @@ def export_ssr() -> None:
                     "item": r["item"],
                     "ssr": _round(r["ssr"]),
                     "supply_kt": _round(r["supply"], 0),
+                    "flag": r.get("flag") or None,
                 }
             )
         out["countries"][iso3] = entry

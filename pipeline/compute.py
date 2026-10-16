@@ -16,7 +16,7 @@ import logging
 import numpy as np
 import pandas as pd
 
-from . import config
+from . import checks, config
 from . import jrc as jrc_bal
 from .harmonise import item_to_group
 
@@ -81,11 +81,15 @@ def window_mean(wide: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
 
 
 def add_ratios(df: pd.DataFrame) -> pd.DataFrame:
+    """SSR and IDR, withheld (NaN, with the reason in `flag`) where the balance contradicts
+    itself (pipeline/checks.py). Withheld items drop out of group kcal means, "all food" and
+    trends, so no view can show a figure built on them."""
     df = df.copy()
     df["ssr"] = ratio(df["production"], df["supply"])
     df["idr"] = ratio(df["imports"], df["supply"])
-    df["flag"] = np.where(df["supply"].isna(), "supply_missing",
-                 np.where(df["supply"] <= 0, "supply_nonpositive", ""))
+    df["flag"] = checks.problems(df)
+    bad = df["flag"] != ""
+    df.loc[bad, ["ssr", "idr"]] = np.nan
     return df
 
 

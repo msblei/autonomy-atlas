@@ -33,6 +33,29 @@ because of exports and stock changes.
 Values of D ≤ 0 happen (a country exports a product it barely consumes). Return NaN and flag
 `supply_nonpositive`; never clip to 0 or 100 silently.
 
+### Withheld: balances that contradict themselves
+
+`pipeline/checks.py` gives every balance (item, group, country, window and single year) one
+verdict, and every view obeys it. A withheld balance has no ratio, no per-person figures, no trend
+point and no place in any ranking or comparison; the UI shows FAO's raw lines and says why.
+
+| Test | Verdict | Why |
+|---|---|---|
+| D missing | ratio withheld (`supply_missing`) | nothing to divide by |
+| D ≤ 0 | ratio withheld (`supply_nonpositive`) | negative use at home is impossible |
+| X > (P + M − ΔS) × 1.02 + 1 kt | ratio withheld (`exports_exceed_available`) | more sold than there was |
+| \|residuals\| > 25% of D | uses breakdown withheld (`uses_withheld`) | food, feed, … don't add up to D |
+
+The residual test withholds only the breakdown, not the ratio: residuals sit on the utilisation
+side (D = food + feed + … + residuals), SSR uses only the availability side. A very high SSR is not
+a reason (Iceland catches about 20 times the fish it eats). Example: Jordan, eggs 2021–2023,
+P 81, M 3, X 114 kt, ΔS 0, residuals −107 kt, D −30 kt. Before this rule the ratio was blank
+but the per-person ranking still listed Jordan first with +10 kg "to spare".
+
+Withheld items also drop out of the group kcal mean and "all food" (they have no SSR). On the
+2021–2023 data no headline figure moved by this; 63 group balances are withheld and 39 have
+their uses breakdown withheld.
+
 ## Aggregation to product groups
 
 Group definitions: `pipeline/mappings/products.yaml`.
