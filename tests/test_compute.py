@@ -214,3 +214,30 @@ def test_missing_production_inside_a_balance_counts_as_zero():
     items = compute.compute(fbs)["items"].set_index("item")
     assert items.loc["Coffee and products", "production"] == 0.0
     assert items.loc["Coffee and products", "ssr"] == pytest.approx(0.0)
+
+
+def test_eu_bloc_counts_only_trade_with_the_rest_of_the_world():
+    # Two members (the others produce and trade nothing). A exports 60, a third of it to the US;
+    # B reports importing 60, all from A, more than A says it sent there (the usual mismatch).
+    # Summing members says the EU uses 100 + 60 - 60 = 100; really it uses 100 - 20 = 80.
+    members = sorted(compute.config.EU27)
+    a, b = members[0], members[1]
+    rows = [(iso, "Oats", "Production", 2023, 0.0) for iso in members[2:]]
+    rows += [(iso, "Oats", "Domestic supply quantity", 2023, 0.0) for iso in members[2:]]
+    rows += [
+        (a, "Oats", "Production", 2023, 100.0),
+        (a, "Oats", "Export quantity", 2023, 60.0),
+        (a, "Oats", "Domestic supply quantity", 2023, 40.0),
+        (b, "Oats", "Import quantity", 2023, 60.0),
+        (b, "Oats", "Domestic supply quantity", 2023, 60.0),
+    ]
+    extra = pd.DataFrame([
+        (a, "cereals", "exports", 2023, 20 / 60),  # a third of A's exports leave the EU
+        (b, "cereals", "imports", 2023, 0.0),  # all of B's imports come from A
+    ], columns=["iso3", "group", "flow", "year", "share"])
+    eu = compute.compute(_long(rows), extra=extra)["items"].set_index(["iso3", "item"])
+    eu = eu.loc[("EU27", "Oats")]
+    assert eu["exports"] == pytest.approx(20.0)
+    assert eu["imports"] == pytest.approx(0.0)
+    assert eu["supply"] == pytest.approx(80.0)
+    assert eu["ssr"] == pytest.approx(125.0)

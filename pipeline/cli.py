@@ -45,6 +45,7 @@ def main(argv: list[str] | None = None) -> int:
         download.run(args.source, force=args.force)
     elif args.cmd == "build":
         harmonise.run()
+        trade.extract()
         compute.run(years=years)
         trade.run()
     elif args.cmd == "export":
@@ -52,6 +53,7 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "all":
         download.run()
         harmonise.run()
+        trade.extract()
         compute.run(years=years)
         trade.run()
         export.run()

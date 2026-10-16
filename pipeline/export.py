@@ -77,8 +77,8 @@ ALL_FOOD = {
 EU_ENTRY = {
     "name": "European Union (27)",
     "region": "EU27",
-    "notes": "All 27 member states added together. Trade between members cancels out, so "
-    "self-sufficiency is valid; import dependency needs partner-level trade data (phase 2).",
+    "notes": "All 27 member states as one. Production is summed; imports and exports are trade "
+    "with non-members only, so trade between members does not count.",
 }
 
 

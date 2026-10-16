@@ -1016,7 +1016,12 @@ function checkYourself(id) {
       <li>Years: ${years().join(", ")}, then take the average.</li>
     </ol>
     <p class="small">Or download the whole table:
-      <a href="${s.file_url}">FAO data file</a> (zip, about 55 MB).</p>`;
+      <a href="${s.file_url}">FAO data file</a> (zip, about 55 MB).</p>
+    ${id === EU ? `<p class="aside">Our EU figures differ from FAO's own “European Union (27)” row on purpose.
+      FAO adds up the member countries, but they report buying much more from each other than they
+      report selling to each other (for dairy, 104 against 78 million tonnes a year), so the EU seems
+      to use more than it has. We count only the EU's trade with the rest of the world, using FAO's
+      trade records to tell the two apart. Production is the same in both.</p>` : ""}`;
 }
 
 function caveats(id, g) {
@@ -1100,7 +1105,7 @@ function expertDetail(id) {
     <div class="big">${fmt(valueFor(id))}<small>${tableIndicator().toUpperCase()}, ${tableBasis()}</small></div>
     <table>
       <tr><td>SSR (tonnes / kcal)</td><td>${fmt(t.ssr)} / ${fmt(k.ssr)}</td></tr>
-      <tr><td>IDR (tonnes / kcal)</td><td>${id === EU ? "n/a" : `${fmt(t.idr)} / ${fmt(k.idr)}`}</td></tr>
+      <tr><td>IDR (tonnes / kcal)</td><td>${fmt(t.idr)} / ${fmt(k.idr)}</td></tr>
       <tr><td>Production</td><td>${kt(comp.production)}</td></tr>
       <tr><td>Imports</td><td>${kt(comp.imports)}</td></tr>
       <tr><td>Exports</td><td>${kt(comp.exports)}</td></tr>
@@ -1114,7 +1119,7 @@ function expertDetail(id) {
       .map((i) => `<tr><td>${i.item}</td><td>${fmt(i.ssr)}</td></tr>`)
       .join("")}</table>` : ""}
     <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply.
-      ${id === EU ? "EU bloc: members summed; intra-EU trade cancels out of supply." : "National view: imports from other EU countries count as imports."}</p>
+      ${id === EU ? "EU bloc: production summed over members; imports and exports are trade with non-members only (members' FBS trade × extra-EU share from the trade matrix); supply = P + M − X − ΔS." : "National view: imports from other EU countries count as imports."}</p>
     ${t.flag || k.flag ? `<p class="note">Flag: ${t.flag ?? k.flag}</p>` : ""}`;
 }
 
@@ -1147,29 +1152,27 @@ function summaryRows(id) {
     }
     return { rows };
   }
-  let P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0;
-  const D = c.supply;
-  if (id === EU) {
-    // Members' trade with each other cancels out; show trade with the rest of the world.
-    M = (tm("imports")?.[0] ?? 0) / 1000;
-    X = (tm("exports")?.[0] ?? 0) / 1000;
-    if (!state.trade) loadTrade();
-  }
+  // For the EU, imports and exports are its trade with the rest of the world (compute.py), so the
+  // rows add up like any country's. Fish has no trade records: then only produced and used.
+  const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, D = c.supply;
+  const noTrade = c.imports == null && c.exports == null;
   const store = D - (P + M - X); // > 0: taken out of storage, < 0: put into storage
-  const showStore = id !== EU && Math.abs(store) >= Math.max(1, 0.005 * (P + M));
+  const showStore = !noTrade && Math.abs(store) >= Math.max(1, 0.005 * (P + M));
   const top = Math.max(P + M, D, P + M - X + Math.max(store, 0)) || 1;
   const pct = (x) => (Math.max(0, x) / top) * 100;
   const out = id === EU ? " outside the EU" : "";
+  const trade = noTrade ? [] : [
+    { key: "imports", sign: "+", label: `Buys${out}`, value: shortTonnes(M), bar: [pct(P), pct(M)], ...go("trade", { flow: "imports" }) },
+    { key: "exports", sign: "−", label: `Sells${out}`, value: shortTonnes(X), bar: [pct(P + M - X), pct(X)], ...go("trade", { flow: "exports" }) },
+  ];
   return {
     rows: [
       { key: "produced", label: "Produces", value: shortTonnes(P), bar: [0, pct(P)], ...prodGo },
-      { key: "imports", sign: "+", label: `Buys${out}`, value: shortTonnes(M), bar: [pct(P), pct(M)], ...go("trade", { flow: "imports" }) },
-      { key: "exports", sign: "−", label: `Sells${out}`, value: shortTonnes(X), bar: [pct(P + M - X), pct(X)], ...go("trade", { flow: "exports" }) },
+      ...trade,
       { key: "used", sign: "=", label: "Uses", value: shortTonnes(D), bar: [0, pct(D)],
         title: "Eaten, fed to animals, made into other foods or lost", ...go("used") },
     ],
-    note: id === EU ? "Trade with the rest of the world, by weight as shipped, so the rows do not add up exactly."
-      : showStore ? `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage` : "",
+    note: showStore ? `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage` : "",
   };
 }
 
@@ -1299,7 +1302,7 @@ function viewTrade() {
   // Totals from the food balance where there is one, so they match the other pages; the trade
   // records give the split by country.
   const comp = country(id)?.indicators?.[state.group]?.components_kt;
-  const fbsTotal = state.group !== "all" && id !== EU ? comp?.[imports ? "imports" : "exports"] : null;
+  const fbsTotal = state.group !== "all" ? comp?.[imports ? "imports" : "exports"] : null;
   const total = fbsTotal ?? t[0] / 1000;
   const top = rows.slice(0, 8);
   const rest = Math.max(0, 100 - top.reduce((a, r) => a + r.share, 0));

@@ -158,12 +158,23 @@ def leaf_items(fbs: pd.DataFrame) -> set[str]:
     return leaves - {POPULATION_ITEM}
 
 
-def add_eu_bloc(wide: pd.DataFrame) -> pd.DataFrame:
+UTILISATION = ["feed", "food", "seed", "losses", "processing", "other_uses", "tourist", "residuals"]
+
+
+def add_eu_bloc(wide: pd.DataFrame, extra: pd.DataFrame | None = None) -> pd.DataFrame:
     """Append iso3 == "EU27": members summed per item and year (years with all 27 members only).
 
-    Trade between members cancels out of domestic supply, so EU-wide SSR and net trade are valid.
-    Gross imports/exports still contain intra-EU trade (FAO's own EU27 aggregate does the same),
-    so they are blanked; IDR for the bloc needs partner data (phase 2).
+    Summing members' balances does not cancel trade between them: members report buying much more
+    from each other than they report selling to each other (dairy 2021-2023: 104.5 vs 77.8 Mt
+    milk equivalent), and FAO's own EU27 aggregate has the same gap. So, given `extra` (members'
+    extra-EU trade shares per group, flow and year, from trade.extract):
+
+        imports = sum_j imports_j * share of j's imports from outside the EU
+        exports = sum_j exports_j * share of j's exports to outside the EU
+        supply  = production + imports - exports - stock variation
+
+    and the uses (food, feed, ...) are scaled to that supply. Without `extra`, gross trade is
+    blanked and supply stays the members' sum (the old, inflated behaviour).
     """
     members = wide[wide["iso3"].isin(config.EU27)]
     if members.empty:
@@ -190,11 +201,49 @@ def add_eu_bloc(wide: pd.DataFrame) -> pd.DataFrame:
     for c in PER_CAPITA_ELEMENTS:
         sums[c] = sums[c] / sums.pop(f"{c}_w")
     sums[["imports", "exports"]] = np.nan
+    if extra is not None and len(extra):
+        sums = _extra_eu_trade(sums, members, extra)
     eu_pop = pop.groupby("year", as_index=False)["population"].sum()
     eu_pop["item"] = POPULATION_ITEM
     sums = pd.concat([sums[sums["item"] != POPULATION_ITEM], eu_pop], ignore_index=True)
     sums["iso3"] = EU_BLOC
     return pd.concat([wide, sums], ignore_index=True)
+
+
+def _extra_eu_trade(sums: pd.DataFrame, members: pd.DataFrame, extra: pd.DataFrame) -> pd.DataFrame:
+    """EU27 rows: imports/exports with the rest of the world in FBS units, supply rebuilt from them,
+    uses scaled to match (see add_eu_bloc)."""
+    groups = item_to_group()[["item", "group"]]
+    m = members[["iso3", "item", "year", "imports", "exports"]].merge(groups, on="item", how="left")
+    # Items outside the groups use the members' share for all foods; groups the trade records do
+    # not cover at all (fish) keep the old members' sum.
+    traded = set(extra["group"])
+    m = m[m["group"].isna() | m["group"].isin(traded)]
+    m["group"] = m["group"].fillna("all")
+    for flow in ("imports", "exports"):
+        sh = extra[extra["flow"] == flow][["iso3", "group", "year", "share"]]
+        own = m.merge(sh, on=["iso3", "group", "year"], how="left")["share"]
+        # A member without trade records for that food: its share across all foods that year.
+        alls = m[["iso3", "year"]].merge(sh[sh["group"] == "all"].drop(columns="group"),
+                                        on=["iso3", "year"], how="left")["share"]
+        m[f"{flow}_share"] = own.fillna(alls).to_numpy()
+    covered = m.groupby("year")["imports_share"].apply(lambda s: s.notna().any())
+    m["imports"] = m["imports"].fillna(0) * m["imports_share"]
+    m["exports"] = m["exports"].fillna(0) * m["exports_share"]
+    ext = m.groupby(["item", "year"], as_index=False)[["imports", "exports"]].sum(min_count=1)
+    ext = ext[ext["year"].isin(covered[covered].index)]
+
+    sums = sums.drop(columns=["imports", "exports"]).merge(ext, on=["item", "year"], how="left")
+    has = sums["imports"].notna() | sums["exports"].notna()
+    new = (sums["production"].fillna(0) + sums["imports"].fillna(0) - sums["exports"].fillna(0)
+           - sums["stock_variation"].fillna(0))
+    old = sums["supply"]
+    scale = (new / old).where(has & (old > 0))
+    for c in UTILISATION:
+        if c in sums:
+            sums[c] = np.where(scale.notna(), sums[c] * scale, sums[c])
+    sums["supply"] = np.where(has, new, old)
+    return sums
 
 
 def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
@@ -247,13 +296,14 @@ def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str]
     return {"items": items, "groups": groups, "overall": totals}
 
 
-def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None) -> dict[str, pd.DataFrame]:
+def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None,
+            extra: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
     """Returns {'items', 'groups', 'overall', 'trends'} tidy frames.
 
     items/groups/overall cover the window (default: latest 3 years); trends has one SSR value per
     iso3 × group × year (group "all" = uncapped protein SSR) for sparklines.
     """
-    wide = add_eu_bloc(to_wide(fbs))
+    wide = add_eu_bloc(to_wide(fbs), extra)
     leaves = leaf_items(fbs)
     years = years or latest_window(wide)
     log.info("window %s", years)
@@ -280,7 +330,12 @@ def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None) -> dict[
 def run(*, years: tuple[int, int] | None = None) -> None:
     config.ensure_dirs()
     fbs = pd.read_parquet(config.INTERIM / "fbs.parquet")
-    res = compute(fbs, years=years)
+    shares = config.INTERIM / "eu_extra_shares.parquet"  # trade.extract(); see add_eu_bloc
+    extra = pd.read_parquet(shares) if shares.exists() else None
+    if extra is None:
+        log.warning("no %s: EU27 supply is the members' sum, which double counts intra-EU trade",
+                    shares)
+    res = compute(fbs, years=years, extra=extra)
     for name, df in res.items():
         out = config.PROCESSED / f"ssr_{name}.parquet"
         df.to_parquet(out, index=False)

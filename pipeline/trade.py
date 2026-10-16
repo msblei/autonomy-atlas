@@ -117,8 +117,10 @@ def to_iso3(df: pd.DataFrame) -> pd.DataFrame:
     return df[~lost & (df["reporter"] != df["partner"])]
 
 
-def partners(df: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
-    """Reported flows, with mirror flows where a country reported nothing for a flow and year."""
+def yearly(df: pd.DataFrame) -> pd.DataFrame:
+    """Flows per reporter × partner × group × flow × year: the reporter's own figures, plus mirror
+    flows (partners' reports of the opposite flow) where it reported nothing for a flow and year.
+    Columns: reporter, partner, group, flow, year, value, source."""
     keys = ["reporter", "partner", "group", "flow", "year"]
     rep = df.groupby(keys, as_index=False)["value"].sum()
     reported = set(rep[["reporter", "flow", "year"]].itertuples(index=False, name=None))
@@ -131,9 +133,13 @@ def partners(df: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     if len(mirror):
         log.info("trade: mirror flows for %d country-years without own reports",
                  mirror[["reporter", "flow", "year"]].drop_duplicates().shape[0])
-
-    both = pd.concat([rep.assign(source="reported"), mirror.assign(source="mirror")],
+    return pd.concat([rep.assign(source="reported"), mirror.assign(source="mirror")],
                      ignore_index=True)
+
+
+def average(both: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
+    """Yearly flows -> yearly mean over `years` per country × group × flow × partner."""
+    both = both[both["year"].between(*years)]
     n_years = years[1] - years[0] + 1
     out = (both.groupby(["reporter", "group", "flow", "partner"], as_index=False)
            .agg(tonnes=("value", "sum"), source=("source", lambda s: "mirror"
@@ -141,6 +147,23 @@ def partners(df: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     out["tonnes"] /= n_years
     return out.rename(columns={"reporter": "iso3"})
 
+
+def partners(df: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
+    """Raw trade rows -> mean flows per partner over `years`, mirror flows filling gaps."""
+    return average(yearly(df), years)
+
+
+def extra_eu_shares(both: pd.DataFrame) -> pd.DataFrame:
+    """For each EU member, food group and year: the share of its imports that come from, and of
+    its exports that go to, countries outside the EU. Group "all" covers every food (fallback for
+    FBS items outside the groups). Columns: iso3, group, flow, year, share."""
+    m = both[both["reporter"].isin(config.EU27)]
+    m = pd.concat([m, m.assign(group="all")], ignore_index=True)
+    m = m.assign(extra=m["value"].where(~m["partner"].isin(config.EU27), 0.0))
+    g = m.groupby(["reporter", "group", "flow", "year"], as_index=False)[["extra", "value"]].sum()
+    g = g[g["value"] > 0]
+    g["share"] = g["extra"] / g["value"]
+    return g.rename(columns={"reporter": "iso3"})[["iso3", "group", "flow", "year", "share"]]
 
 def add_eu_bloc(p: pd.DataFrame) -> pd.DataFrame:
     """EU27 = members' trade with non-members, summed (intra-EU trade is not EU trade)."""
@@ -213,13 +236,32 @@ def fbs_window() -> tuple[int, int]:
     return y0, y1
 
 
-def run() -> None:
+YEARLY = "trade_yearly.parquet"
+SHARES = "eu_extra_shares.parquet"
+
+
+def extract() -> None:
+    """Read the trade matrix once for every FBS year: yearly food flows (data/interim) and the
+    members' extra-EU shares that compute.py uses for the EU bloc. Runs before compute."""
     if not (config.RAW / "faostat" / TM_ZIP).exists():
         log.warning("no trade matrix; run `atlas download --source faostat` (420 MB)")
         return
+    fbs_years = pd.read_parquet(config.INTERIM / "fbs.parquet", columns=["year"])["year"]
+    years = (int(fbs_years.min()), int(fbs_years.max()))
+    both = yearly(to_iso3(read_matrix(years, load_item_groups())))
+    both.to_parquet(config.INTERIM / YEARLY, index=False)
+    shares = extra_eu_shares(both)
+    shares.to_parquet(config.INTERIM / SHARES, index=False)
+    log.info("wrote %s (%d rows) and %s (%d rows)", YEARLY, len(both), SHARES, len(shares))
+
+
+def run() -> None:
+    src = config.INTERIM / YEARLY
+    if not src.exists():
+        log.warning("no %s; run `atlas build` with the trade matrix downloaded", src)
+        return
     years = fbs_window()
-    raw = to_iso3(read_matrix(years, load_item_groups()))
-    p = add_eu_bloc(partners(raw, years))
+    p = add_eu_bloc(average(pd.read_parquet(src), years))
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
     groups = groups[groups["basis"] == "tonnes"][["iso3", "group", "production", "imports"]]
     out = pd.concat([p, trace_origins(p, groups)], ignore_index=True)

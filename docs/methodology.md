@@ -61,13 +61,26 @@ as volatile.
 
 Always offer both. They answer different questions ("could France feed itself?" vs "could Europe?").
 
-**Implemented now (FBS only):** `compute.add_eu_bloc` adds a pseudo-country `EU27` by summing all
-27 members per item and year (years with a missing member are skipped). Intra-EU trade appears in
-both members' imports and exports, so it cancels out of D = P + M − X − ΔS: EU-wide SSR, per-person
-figures and net trade are valid. Gross M and X are blanked, so EU-bloc IDR stays NaN until
-partner-level trade (phase 2) gives M_extra. FAO's own "European Union (27)" area (M49 097) is the
-same plain sum of members (checked 2022: wheat imports 71 Mt, overwhelmingly intra-EU), so it has
-the same limitation.
+**Implemented:** `compute.add_eu_bloc` adds a pseudo-country `EU27` (years with all 27 members).
+Production, stock variation and the per-person elements are summed over members. Imports and
+exports are the trade with non-members only, in FBS primary equivalents:
+
+    M_EU = Σ_j M_j · s_imp,j      s_imp,j = share of member j's imports from outside the EU
+    X_EU = Σ_j X_j · s_exp,j      s_exp,j = share of member j's exports to outside the EU
+    D_EU = P_EU + M_EU − X_EU − ΔS_EU
+
+The shares are per member, food group and year from the FAOSTAT trade matrix
+(`trade.extra_eu_shares`, reported flows with mirror fallback; items outside the groups use the
+member's all-food share). Uses (food, feed, …) are the members' sums scaled to D_EU. Fish, which
+the trade matrix does not cover, keeps the members' sum with gross trade blanked.
+
+Why not simply add up the members (as FAO's own "European Union (27)" area does): members report
+buying far more from each other than they report selling to each other, so intra-EU trade does
+not cancel. Dairy 2021–2023: members' imports 104.5 Mt, exports 77.8 Mt (milk equivalent), so the
+sum makes the EU look like a net importer that uses 190.9 Mt from 165.9 Mt produced (SSR 87%).
+With extra-EU trade it buys 5.3 Mt, sells 18.8 Mt and uses 150.6 Mt (SSR 110%). Cereals move from
+101% to 105%, vegetables from 86% to 104%; meat and oilseeds barely change. With M_EU known, EU
+import dependency (IDR) is now defined.
 
 ## Per-person figures
 
