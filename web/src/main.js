@@ -12,6 +12,7 @@ import { SEASONS, forHowLong, lastDay, lasts, months, strip } from "./calendar.j
 //   #DEU/foods      foods       the same date for every food
 //   #DEU/cereals    food        one food: trend, per person, where the harvest goes
 //   #DEU/cereals/trade          who it buys from and sells to (map: partners and arcs)
+//   #DEU/cereals/used           what it is used for, per person
 //   #DEU/cereals/sources        how do we know: FAO figures, the sum, check-it-yourself
 //   #DEU/cereals/table          all the numbers (SSR, IDR, tonnes/kcal, FAO items)
 //   #about                      sources without a country
@@ -19,7 +20,7 @@ import { SEASONS, forHowLong, lastDay, lasts, months, strip } from "./calendar.j
 const state = {
   iso3: null,
   group: "all", // "all" = protein-weighted across every food, else a products.yaml group key
-  level: "intro", // intro | country | foods | food | trade | sources | table | about
+  level: "intro", // intro | country | foods | food | trade | used | sources | table | about
   flow: "imports", // imports | exports (trade level)
   indicator: "ssr", // ssr | idr (table level only)
   basis: "tonnes", // tonnes | kcal (table level only)
@@ -259,7 +260,8 @@ function parseHash() {
   if (!b) return { iso3: a, group: "all", level: "country" };
   if (b === "foods") return { iso3: a, group: "all", level: "foods" };
   const group = state.data.groups.some((g) => g.key === b) ? b : "all";
-  if (c === "sources" || c === "table" || c === "trade") return { iso3: a, group, level: c };
+  if (c === "used" && group === "all") return { iso3: a, group, level: "country" };
+  if (["sources", "table", "trade", "used"].includes(c)) return { iso3: a, group, level: c };
   return group === "all" ? { iso3: a, group, level: "country" } : { iso3: a, group, level: "food" };
 }
 
@@ -288,7 +290,10 @@ function route() {
 }
 
 // A click on the map keeps the reader on the same level (and food) for the new country.
-function select(iso3) {
+function select(clicked) {
+  // Zoomed out, the tooltip names the EU for its members, so a click picks the EU too. The trade
+  // map colours every country on its own, so there a click picks the member.
+  const iso3 = state.level === "trade" ? clicked : entity(clicked);
   // Trade partners without food balances (Japan, Singapore) can still be looked at in trade view.
   const tradeOnly = state.level === "trade" && state.trade?.countries[iso3];
   const level = ["intro", "about"].includes(state.level) || (!country(iso3) && !tradeOnly)
@@ -488,7 +493,7 @@ function render() {
   renderControls();
   document.getElementById("country").value = country(state.iso3) ? state.iso3 : "";
   const views = { intro: viewIntro, about: viewAbout, country: viewCountry, foods: viewFoods,
-    food: viewFood, trade: viewTrade, sources: viewSources, table: viewTable };
+    food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable };
   const el = document.getElementById("view");
   const noData = state.iso3 && !country(state.iso3) && state.level !== "about"
     && !(state.level === "trade" && state.trade?.countries[state.iso3]);
@@ -564,10 +569,6 @@ function renderLegend() {
 
 // The one menu at the top of the panel: country, food, and what to show. Each choice keeps the
 // other two, so switching from coffee imports to meat imports is a single tap.
-function view() {
-  return state.level === "trade" ? state.flow : "lasts";
-}
-
 function renderControls() {
   const foods = document.getElementById("foods");
   foods.innerHTML = state.data.groups.map((g) => `
@@ -576,14 +577,8 @@ function renderControls() {
   // The full name only where the button had to shorten it ("Coffee, tea" -> "Coffee, cocoa, tea").
   const label = groupInfo().label;
   document.getElementById("foodname").textContent = (SHORT[state.group] ?? label) === label ? "" : label;
-  const views = document.getElementById("views");
-  const noCountry = !state.iso3;
-  views.innerHTML = [["lasts", "How long it lasts"], ["imports", "Bought"], ["exports", "Sold"]]
-    .map(([k, label]) => `<button type="button" data-view="${k}" aria-pressed="${view() === k}"
-      ${noCountry && k !== "lasts" ? `disabled title="Choose a country first"` : ""}>${label}</button>`)
-    .join("");
   for (const b of foods.querySelectorAll("[data-food]")) b.onclick = () => chooseFood(b.dataset.food);
-  for (const b of views.querySelectorAll("[data-view]")) b.onclick = () => chooseView(b.dataset.view);
+  renderSummary();
 }
 
 function chooseFood(group) {
@@ -594,17 +589,8 @@ function chooseFood(group) {
   }
   let level = state.level;
   if (["country", "foods", "food", "intro", "about"].includes(level)) level = group === "all" ? "country" : "food";
+  if (level === "used" && group === "all") level = "country";
   location.hash = hashFor({ iso3: state.iso3, group, level });
-}
-
-function chooseView(v) {
-  if (v === "lasts") {
-    location.hash = hashFor({ iso3: state.iso3, group: state.group, level: state.group === "all" ? "country" : "food" });
-    return;
-  }
-  const again = state.level === "trade";
-  state.flow = v;
-  if (again) { render(); fitTrade(); } else location.hash = hashFor({ iso3: state.iso3, group: state.group, level: "trade" });
 }
 
 function renderCrumbs() {
@@ -623,6 +609,7 @@ function renderCrumbs() {
   }
   if (state.level === "table") trail.push(["All the numbers", link({ level: "table" })]);
   if (state.level === "trade") trail.push(["Bought and sold", link({ level: "trade" })]);
+  if (state.level === "used") trail.push(["Used for", link({ level: "used" })]);
   const up = trail.length > 1 ? trail[trail.length - 2][1] : "#";
   el.innerHTML = `
     <a class="back" href="${up}">‹ Back</a>
@@ -639,11 +626,10 @@ function renderFoot() {
       Licence: <a href="${t.licence_url}" target="_blank" rel="noopener">${t.licence}</a>.`;
     return;
   }
-  const href = state.iso3 && country(state.iso3) ? link({ level: "sources" }) : "#about";
-  document.getElementById("foot").innerHTML = ["sources", "table", "about"].includes(state.level)
+  document.getElementById("foot").innerHTML = state.iso3 || state.level === "about"
     ? `Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.`
     : `Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.
-       <a href="${href}">How do we know? ›</a>`;
+       <a href="#about">How do we know? ›</a>`;
 }
 
 // Clickable rows (foods, rankings, examples) navigate; selects in the table level re-render.
@@ -721,8 +707,7 @@ function viewCountry() {
     ${strip(v)}
     ${menuLine(id, v)}
     ${euLine(id, "all")}
-    <a class="next" href="${link({ level: "foods" })}">Which foods run out first? ›</a>
-    <a class="more" href="${link({ level: "trade", group: "all" })}">Who does ${id === EU ? "the EU" : nameOf(id)} buy food from? ›</a>`;
+    <a class="next" href="${link({ level: "foods" })}">Which foods run out first? ›</a>`;
 }
 
 // Level 1: the same date for every food, plus how the country compares.
@@ -795,10 +780,7 @@ function viewFood() {
     ${head}
     ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
     ${euLine(id)}
-    ${balance(id)}
     ${trend(id)}
-    ${perPerson(id)}
-    ${tradeTeaser(id)}
     ${compareFood(id)}
     <a class="next" href="${link({ level: "sources" })}">How do we know? ›</a>`;
 }
@@ -870,6 +852,16 @@ function perPerson(id) {
     ${perDay != null ? `<p class="small">The average person ${where} eats <strong>${kg(pc.food)}</strong> of ${food()} a year,
       about ${perDay.toLocaleString("en-GB")} g a day${avgs ? ` (averages: ${avgs})` : ""}.</p>` : ""}
     ${trade}`;
+}
+
+// What a food is used for once it is in the country (the "Used" row of the balance card).
+function viewUsed() {
+  const id = state.iso3;
+  return `
+    <h2>${nameOf(id)} · ${groupInfo().label}: what it is used for</h2>
+    <p>“Used” is everything that stays in ${whoOf(id)}: eaten, fed to animals, made into other
+      foods, kept as seed or lost after harvest.</p>
+    ${perPerson(id)}`;
 }
 
 // Biggest surplus and shortfall per person for one food (produced minus used, kg/person/year).
@@ -1111,6 +1103,97 @@ function expertDetail(id) {
 }
 
 // ------------------------------------------------------------------------------------------------
+// balance card: produced, bought, sold, used. A summary and the navigation in one: each row opens
+// the page that digs into it. Bars form a waterfall (each starts where the sum so far ends), from
+// the food balance, so produced + bought − sold (± storage) = used.
+
+function summaryRows(id) {
+  const c = country(id)?.indicators?.[state.group]?.components_kt;
+  const go = (level, extra = {}) => ({ hash: hashFor({ iso3: id, group: state.group, level }), ...extra });
+  const prodGo = go(state.group === "all" ? "country" : "food");
+  const tm = (flow) => tradeFor(id, state.group, flow);
+  if (state.group === "all" || !c || !(c.supply > 0)) {
+    // No single tonnes figure for "all food" (or no food balance at all, as for Japan): months for
+    // own production, trade totals by weight as shipped.
+    if (!state.trade) loadTrade();
+    const rows = [];
+    const v = pctFor(id, "all");
+    if (state.group === "all" && v != null) {
+      rows.push({ key: "produced", label: "Own farms", value: lasts(v, { short: true }), bar: [0, Math.min(v, 100)],
+        title: "How long the protein from its own farms would last", ...prodGo });
+    }
+    const M = tm("imports")?.[0], X = tm("exports")?.[0];
+    const top = Math.max(M ?? 0, X ?? 0) || 1;
+    const t = (x) => (x == null ? (state.trade ? "–" : "…") : shortTonnes(x / 1000));
+    if (state.trade ? M != null || X != null : true) {
+      rows.push({ key: "imports", sign: "+", label: "Bought", value: t(M), bar: [0, ((M ?? 0) / top) * 100], ...go("trade", { flow: "imports" }) });
+      rows.push({ key: "exports", sign: "−", label: "Sold", value: t(X), bar: [0, ((X ?? 0) / top) * 100], ...go("trade", { flow: "exports" }) });
+    }
+    return { rows };
+  }
+  let P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0;
+  const D = c.supply;
+  if (id === EU) {
+    // Members' trade with each other cancels out; show trade with the rest of the world.
+    M = (tm("imports")?.[0] ?? 0) / 1000;
+    X = (tm("exports")?.[0] ?? 0) / 1000;
+    if (!state.trade) loadTrade();
+  }
+  const store = D - (P + M - X); // > 0: taken out of storage, < 0: put into storage
+  const showStore = id !== EU && Math.abs(store) >= Math.max(1, 0.005 * (P + M));
+  const top = Math.max(P + M, D, P + M - X + Math.max(store, 0)) || 1;
+  const pct = (x) => (Math.max(0, x) / top) * 100;
+  const out = id === EU ? " outside the EU" : "";
+  return {
+    rows: [
+      { key: "produced", label: "Produced", value: shortTonnes(P), bar: [0, pct(P)], ...prodGo },
+      { key: "imports", sign: "+", label: `Bought${out}`, value: shortTonnes(M), bar: [pct(P), pct(M)], ...go("trade", { flow: "imports" }) },
+      { key: "exports", sign: "−", label: `Sold${out}`, value: shortTonnes(X), bar: [pct(P + M - X), pct(X)], ...go("trade", { flow: "exports" }) },
+      { key: "used", sign: "=", label: "Used", value: shortTonnes(D), bar: [0, pct(D)],
+        title: "Eaten, fed to animals, made into other foods or lost", ...go("used") },
+    ],
+    note: id === EU ? "Trade with the rest of the world, by weight as shipped, so the rows do not add up exactly."
+      : showStore ? `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage` : "",
+  };
+}
+
+function activeRow() {
+  if (state.level === "trade") return state.flow;
+  if (state.level === "used") return "used";
+  if (state.level === "food" || (state.level === "country" && state.group === "all")) return "produced";
+  return null;
+}
+
+function renderSummary() {
+  const el = document.getElementById("summary");
+  const sub = document.getElementById("sublinks");
+  const id = state.iso3;
+  if (!id || state.level === "about") { el.innerHTML = ""; sub.innerHTML = ""; return; }
+  const { rows, note } = summaryRows(id);
+  const active = activeRow();
+  el.innerHTML = rows.length ? `<div class="sumcard wf">${rows.map((r) => `
+    <button type="button" class="sum-row ${{ produced: "prod", imports: "in", exports: "out", used: "used" }[r.key]}"
+      data-hash="${r.hash}" ${r.flow ? `data-flow="${r.flow}"` : ""} ${r.title ? `title="${r.title}"` : ""}
+      aria-current="${r.key === active}">
+      <span class="wf-head"><span><b>${r.sign ?? ""}</b>${r.label}</span><strong>${r.value}</strong></span>
+      <span class="wf-track"><span style="left:${r.bar[0]}%;width:${r.bar[1]}%"></span></span>
+    </button>`).join("")}
+    ${note ? `<p class="sum-note">${note}</p>` : ""}</div>` : "";
+  sub.innerHTML = country(id)
+    ? `<a href="${link({ level: "sources" })}">How do we know? ›</a>
+       <a href="${link({ level: "table" })}">All the numbers ›</a>`
+    : "";
+  for (const b of el.querySelectorAll(".sum-row")) {
+    b.onclick = () => {
+      if (b.dataset.flow) state.flow = b.dataset.flow;
+      // Bought and Sold share a hash; switching between them only repaints.
+      if (location.hash === b.dataset.hash) { render(); if (state.level === "trade") fitTrade(); }
+      else location.hash = b.dataset.hash;
+    };
+  }
+}
+
+// ------------------------------------------------------------------------------------------------
 // trade: who a country buys its food from and sells it to
 
 // Map shades for a partner's share of the selected country's trade, in percent.
@@ -1135,7 +1218,7 @@ function loadTrade() {
   tradeLoading ??= loadJSON("data/trade.json")
     .then((d) => {
       state.trade = d;
-      if (["food", "trade"].includes(state.level)) render();
+      if (state.iso3) render();
       if (state.level === "trade") fitTrade();
     })
     .catch((e) => console.error(e));
@@ -1170,28 +1253,6 @@ function whoOf(id) {
   return inText(id);
 }
 
-// One or two sentences on the food page, linking to the trade level.
-function tradeTeaser(id) {
-  if (!state.trade) { loadTrade(); return ""; }
-  if (state.group === "fish") return "";
-  const v = pctFor(id);
-  const lines = [];
-  const imp = shares(id, state.group, "imports").slice(0, 3);
-  if (imp.length && (v == null || v < 104)) {
-    lines.push(`Most of the ${food()} ${whoOf(id)} buys abroad comes from ${namesList(imp.map((r) => r.id))}.`);
-  }
-  const exp = shares(id, state.group, "exports").slice(0, 3);
-  if (exp.length && v != null && v >= 96) {
-    lines.push(`What ${whoOf(id)} sells abroad goes mostly to ${namesList(exp.map((r) => r.id))}.`);
-  }
-  if (!lines.length) return "";
-  const flow = v != null && v >= 104 && exp.length ? "exports" : "imports";
-  return `
-    <h3>Bought and sold</h3>
-    <p>${lines.join(" ")}</p>
-    <a class="more" href="${link({ level: "trade" })}" data-flow="${flow}">See it on the map ›</a>`;
-}
-
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
@@ -1223,7 +1284,6 @@ function viewTrade() {
   const Who = cap(who);
   return `
     ${head}
-    ${balance(id)}
     <p class="q">${Who} ${imports ? "buys" : "sells"} about <strong>${tonnes(total)}</strong> of
       ${food()} ${imports ? "from" : "to"} other countries a year. Most of it ${imports ? "comes from" : "goes to"}:</p>
     <ol class="partners">${top.map((r) => `
@@ -1255,52 +1315,13 @@ function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// In, out and what stays, as a waterfall: produced + bought − sold (± storage) = used here.
-// FBS figures in primary equivalents, so the numbers add up (the trade view's partner shares come
-// from the trade matrix, its totals from here).
+// "2.4 million t" / "350 thousand t" for the balance card.
 function shortTonnes(kt) {
   const a = Math.abs(kt);
   // From 100 thousand t on in millions, so the rows of one sum share a unit (2.4 − 1.8 = 0.6).
   if (a >= 100) return `${(kt / 1000).toLocaleString("en-GB", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} million t`;
   if (a >= 1) return `${Math.round(kt).toLocaleString("en-GB")} thousand t`;
   return `${Math.round(kt * 1000).toLocaleString("en-GB")} t`;
-}
-
-function balance(id) {
-  const c = country(id)?.indicators?.[state.group]?.components_kt;
-  if (!c || state.group === "all" || !(c.supply > 0)) return "";
-  const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, D = c.supply;
-  const store = D - (P + M - X); // > 0: taken out of storage, < 0: put into storage
-  // Shown whenever leaving it out would make the rounded rows not add up.
-  const showStore = id !== EU && Math.abs(store) >= Math.max(1, 0.005 * (P + M));
-  const top = Math.max(P + M, D, P + M - X + Math.max(store, 0));
-  const rows = [["", "Produced here", 0, P, "prod"]];
-  if (id !== EU) rows.push(["+", "Bought from abroad", P, M, "in"], ["−", "Sold abroad", P + M - X, X, "out"]);
-  if (showStore) {
-    rows.push(store > 0
-      ? ["+", "Taken out of storage", P + M - X, store, "in"]
-      : ["−", "Put into storage", D, -store, "out"]);
-  }
-  rows.push(["=", `Used in ${whoOf(id)}`, 0, D, "used"]);
-  const pc = perCapita(id);
-  const kgpp = pc?.supply != null ? ` That is about <strong>${kg(pc.supply)}</strong> per person a year.` : "";
-  const hub = id !== EU && P < 0.1 * D && X >= 0.3 * M && X >= 50;
-  const how = state.group === "stimulants" ? "roasts the coffee, makes chocolate and blends tea"
-    : state.group === "vegetable_oils" ? "refines and bottles the oil" : "processes or repacks it";
-  const text = hub
-    ? `${cap(whoOf(id))} produces almost none of it. Of the ${shortTonnes(M)} it buys, it ${how} and
-       sells ${shortTonnes(X)} on, so ${shortTonnes(D)} stays in ${whoOf(id)}.${kgpp}`
-    : id === EU
-      ? `Trade between EU countries cancels out, so only what the EU as a whole produces and uses is shown.${kgpp}`
-      : `So ${shortTonnes(D)} a year is used in ${whoOf(id)}.${kgpp}`;
-  return `
-    <h3>In, out, and what stays</h3>
-    <div class="wf">${rows.map(([sign, label, from, v, cls]) => `
-      <div class="wf-row ${cls}">
-        <div class="wf-head"><span><b>${sign}</b>${label}</span><strong>${shortTonnes(v)}</strong></div>
-        <div class="wf-track"><span style="left:${(from / top) * 100}%;width:${(Math.max(0, v) / top) * 100}%"></span></div>
-      </div>`).join("")}</div>
-    <p class="small">${text} “Used” means eaten, fed to animals, made into other foods or lost.</p>`;
 }
 
 function tradeTooltip(iso3) {
