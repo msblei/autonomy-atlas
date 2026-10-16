@@ -1,6 +1,8 @@
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { SEASONS, forHowLong, lastDay, lasts, months, strip } from "./calendar.js";
+import "@fontsource-variable/fraunces/opsz.css";
+import "@fontsource-variable/inter";
+import { SEASONS, forHowLong, lastDay, lasts, months, season, strip } from "./calendar.js";
 
 // ------------------------------------------------------------------------------------------------
 // state
@@ -11,7 +13,8 @@ import { SEASONS, forHowLong, lastDay, lasts, months, strip } from "./calendar.j
 //   #DEU            country     one date: how long its own food would last
 //   #DEU/foods      foods       the same date for every food
 //   #DEU/cereals    food        one food: trend, per person, where the harvest goes
-//   #DEU/cereals/trade          who it buys from and sells to (map: partners and arcs)
+//   #DEU/cereals/trade          who it buys from (map: partners and arcs)
+//   #DEU/cereals/sells          who it sells to
 //   #DEU/cereals/used           what it is used for, per person
 //   #DEU/cereals/sources        how do we know: FAO figures, the sum, check-it-yourself
 //   #DEU/cereals/table          all the numbers (SSR, IDR, tonnes/kcal, FAO items)
@@ -32,7 +35,8 @@ const state = {
   names: {}, // iso3 -> name for every polygon, including places without FAO data
   iso3By2: {}, // ISO2 -> ISO3, to preselect the reader's country from the browser language
   bbox: {}, // iso3 -> [w, s, e, n]
-  centre: {}, // iso3 -> [lon, lat] of the largest polygon, where trade arcs start and end
+  centre: {}, // iso3 -> [lon, lat] inside the largest polygon: label, trade arcs
+  area: {}, // iso3 -> size of the largest polygon (square degrees at its latitude), for label ranks
 };
 
 const EU = "EU27";
@@ -68,28 +72,39 @@ const FLAG_TEXT = {
   jrc_group_only: "Dairy comes from the European Commission's balance in milk equivalent, for dairy as a whole: no ratio per product and none weighted by calories.",
 };
 
-// Short names for the food buttons; the full label is shown below them.
+// Short names for the food buttons; the full label is in their tooltip and on every page.
 const SHORT = {
   all: "All food", potatoes_roots: "Potatoes", sugar: "Sugar", oilseeds: "Oilseeds",
   vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, tea", wine_beer: "Wine, beer",
 };
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
+// The map key in a few words per colour (SEASONS, in the same order).
+const SEASON_SHORT = ["under 6 months", "6 to 9", "9 to 11", "11 to 12", "a full year", "more than enough"];
 
 // ------------------------------------------------------------------------------------------------
 // map
 
+// No base map: the ocean is the background, the countries are our own shapes, and the labels are
+// ours too, so tiny places (Vatican, Guernsey) never crowd the big ones. Only the label font is
+// fetched from the MapLibre demo server.
 const map = new maplibregl.Map({
   container: "map",
-  style: "https://demotiles.maplibre.org/style.json",
+  style: {
+    version: 8,
+    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    sources: {},
+    layers: [{ id: "ocean", type: "background", paint: { "background-color": "#d9e3e5" } }],
+  },
   center: [15, 30],
   zoom: 1.5,
   minZoom: 1,
   maxZoom: 7,
-  attributionControl: { compact: true },
+  attributionControl: false,
 });
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "Borders © EuroGeographics / GISCO" }), "bottom-right");
 
-const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false });
+const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "tip", offset: 14 });
 
 async function loadJSON(path) {
   const r = await fetch(path);
@@ -127,16 +142,61 @@ function bboxOf(geometry) {
   return b;
 }
 
-// Centre of a country's largest polygon (by bounding box), so France's arcs end in France, not in
-// the Atlantic between Europe and French Guiana.
-function centreOf(geometry) {
-  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
-  let best = null, bestArea = -1;
-  for (const poly of polys) {
-    const [w, s, e, n] = bboxOf({ coordinates: poly[0] });
-    if ((e - w) * (n - s) > bestArea) { bestArea = (e - w) * (n - s); best = [(w + e) / 2, (s + n) / 2]; }
+// A point well inside a country's largest polygon: the grid point farthest from its edges, refined
+// twice. Labels go there and trade arcs start and end there. The middle of the bounding box would
+// put Norway's label in Sweden and France's arcs in the Atlantic (French Guiana).
+function insideRing(ring, x, y) {
+  let hit = false;
+  for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+    const [xi, yi] = ring[i], [xj, yj] = ring[j];
+    if ((yi > y) !== (yj > y) && x < ((xj - xi) * (y - yi)) / (yj - yi) + xi) hit = !hit;
+  }
+  return hit;
+}
+
+function edgeDistance(rings, x, y, k) {
+  let best = Infinity;
+  for (const ring of rings) {
+    for (let i = 1; i < ring.length; i++) {
+      const ax = ring[i - 1][0] * k, ay = ring[i - 1][1], bx = ring[i][0] * k, by = ring[i][1];
+      const dx = bx - ax, dy = by - ay, px = x * k;
+      const t = dx || dy ? Math.max(0, Math.min(1, ((px - ax) * dx + (y - ay) * dy) / (dx * dx + dy * dy))) : 0;
+      const ex = ax + t * dx - px, ey = ay + t * dy - y;
+      best = Math.min(best, ex * ex + ey * ey);
+    }
   }
   return best;
+}
+
+function anchorOf(geometry) {
+  const polys = geometry.type === "Polygon" ? [geometry.coordinates] : geometry.coordinates;
+  let rings = null, area = -1;
+  for (const poly of polys) {
+    const r = poly[0];
+    let a = 0;
+    for (let i = 1; i < r.length; i++) a += r[i - 1][0] * r[i][1] - r[i][0] * r[i - 1][1];
+    const lat = r.reduce((t, p) => t + p[1], 0) / r.length;
+    a = Math.abs(a / 2) * Math.cos((lat * Math.PI) / 180);
+    if (a > area) { area = a; rings = poly; }
+  }
+  const [w, s, e, n] = bboxOf({ coordinates: rings[0] });
+  const k = Math.cos((((s + n) / 2) * Math.PI) / 180);
+  let pt = [(w + e) / 2, (s + n) / 2], best = -1;
+  let cx = pt[0], cy = pt[1], sx = e - w, sy = n - s;
+  const N = 14;
+  for (let pass = 0; pass < 3; pass++) {
+    for (let i = 0; i < N; i++) {
+      for (let j = 0; j < N; j++) {
+        const x = cx - sx / 2 + ((i + 0.5) * sx) / N, y = cy - sy / 2 + ((j + 0.5) * sy) / N;
+        if (!insideRing(rings[0], x, y) || rings.slice(1).some((h) => insideRing(h, x, y))) continue;
+        const d = edgeDistance(rings, x, y, k);
+        if (d > best) { best = d; pt = [x, y]; }
+      }
+    }
+    [cx, cy] = pt;
+    sx = (sx / N) * 3; sy = (sy / N) * 3;
+  }
+  return { pt, area };
 }
 
 // Data starts loading straight away, in parallel with the background map (whose demo tile server
@@ -155,13 +215,11 @@ const dataReady = Promise.all([geoReady, loadJSON("data/ssr.json")]).then(([geo,
     state.names[iso3] = name;
     if (iso2) state.iso3By2[iso2] = iso3;
     state.bbox[iso3] = bboxOf(f.geometry);
-    state.centre[iso3] = centreOf(f.geometry);
+    const { pt, area } = anchorOf(f.geometry);
+    state.centre[iso3] = pt;
+    state.area[iso3] = area;
   }
   buildCountryPicker();
-  if (!location.hash) {
-    const own = readersCountry();
-    if (own) history.replaceState(null, "", `#${own}`);
-  }
   window.addEventListener("hashchange", () => route());
   route();
   return geo;
@@ -176,24 +234,17 @@ map.on("load", async () => {
   const geo = await dataReady;
   if (!geo) return;
 
-  // The base style colours every country and draws coastlines and equator/tropics; ours replace
-  // them.
-  for (const id of ["countries-fill", "countries-boundary", "crimea-fill", "coastline", "geolines", "geolines-label"]) {
-    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
-  }
-  const labels = map.getStyle().layers.find((l) => l.type === "symbol" && l.layout?.visibility !== "none")?.id;
-
   map.addImage("hatch", hatch());
   map.addSource("countries", { type: "geojson", data: geo, promoteId: "iso3" });
-  map.addLayer({ id: "atlas-fill", type: "fill", source: "countries", paint: { "fill-color": NO_DATA } }, labels);
+  map.addLayer({ id: "atlas-fill", type: "fill", source: "countries", paint: { "fill-color": NO_DATA } });
   map.addLayer({
     id: "atlas-nodata", type: "fill", source: "countries",
     paint: { "fill-pattern": "hatch" }, filter: ["in", ["get", "iso3"], ["literal", []]],
-  }, labels);
+  });
   map.addLayer({
     id: "atlas-line", type: "line", source: "countries",
-    paint: { "line-color": "#ffffff", "line-width": 0.8 },
-  }, labels);
+    paint: { "line-color": "#fbf9f4", "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.4, 5, 1.2] },
+  });
   map.addSource("arcs", { type: "geojson", data: emptyFC(), lineMetrics: true });
   map.addLayer({
     id: "atlas-arcs", type: "line", source: "arcs",
@@ -204,15 +255,16 @@ map.on("load", async () => {
       "line-gradient": ["interpolate", ["linear"], ["line-progress"],
         0, "rgba(31,74,110,0.15)", 1, "rgba(31,74,110,0.9)"],
     },
-  }, labels);
+  });
   map.addLayer({
     id: "atlas-hover", type: "line", source: "countries",
-    paint: { "line-color": "#1f2a24", "line-width": 1.2 }, filter: ["==", ["get", "iso3"], ""],
-  }, labels);
+    paint: { "line-color": "#1c2420", "line-width": 1.4 }, filter: ["==", ["get", "iso3"], ""],
+  });
   map.addLayer({
     id: "atlas-selected", type: "line", source: "countries",
-    paint: { "line-color": "#1f2a24", "line-width": 2.5 }, filter: ["==", ["get", "iso3"], ""],
-  }, labels);
+    paint: { "line-color": "#1c2420", "line-width": 2.6 }, filter: ["==", ["get", "iso3"], ""],
+  });
+  addLabels();
 
   state.mapReady = true;
   state.bloc = map.getZoom() < EU_ZOOM;
@@ -220,6 +272,7 @@ map.on("load", async () => {
   renderLegend();
   if (state.level === "trade") fitTrade();
   else if (state.iso3) flyTo(state.iso3);
+  else showWorld(0);
 
   map.on("zoom", () => {
     const bloc = map.getZoom() < EU_ZOOM;
@@ -254,6 +307,48 @@ map.on("load", async () => {
   map.on("click", "atlas-fill", (e) => select(e.features[0].properties.iso3));
 });
 
+// Country names, in four ranks by size: the big ones from the start, the small ones only zoomed
+// in, so the map never turns into a page of text. Zoomed out, the EU gets one label.
+const LABEL_RANKS = [[40, 1], [5, 2], [0.5, 2.9], [0, 4.2]]; // [min area, min zoom]
+function addLabels() {
+  const features = Object.entries(state.centre).map(([iso3, pt]) => ({
+    type: "Feature", geometry: { type: "Point", coordinates: pt },
+    properties: { iso3, name: state.names[iso3], area: state.area[iso3] },
+  }));
+  features.push({ type: "Feature", geometry: { type: "Point", coordinates: [10, 50] },
+    properties: { iso3: EU, name: "European Union", area: 1e6 } });
+  map.addSource("labels", { type: "geojson", data: { type: "FeatureCollection", features } });
+  LABEL_RANKS.forEach(([min, minzoom], i) => {
+    const max = i ? LABEL_RANKS[i - 1][0] : Infinity;
+    map.addLayer({
+      id: `atlas-label-${i}`, type: "symbol", source: "labels", minzoom,
+      filter: ["all", [">=", ["get", "area"], min], ["<", ["get", "area"], max]],
+      layout: {
+        "text-field": ["get", "name"],
+        "text-font": ["Open Sans Semibold"],
+        "text-size": ["interpolate", ["linear"], ["zoom"], 1, i ? 10 : 11, 6, i ? 13 : 15],
+        "text-max-width": 7,
+        "text-letter-spacing": 0.02,
+        "symbol-sort-key": ["-", ["get", "area"]],
+        "text-padding": 4,
+      },
+      paint: { "text-color": "#26302b", "text-halo-color": "rgba(251,249,244,.85)", "text-halo-width": 1.4 },
+    });
+  });
+}
+
+// Labels follow the colours: zoomed out the EU is one shape with one name.
+function filterLabels() {
+  const members = state.data.meta.eu_members;
+  const bloc = state.bloc && state.level !== "trade";
+  LABEL_RANKS.forEach(([min], i) => {
+    const max = i ? LABEL_RANKS[i - 1][0] : Infinity;
+    const hide = bloc ? members : [EU];
+    map.setFilter(`atlas-label-${i}`, ["all", [">=", ["get", "area"], min], ["<", ["get", "area"], max],
+      ["!", ["in", ["get", "iso3"], ["literal", hide]]]]);
+  });
+}
+
 // The reader's country, guessed from the browser languages (de-DE -> Germany, de -> Germany).
 // An English-language browser in Berlin says en-US, so a language whose country is on another
 // continent than the time zone is skipped.
@@ -284,35 +379,43 @@ function parseHash() {
   if (b === "foods") return { iso3: a, group: "all", level: "foods" };
   const group = state.data.groups.some((g) => g.key === b) ? b : "all";
   if (c === "used" && group === "all") return { iso3: a, group, level: "country" };
-  if (["sources", "table", "trade", "used"].includes(c)) return { iso3: a, group, level: c };
+  if (c === "trade" || c === "sells") return { iso3: a, group, level: "trade", flow: c === "sells" ? "exports" : "imports" };
+  if (["sources", "table", "used"].includes(c)) return { iso3: a, group, level: c };
   return group === "all" ? { iso3: a, group, level: "country" } : { iso3: a, group, level: "food" };
 }
 
-function hashFor({ iso3, group = "all", level }) {
+function hashFor({ iso3, group = "all", level, flow = "imports" }) {
   if (level === "about") return "#about";
   if (!iso3 || level === "intro") return "#";
   if (level === "country") return `#${iso3}`;
   if (level === "foods") return `#${iso3}/foods`;
   if (level === "food") return `#${iso3}/${group}`;
+  if (level === "trade") return `#${iso3}/${group}/${flow === "exports" ? "sells" : "trade"}`;
   return `#${iso3}/${group}/${level}`;
 }
 
 function link(view) {
-  return hashFor({ iso3: state.iso3, group: state.group, level: state.level, ...view });
+  return hashFor({ iso3: state.iso3, group: state.group, level: state.level, flow: state.flow, ...view });
 }
 
 function route() {
-  const prev = `${state.iso3}/${state.group}/${state.level}`;
+  const prev = `${state.iso3}/${state.group}/${state.level}/${state.flow}`;
   const next = parseHash();
   // Without a country the food is not in the hash; keep the one picked for the map.
   if (!next.iso3 && next.level === "intro") next.group = state.group;
   Object.assign(state, next);
   render();
-  document.getElementById("panel").scrollTop = 0;
-  if (state.level === "trade" && prev !== `${state.iso3}/${state.group}/${state.level}`) fitTrade();
+  // The map follows the country (Back, Forward, links), except after a click on the map itself,
+  // where the reader already sees it and a jump would only disorient.
+  const before = prev.split("/")[0];
+  if (state.level === "intro" && before !== "null") showWorld();
+  else if (state.iso3 && state.iso3 !== before && state.level !== "trade" && !clickedOnMap) flyTo(state.iso3);
+  clickedOnMap = false;
+  if (state.level === "trade" && prev !== `${state.iso3}/${state.group}/${state.level}/${state.flow}`) fitTrade();
 }
 
 // A click on the map keeps the reader on the same level (and food) for the new country.
+let clickedOnMap = false;
 function select(clicked) {
   // Zoomed out, the tooltip names the EU for its members, so a click picks the EU too. The trade
   // map colours every country on its own, so there a click picks the member.
@@ -321,7 +424,21 @@ function select(clicked) {
   const tradeOnly = state.level === "trade" && state.trade?.countries[iso3];
   const level = ["intro", "about"].includes(state.level) || (!country(iso3) && !tradeOnly)
     ? "country" : state.level;
-  location.hash = hashFor({ iso3, group: level === "country" || level === "foods" ? "all" : state.group, level });
+  const hash = hashFor({ iso3, group: level === "country" || level === "foods" ? "all" : state.group, level, flow: state.flow });
+  clickedOnMap = location.hash !== hash; // no hashchange (and no reset) when it is the same place
+  location.hash = hash;
+}
+
+// The part of the map not covered by the panel (left), the food menu (right) and the key (bottom).
+function openArea(extra = 0) {
+  const wide = window.innerWidth > 760;
+  const panel = document.getElementById("panel");
+  const rail = document.getElementById("foodrail");
+  const key = document.getElementById("legend");
+  return wide
+    ? { left: panel.offsetWidth + 40 + extra, right: rail.offsetWidth + 40 + extra, top: 40 + extra,
+      bottom: key.offsetHeight + 40 + extra }
+    : { left: 20, right: 20, top: rail.offsetHeight + key.offsetHeight + 30, bottom: panel.offsetHeight + 20 };
 }
 
 // Trade view: frame the country and its biggest partners (the ones with arcs).
@@ -334,29 +451,26 @@ function fitTrade() {
   const x0 = pts[0][0];
   const lons = pts.map(([x]) => (x - x0 > 180 ? x - 360 : x0 - x > 180 ? x + 360 : x));
   const lats = pts.map((p) => p[1]);
-  const panel = document.getElementById("panel");
-  const wide = window.innerWidth > 640;
   map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], {
-    padding: { left: wide ? panel.offsetWidth + 60 : 30, right: wide ? 280 : 30, top: 60,
-      bottom: wide ? 60 : panel.offsetHeight + 30 },
-    maxZoom: 4, duration: 900,
+    padding: openArea(20), maxZoom: 4, duration: 900,
   });
+}
+
+// The inhabited world, between the panel and the food menu.
+function showWorld(duration = 900) {
+  if (!state.mapReady) return;
+  map.fitBounds([[-125, -40], [150, 62]], { padding: openArea(), duration });
 }
 
 function flyTo(iso3) {
   if (!state.mapReady) return; // the map flies there itself once it has loaded
   // The EU only reads as one shape when zoomed out past EU_ZOOM.
-  if (iso3 === EU) { map.flyTo({ center: [10, 50], zoom: EU_ZOOM - 0.2, duration: 900 }); return; }
+  if (iso3 === EU) { map.flyTo({ center: [10, 50], zoom: EU_ZOOM - 0.2, padding: openArea(), duration: 900 }); return; }
   const b = state.bbox[iso3];
   if (!b) return;
   // Wide or antimeridian-crossing countries (Russia, the US) would zoom out to the whole world.
   if (b[2] - b[0] > 180) return;
-  const panel = document.getElementById("panel");
-  const left = window.innerWidth > 640 ? panel.offsetWidth + 40 : 20;
-  const bottom = window.innerWidth > 640 ? 20 : panel.offsetHeight + 20;
-  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], {
-    padding: { left, right: 60, top: 40, bottom }, maxZoom: 4, duration: 900,
-  });
+  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: openArea(), maxZoom: 4, duration: 900 });
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -556,17 +670,24 @@ function bar(value, max, color) {
   return `<span class="bar" style="width:${w}%;background:${color}"></span>`;
 }
 
+const CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7 7" /></svg>`;
+
 function tooltip(iso3) {
   if (state.level === "trade") return tradeTooltip(iso3);
   const id = entity(iso3);
-  if (!country(id)) return `<strong>${nameOf(iso3)}</strong><br>No figures from FAO.`;
+  const cta = id === state.iso3 ? "" : `<span class="cta">Click for the details</span>`;
+  if (!country(id)) return `<strong>${nameOf(iso3)}</strong>No figures from FAO.`;
   const v = mapValue(id);
   const contradicts = state.group === "all"
     ? country(id)?.indicators?.all?.protein?.withheld : withheld(id);
-  const text = v == null ? (contradicts ? "FAO's figures contradict themselves" : "no figures for this food")
-    : state.level === "table" ? fmt(v)
-    : `${state.group === "all" ? "Own food" : groupInfo().label}: ${lasts(v, { short: true })}`;
-  return `<strong>${nameOf(id)}</strong><br>${text}`;
+  if (v == null) {
+    return `<strong>${nameOf(id)}</strong><span class="v"><i class="hatch"></i>${contradicts
+      ? "FAO's figures contradict themselves" : "No figures for this food"}</span>${cta}`;
+  }
+  if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}${cta}`;
+  const what = state.group === "all" ? "Own food lasts" : `Own ${food()} lasts`;
+  return `<strong>${nameOf(id)}</strong>
+    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>${cta}`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -577,19 +698,20 @@ function render() {
   renderLegend();
   renderCrumbs();
   renderControls();
-  document.getElementById("country").value = country(state.iso3) ? state.iso3 : "";
   const views = { intro: viewIntro, about: viewAbout, country: viewCountry, foods: viewFoods,
     food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable };
   const el = document.getElementById("view");
   const noData = state.iso3 && !country(state.iso3) && state.level !== "about"
     && !(state.level === "trade" && state.trade?.countries[state.iso3]);
   el.innerHTML = noData ? viewNoData() : views[state.level]();
+  el.scrollTop = 0;
   wire(el);
   renderFoot();
 }
 
 function paintMap() {
   if (!state.mapReady) return;
+  filterLabels();
   if (state.level === "trade") { paintTrade(); return; }
   map.getSource("arcs").setData(emptyFC());
   let paint;
@@ -615,56 +737,54 @@ function paintMap() {
   map.setFilter("atlas-line", state.bloc
     ? ["!", ["in", ["get", "iso3"], ["literal", state.data.meta.eu_members]]]
     : null);
-  const sel = state.iso3 === EU ? state.data.meta.eu_members : [state.iso3 ?? ""];
-  map.setFilter("atlas-selected", ["in", ["get", "iso3"], ["literal", sel]]);
+  // The EU is not outlined: its members' outlines would draw every inner border again.
+  map.setFilter("atlas-selected", ["in", ["get", "iso3"], ["literal", state.iso3 === EU ? [] : [state.iso3 ?? ""]]]);
 }
 
-// The key is a <details> box: open on desktop, folded on phones where it would cover the map.
+// A row of colour boxes with a few words under each, plus "no figures".
+function scaleRow(items) {
+  return `<div class="scale">${items.map((s, i) => `<span class="${i === items.length - 1 ? "last" : ""}${s.mid ? " mid" : ""}">
+      <i style="background:${s.color}"></i><em>${s.label}</em></span>`).join("")}
+    <span class="gap"></span><span class="nodata"><i class="hatch"></i><em>no figures</em></span></div>`;
+}
+
+function seasonScale() {
+  return scaleRow(SEASONS.map((s, i) => ({ color: s.color, label: SEASON_SHORT[i], mid: i > 0 && i < 5 })));
+}
+
+// The key sits right under the food buttons: what the map shows, then what the colours mean.
 function renderLegend() {
   const el = document.getElementById("legend");
-  state.legendOpen ??= !matchMedia("(max-width: 640px)").matches;
-  const bloc = state.bloc
-    ? "Zoomed out, the EU is coloured as one. Zoom in to see each country."
-    : "";
-  const hatchKey = `<li><i class="hatch"></i>no figures</li>`;
-  let title, body;
   if (state.level === "trade") {
-    [title, body] = tradeLegend();
-    el.innerHTML = `<details ${state.legendOpen ? "open" : ""}><summary>${title}</summary>${body}</details>`;
-    el.querySelector("details").ontoggle = (e) => { state.legendOpen = e.target.open; };
+    const [title, body] = tradeLegend();
+    el.innerHTML = `<p class="title">${title}</p>${body}`;
     return;
   }
+  const bloc = state.bloc
+    ? `<p class="note2">Zoomed out, the EU is coloured as one country. Zoom in to see each member.</p>` : "";
   if (state.level === "table") {
     const { colors, ticks } = SCALES[tableIndicator()] ?? SCALES.ssr;
-    title = `${tableIndicator().toUpperCase()}, ${tableBasis()}`;
-    body = `
+    el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}</p>
       <div class="grad" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
-      <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>
-      <ul>${hatchKey}</ul>`;
-  } else {
-    const seasons = SEASONS;
-    title = state.group === "all"
-      ? "If each country had only its own food, the protein would last…"
-      : `If each country had only its own ${food()}, it would last…`;
-    body = `<ul>${seasons.map((s) => `<li><i style="background:${s.color}"></i>${s.label}</li>`).join("")}${hatchKey}</ul>`;
+      <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>${bloc}`;
+    return;
   }
-  el.innerHTML = `<details ${state.legendOpen ? "open" : ""}>
-    <summary>${title}</summary>${body}${bloc ? `<p>${bloc}</p>` : ""}</details>`;
-  el.querySelector("details").ontoggle = (e) => { state.legendOpen = e.target.open; };
+  const title = state.group === "all"
+    ? "If each country ate only <b>its own food</b>, the protein would last"
+    : `If each country had only <b>its own ${food()}</b>, it would last`;
+  el.innerHTML = `<p class="title">${title}</p>${seasonScale()}${bloc}`;
 }
 
-// The one menu at the top of the panel: country, food, and what to show. Each choice keeps the
-// other two, so switching from coffee imports to meat imports is a single tap.
+// The food buttons belong to the map: they change what it shows. Each choice keeps the country
+// and the level, so switching from coffee imports to meat imports is a single tap.
 function renderControls() {
   const foods = document.getElementById("foods");
-  foods.innerHTML = state.data.groups.map((g) => `
-    <button type="button" data-food="${g.key}" title="${g.label}"
+  foods.innerHTML = state.data.groups.map((g, i) => `
+    ${i === 1 ? `<span class="sep" aria-hidden="true"></span>` : ""}
+    <button type="button" data-food="${g.key}" title="${g.label}" class="${g.key === "all" ? "all" : ""}"
       aria-pressed="${g.key === state.group}">${SHORT[g.key] ?? g.label}</button>`).join("");
-  // The full name only where the button had to shorten it ("Coffee, tea" -> "Coffee, cocoa, tea").
-  const label = groupInfo().label;
-  document.getElementById("foodname").textContent = (SHORT[state.group] ?? label) === label ? "" : label;
   for (const b of foods.querySelectorAll("[data-food]")) b.onclick = () => chooseFood(b.dataset.food);
-  renderSummary();
+  foods.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
 
 function chooseFood(group) {
@@ -676,16 +796,16 @@ function chooseFood(group) {
   let level = state.level;
   if (["country", "foods", "food", "intro", "about"].includes(level)) level = group === "all" ? "country" : "food";
   if (level === "used" && group === "all") level = "country";
-  location.hash = hashFor({ iso3: state.iso3, group, level });
+  location.hash = hashFor({ iso3: state.iso3, group, level, flow: state.flow });
 }
 
 function renderCrumbs() {
   const el = document.getElementById("crumbs");
   if (state.level === "intro") { el.innerHTML = ""; return; }
-  const trail = [];
+  const trail = [["World", "#"]];
   if (state.iso3) {
     trail.push([nameOf(state.iso3), link({ level: "country", group: "all" })]);
-    if (["foods", "food"].includes(state.level) || (state.group !== "all" && country(state.iso3))) {
+    if (["foods", "food"].includes(state.level)) {
       trail.push(["Food by food", link({ level: "foods", group: "all" })]);
     }
     if (state.group !== "all" && country(state.iso3)) trail.push([groupInfo().label, link({ level: "food" })]);
@@ -694,44 +814,39 @@ function renderCrumbs() {
     trail.push(["How do we know?", state.iso3 ? link({ level: "sources" }) : "#about"]);
   }
   if (state.level === "table") trail.push(["All the numbers", link({ level: "table" })]);
-  if (state.level === "trade") trail.push(["Buys and sells", link({ level: "trade" })]);
+  if (state.level === "trade") trail.push([state.flow === "imports" ? "Buys" : "Sells", link({ level: "trade" })]);
   if (state.level === "used") trail.push(["Uses", link({ level: "used" })]);
-  const up = trail.length > 1 ? trail[trail.length - 2][1] : "#";
+  const up = trail[trail.length - 2][1];
   el.innerHTML = `
-    <a class="back" href="${up}">‹ Back</a>
+    <a class="back" href="${up}" title="Back" aria-label="Back">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg></a>
     <ol>${trail.map(([t, h], i) => i === trail.length - 1
       ? `<li aria-current="page">${t}</li>` : `<li><a href="${h}">${t}</a></li>`).join("")}</ol>`;
 }
 
 function renderFoot() {
   const m = state.data.meta;
+  const el = document.getElementById("foot");
+  const tools = state.iso3 && country(state.iso3) && !["sources", "table"].includes(state.level)
+    ? `<div class="tools"><a href="${link({ level: "table" })}">All the numbers, for experts</a></div>`
+    : !state.iso3 && state.level !== "about" ? `<div class="tools"><a href="#about">How do we know?</a></div>` : "";
   if (state.level === "trade") {
     const t = state.data.meta.sources.fao_tm;
-    document.getElementById("foot").innerHTML = `Trade figures: <a href="${t.url}" target="_blank"
+    el.innerHTML = `${tools}Trade figures: <a href="${t.url}" target="_blank"
       rel="noopener">FAO ${t.title}</a>, ${(state.trade?.meta.years ?? m.years).replace("-", "–")} averages.
       Licence: <a href="${t.licence_url}" target="_blank" rel="noopener">${t.licence}</a>.`;
     return;
   }
-  document.getElementById("foot").innerHTML = state.iso3 || state.level === "about"
-    ? `Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.`
-    : `Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.
-       <a href="#about">How do we know? ›</a>`;
+  el.innerHTML = `${tools}Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.`;
 }
 
 // Clickable rows (foods, rankings, examples) navigate; selects in the table level re-render.
 function wire(el) {
   for (const b of el.querySelectorAll("[data-go]")) {
-    b.onclick = () => { location.hash = b.dataset.go; if (b.dataset.fly) flyTo(b.dataset.fly); };
+    b.onclick = () => { location.hash = b.dataset.go; };
   }
   for (const b of el.querySelectorAll("[data-grown]")) {
     b.onclick = () => { state.grown = b.dataset.grown === "1"; render(); fitTrade(); };
-  }
-  for (const b of el.querySelectorAll("[data-flow]")) {
-    b.onclick = () => {
-      const changed = state.flow !== b.dataset.flow;
-      state.flow = b.dataset.flow;
-      if (b.tagName === "BUTTON") { render(); if (changed) fitTrade(); }
-    };
   }
   const ind = el.querySelector("#indicator");
   if (ind) ind.onchange = () => { state.indicator = ind.value; render(); };
@@ -743,21 +858,78 @@ function wire(el) {
 // views
 
 function viewIntro() {
+  const own = readersCountry();
+  const dot = (i) => `<i class="dot" style="background:${SEASONS[i].color}"></i>`;
   return `
-    <p class="lead">Choose your country above, or tap it on the map.</p>
-    <p>For each country we work out how long the food produced there would last its people,
-      if it had to manage without buying anything from abroad, counted in months of the year.</p>
-    <p class="small">For example:</p>
-    <div class="chips">${EXAMPLES.filter(country)
-      .map((id) => `<button type="button" data-go="#${id}" data-fly="${id}">${nameOf(id)}</button>`)
+    <h1 class="hero">Could your country feed itself?</h1>
+    <p class="lede">Imagine a country had to live only on the food grown, raised and fished within
+      its own borders, buying nothing from abroad. How long would that food last its people?</p>
+    <div class="howto">
+      <p>The map answers in months of the year. ${dot(5)}${dot(4)} Green countries would have enough
+        for the whole year. ${dot(2)}${dot(1)}${dot(0)} Yellow, orange and red ones would run out sooner.</p>
+    </div>
+    ${own ? `<button type="button" class="primary" data-go="#${own}">
+      <span>Start with ${nameOf(own)}</span>${CHEVRON}</button>` : ""}
+    <ol class="howsteps">
+      <li><span><b>Tap a country</b> on the map, or find it by name above.</span></li>
+      <li><span><b>Choose a food</b> in the menu on the map: the colours change to show that food.</span></li>
+      <li><span><b>Dig deeper</b>: which foods run out first, and where a country buys its food.</span></li>
+    </ol>
+    <h3>Or start with</h3>
+    <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
+      .concat(country(EU) ? [EU] : [])
+      .map((id) => `<button type="button" data-go="#${id}">${id === EU ? "The EU as a whole" : nameOf(id)}</button>`)
       .join("")}</div>`;
 }
 
+// "Dig deeper": every next step is a question, with a hint of the answer under it.
+function explore(items) {
+  const rows = items.filter(Boolean);
+  if (!rows.length) return "";
+  return `<h3>Dig deeper</h3><ul class="explore">${rows.map((r) => `
+    <li><a href="${r.href}"><span class="t">${r.t}</span>${r.s ? `<span class="s">${r.s}</span>` : ""}${CHEVRON}</a></li>`)
+    .join("")}</ul>`;
+}
+
+// Trade totals as hints on the cards: "8.3 million t a year".
+function tradeHint(id, group, flow) {
+  if (!state.trade) { loadTrade(); return "…"; }
+  const comp = group === "all" ? null : country(id)?.indicators?.[group]?.components_kt;
+  const kt = comp?.[flow] ?? (tradeFor(id, group, flow)?.[0] ?? null);
+  if (kt == null) return null;
+  const v = comp?.[flow] != null ? kt : kt / 1000;
+  return `${shortTonnes(v)} a year`;
+}
+
+function tradeCards(id, group = state.group) {
+  if (group === "fish") return [];
+  const what = group === "all" ? "food" : `its ${food(group)}`;
+  const out = id === EU ? " outside the EU" : " abroad";
+  const card = (flow) => {
+    const hint = tradeHint(id, group, flow);
+    if (hint === null) return null;
+    return {
+      href: hashFor({ iso3: id, group, level: "trade", flow }),
+      t: flow === "imports" ? `Where does ${whoOf(id)} buy ${what}?` : `Where does ${whoOf(id)} sell ${what}?`,
+      s: `${flow === "imports" ? "Bought" : "Sold"}${out}: ${hint}`,
+    };
+  };
+  return [card("imports"), card("exports")];
+}
+
+function howCard() {
+  return { href: link({ level: "sources" }), t: "How do we know?", s: "Where the figures come from, and the sum" };
+}
+
+// No food balance (Japan, Singapore): say so, but trade records may still show who it buys from.
 function viewNoData() {
+  const id = state.iso3;
+  const cards = state.trade?.countries[id] ? tradeCards(id, "all") : (loadTrade(), []);
   return `
-    <h2>${nameOf(state.iso3)}</h2>
-    <p>The UN Food and Agriculture Organization publishes no food figures for this country or
-      territory, so we cannot show anything here.</p>`;
+    <h2>${nameOf(id)}</h2>
+    <p>The UN Food and Agriculture Organization publishes no food balance for this country or
+      territory, so we cannot say how long its own food would last.</p>
+    ${explore(cards)}`;
 }
 
 function euLine(iso3, group = state.group) {
@@ -786,25 +958,33 @@ function viewCountry() {
   const v = pctFor(id, "all");
   const who = id === EU ? "the 27 EU countries" : nameOf(id);
   const wAll = country(id)?.indicators?.all?.protein?.withheld;
+  const few = shortest(id);
+  const n = state.data.groups.length - 1;
+  const cards = [
+    { href: link({ level: "foods" }), t: "Which foods would run out first?",
+      s: few.length ? `Soonest: ${few.join(" and ")}` : `All ${n} kinds of food, one by one` },
+    ...tradeCards(id, "all"),
+    howCard(),
+  ];
+  const kicker = `${id === EU ? `<p class="kicker">27 countries together</p>` : ""}<h2>${nameOf(id)}</h2>`;
   if (v == null && wAll) {
-    return `<h2>${nameOf(id)}</h2>
+    return `${kicker}
       <p>For some foods, FAO's figures for ${nameOf(id)} contradict themselves, and the total changes a
         lot depending on how they are read, so we show no figure.
         ${robustWords(wAll.range, id, "protein")}</p>
-      <a class="next" href="${link({ level: "foods" })}">Look food by food ›</a>`;
+      ${explore(cards)}`;
   }
   if (v == null) {
-    return `<h2>${nameOf(id)}</h2><p>There are not enough figures for ${nameOf(id)} to work this out.</p>
-      <a class="next" href="${link({ level: "foods" })}">Look food by food ›</a>`;
+    return `${kicker}<p>There are not enough figures for ${nameOf(id)} to work this out.</p>${explore(cards)}`;
   }
   return `
-    <h2>${nameOf(id)}</h2>
+    ${kicker}
     <p class="q">If ${who} ate only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough protein …</p>
     <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
     ${strip(v)}
     ${menuLine(id, v)}
     ${euLine(id, "all")}
-    <a class="next" href="${link({ level: "foods" })}">Which foods run out first? ›</a>`;
+    ${explore(cards)}`;
 }
 
 // Level 1: the same date for every food, plus how the country compares.
@@ -818,7 +998,8 @@ function viewFoods() {
     .sort((a, b) => a.v - b.v);
   const who = id === EU ? "the EU" : c.name;
   return `
-    <h2>${nameOf(id)}: food by food</h2>
+    <p class="kicker">${nameOf(id)}</p>
+    <h2>Food by food</h2>
     <p class="q">If ${who} used only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough …</p>
     <ul class="foodlist">${rows.map(({ g, v }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
@@ -826,11 +1007,11 @@ function viewFoods() {
         ${strip(v, { small: true })}
         <span class="when">${lasts(v, { short: true })}</span>
       </a></li>`).join("")}</ul>
-    <p class="small">Tap a food to see more.</p>
+    <p class="small">Tap a food to see more about it.</p>
     ${compareAll(id)}`;
 }
 
-// Countries ranked by the "all food" date; zoomed out the EU takes part as one country.
+// Countries ranked by the "all food" date.
 function compareAll(id) {
   const rows = rankable()
     .map((r) => ({ ...r, v: pctFor(r.id, "all") }))
@@ -848,10 +1029,13 @@ function compareAll(id) {
     </div>`;
 }
 
+// Countries one by one; on the EU's own pages the EU takes part as one country instead of its
+// members. Rankings never change with the map's zoom: a list that reshuffles while zooming confuses.
 function rankable() {
   const members = state.data.meta.eu_members;
+  const bloc = state.iso3 === EU;
   return Object.entries(state.data.countries)
-    .filter(([id]) => (state.bloc ? !members.includes(id) : id !== EU))
+    .filter(([id]) => (bloc ? !members.includes(id) : id !== EU))
     .map(([id, c]) => ({ id, c }));
 }
 
@@ -877,15 +1061,23 @@ function viewFood() {
     : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be ${v < 0.5 ? "…" : "enough …"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
+  const cards = [
+    ...(w ? [] : tradeCards(id)),
+    !w && perCapita(id)?.supply != null
+      ? { href: link({ level: "used" }), t: `What is the ${food()} used for?`, s: "Eaten, fed to animals, made into other foods" } : null,
+    howCard(),
+  ];
   return `
-    <h2>${nameOf(id)} · ${g.label}</h2>
+    <p class="kicker">${nameOf(id)}</p>
+    <h2>${g.label}</h2>
     ${head}
     ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
     ${w ? "" : secondOpinion(id)}
     ${euLine(id)}
+    ${w ? "" : balanceCard(id)}
+    ${explore(cards)}
     ${w ? "" : trend(id)}
-    ${compareFood(id)}
-    <a class="next" href="${link({ level: "sources" })}">How do we know? ›</a>`;
+    ${compareFood(id)}`;
 }
 
 // "Was it always like this?": single years since 2010, labelled with the same short dates.
@@ -972,7 +1164,8 @@ function perPerson(id) {
 function viewUsed() {
   const id = state.iso3;
   return `
-    <h2>${nameOf(id)} · ${groupInfo().label}: what it is used for</h2>
+    <p class="kicker">${nameOf(id)} · ${groupInfo().label}</p>
+    <h2>What it is used for</h2>
     <p>What ${whoOf(id)} uses is everything that stays in the country: eaten, fed to animals, made into other
       foods, kept as seed or lost after harvest.</p>
     ${perPerson(id)}`;
@@ -1010,6 +1203,7 @@ function viewSources() {
   const v = pctFor(id);
   const jrc = fromJrc(id);
   return `
+    <p class="kicker">${nameOf(id)} · ${g.label}</p>
     <h2>How do we know?</h2>
     ${jrc ? aboutJrc(id) : aboutFao()}
     ${jrcItems(id)}
@@ -1018,7 +1212,7 @@ function viewSources() {
     ${jrc ? checkJrc(id) : checkYourself(id)}
     ${caveats(id, g)}
     ${mapSource()}
-    <a class="next" href="${link({ level: "table" })}">Show all the numbers ›</a>`;
+    ${explore([{ href: link({ level: "table" }), t: "Show all the numbers", s: "Self-sufficiency and import ratios, in tonnes and calories" }])}`;
 }
 
 function viewAbout() {
@@ -1270,7 +1464,7 @@ function mapSource() {
     <h3>The map</h3>
     <p class="small">Borders: <a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.
-      Background map: MapLibre demo tiles.</p>`;
+      Label font: MapLibre demo tiles. Typefaces: Fraunces and Inter (SIL Open Font License).</p>`;
 }
 
 // Level 4: everything, in the vocabulary of the methodology (SSR, IDR, tonnes, kcal).
@@ -1280,7 +1474,8 @@ function viewTable() {
   const g = groupInfo();
   const isAll = state.group === "all";
   return `
-    <h2>${nameOf(id)} · ${g.label}</h2>
+    <p class="kicker">${nameOf(id)} · ${g.label}</p>
+    <h2>All the numbers</h2>
     <div class="controls">
       <label>Indicator
         <select id="indicator">
@@ -1354,37 +1549,13 @@ function expertDetail(id) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// balance card: produced, bought, sold, used. A summary and the navigation in one: each row opens
-// the page that digs into it. Bars form a waterfall (each starts where the sum so far ends), from
-// the food balance, so produced + bought − sold (± storage) = used.
+// balance card: produced, bought, sold, used. Bars form a waterfall (each starts where the sum so
+// far ends), from the food balance, so produced + bought − sold (± storage) = used.
 
-function summaryRows(id) {
+function balanceCard(id) {
   const c = country(id)?.indicators?.[state.group]?.components_kt;
-  const go = (level, extra = {}) => ({ hash: hashFor({ iso3: id, group: state.group, level }), ...extra });
-  const prodGo = go(state.group === "all" ? "country" : "food");
-  const tm = (flow) => tradeFor(id, state.group, flow);
-  // A withheld balance (FAO's figures contradict themselves) gets no card: trade records by
-  // weight as shipped would sit next to FAO's balance figures and disagree with them.
-  if (withheld(id)) return { rows: [] };
-  if (state.group === "all" || !c || !(c.supply > 0)) {
-    // No single tonnes figure for "all food" (or no food balance at all, as for Japan): months for
-    // own production, trade totals by weight as shipped.
-    if (!state.trade) loadTrade();
-    const rows = [];
-    const v = pctFor(id, "all");
-    if (state.group === "all" && v != null) {
-      rows.push({ key: "produced", label: "Own food lasts", value: lasts(v, { short: true }), bar: [0, Math.min(v, 100)],
-        title: "How long the protein produced here would last", ...prodGo });
-    }
-    const M = tm("imports")?.[0], X = tm("exports")?.[0];
-    const top = Math.max(M ?? 0, X ?? 0) || 1;
-    const t = (x) => (x == null ? (state.trade ? "–" : "…") : shortTonnes(x / 1000));
-    if (state.trade ? M != null || X != null : true) {
-      rows.push({ key: "imports", sign: "+", label: "Buys", value: t(M), bar: [0, ((M ?? 0) / top) * 100], ...go("trade", { flow: "imports" }) });
-      rows.push({ key: "exports", sign: "−", label: "Sells", value: t(X), bar: [0, ((X ?? 0) / top) * 100], ...go("trade", { flow: "exports" }) });
-    }
-    return { rows };
-  }
+  // A withheld balance (FAO's figures contradict themselves) gets no card.
+  if (withheld(id) || !c || !(c.supply > 0)) return "";
   // For the EU, imports and exports are its trade with the rest of the world (compute.py), so the
   // rows add up like any country's. Fish has no trade records: then only produced and used.
   const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, D = c.supply;
@@ -1393,56 +1564,24 @@ function summaryRows(id) {
   const showStore = !noTrade && Math.abs(store) >= Math.max(1, 0.005 * (P + M));
   const top = Math.max(P + M, D, P + M - X + Math.max(store, 0)) || 1;
   const pct = (x) => (Math.max(0, x) / top) * 100;
-  const out = id === EU ? " outside the EU" : "";
-  const trade = noTrade ? [] : [
-    { key: "imports", sign: "+", label: `Buys${out}`, value: shortTonnes(M), bar: [pct(P), pct(M)], ...go("trade", { flow: "imports" }) },
-    { key: "exports", sign: "−", label: `Sells${out}`, value: shortTonnes(X), bar: [pct(P + M - X), pct(X)], ...go("trade", { flow: "exports" }) },
+  const out = id === EU ? " outside the EU" : " abroad";
+  const rows = [
+    { cls: "prod", label: "Produces", value: P, bar: [0, pct(P)] },
+    ...(noTrade ? [] : [
+      { cls: "in", sign: "+", label: `Buys${out}`, value: M, bar: [pct(P), pct(M)] },
+      { cls: "out", sign: "−", label: `Sells${out}`, value: X, bar: [pct(P + M - X), pct(X)] },
+    ]),
+    { cls: "used", sign: "=", label: "Uses", value: D, bar: [0, pct(D)] },
   ];
-  return {
-    rows: [
-      { key: "produced", label: "Produces", value: shortTonnes(P), bar: [0, pct(P)], ...prodGo },
-      ...trade,
-      { key: "used", sign: "=", label: "Uses", value: shortTonnes(D), bar: [0, pct(D)],
-        title: "Eaten, fed to animals, made into other foods or lost", ...go("used") },
-    ],
-    note: showStore ? `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage` : "",
-  };
-}
-
-function activeRow() {
-  if (state.level === "trade") return state.flow;
-  if (state.level === "used") return "used";
-  if (state.level === "food" || (state.level === "country" && state.group === "all")) return "produced";
-  return null;
-}
-
-function renderSummary() {
-  const el = document.getElementById("summary");
-  const sub = document.getElementById("sublinks");
-  const id = state.iso3;
-  if (!id || state.level === "about") { el.innerHTML = ""; sub.innerHTML = ""; return; }
-  const { rows, note } = summaryRows(id);
-  const active = activeRow();
-  el.innerHTML = rows.length ? `<div class="sumcard wf">${rows.map((r) => `
-    <button type="button" class="sum-row ${{ produced: "prod", imports: "in", exports: "out", used: "used" }[r.key]}"
-      data-hash="${r.hash}" ${r.flow ? `data-flow="${r.flow}"` : ""} ${r.title ? `title="${r.title}"` : ""}
-      aria-current="${r.key === active}">
-      <span class="wf-head"><span><b>${r.sign ?? ""}</b>${r.label}</span><strong>${r.value}</strong></span>
-      <span class="wf-track"><span style="left:${r.bar[0]}%;width:${r.bar[1]}%"></span></span>
-    </button>`).join("")}
-    ${note ? `<p class="sum-note">${note}</p>` : ""}</div>` : "";
-  sub.innerHTML = country(id)
-    ? `<a href="${link({ level: "sources" })}">How do we know? ›</a>
-       <a href="${link({ level: "table" })}">All the numbers ›</a>`
-    : "";
-  for (const b of el.querySelectorAll(".sum-row")) {
-    b.onclick = () => {
-      if (b.dataset.flow) state.flow = b.dataset.flow;
-      // Bought and Sold share a hash; switching between them only repaints.
-      if (location.hash === b.dataset.hash) { render(); if (state.level === "trade") fitTrade(); }
-      else location.hash = b.dataset.hash;
-    };
-  }
+  const note = showStore ? `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage` : "";
+  return `
+    <h3>A year of ${food()} in ${whoOf(id)}</h3>
+    <div class="sumcard wf" role="img" aria-label="${rows.map((r) => `${r.label}: ${shortTonnes(r.value)}`).join(", ")}">${rows.map((r) => `
+      <div class="sum-row ${r.cls}">
+        <span class="wf-head"><span><b>${r.sign ?? ""}</b>${r.label}</span><strong>${shortTonnes(r.value)}</strong></span>
+        <span class="wf-track"><span style="left:${r.bar[0]}%;width:${r.bar[1]}%"></span></span>
+      </div>`).join("")}
+      ${note ? `<p class="sum-note">${note}</p>` : ""}</div>`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1513,7 +1652,14 @@ function whoOf(id) {
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
-  const head = `<h2>${nameOf(id)} · ${g.label}, ${state.flow === "imports" ? "what it buys abroad" : "what it sells abroad"}</h2>`;
+  const out = id === EU ? "outside the EU" : "abroad";
+  const flows = `
+    <div class="seg" role="group" aria-label="Bought or sold">
+      <button type="button" data-go="${link({ flow: "imports" })}" aria-pressed="${state.flow === "imports"}">Bought ${out}</button>
+      <button type="button" data-go="${link({ flow: "exports" })}" aria-pressed="${state.flow === "exports"}">Sold ${out}</button>
+    </div>`;
+  const head = `<p class="kicker">${nameOf(id)} · ${g.label}</p>
+    <h2>${state.flow === "imports" ? `Where ${whoOf(id)} buys ${food()}` : `Where ${whoOf(id)} sells ${food()}`}</h2>${flows}`;
   if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading trade figures…</p>`; }
   if (state.group === "fish") {
     return `${head}<p>FAO's trade figures do not include fish and seafood, so we cannot show
@@ -1525,9 +1671,9 @@ function viewTrade() {
   const t = tradeFor(id);
   const rows = shares(id);
   const toggle = imports ? `
-    <div class="seg two" role="group" aria-label="Who sold it or where it was grown">
-      <button type="button" data-grown="0" aria-pressed="${!grown}">Bought from</button>
-      <button type="button" data-grown="1" aria-pressed="${grown}">Grown in</button>
+    <div class="seg sub" role="group" aria-label="Who sold it or where it was grown">
+      <button type="button" data-grown="0" aria-pressed="${!grown}">Who sold it</button>
+      <button type="button" data-grown="1" aria-pressed="${grown}">Where it was grown</button>
     </div>` : "";
   if (!t || !t[0] || !rows.length) {
     // No trade record is not the same as no trade: say what we have, not what we infer.
@@ -1550,12 +1696,12 @@ function viewTrade() {
   return `
     ${head}
     ${toggle}
-    <p class="q">${grown
+    <p>${grown
       ? `Where the ${food()} ${who} buys abroad was grown, following it back through the countries that sold it on:`
       : `${Who} ${imports ? "buys" : "sells"} about <strong>${tonnes(total)}</strong> of ${food()}
         ${imports ? "from" : "to"} other countries a year. Most of it ${imports ? "comes from" : "goes to"}:`}</p>
     <ol class="partners">${top.map((r) => `
-      <li><a href="${hashFor({ iso3: r.id, group: state.group, level: "trade" })}">
+      <li><a href="${hashFor({ iso3: r.id, group: state.group, level: "trade", flow: state.flow })}">
         <span class="name">${nameOf(r.id)}</span>
         <span class="track"><span class="bar" style="width:${(r.share / max) * 100}%"></span></span>
         <span class="pct">${r.share < 1 ? "<1" : Math.round(r.share)}%</span>
@@ -1586,13 +1732,13 @@ function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }
 
-// "2.4 million t" / "350 thousand t" for the balance card.
+// "2.4 million tonnes" / "350 thousand tonnes" for the balance card and the cards' hints.
 function shortTonnes(kt) {
   const a = Math.abs(kt);
   // From 100 thousand t on in millions, so the rows of one sum share a unit (2.4 − 1.8 = 0.6).
-  if (a >= 100) return `${(kt / 1000).toLocaleString("en-GB", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} million t`;
-  if (a >= 1) return `${Math.round(kt).toLocaleString("en-GB")} thousand t`;
-  return `${Math.round(kt * 1000).toLocaleString("en-GB")} t`;
+  if (a >= 100) return `${(kt / 1000).toLocaleString("en-GB", { maximumFractionDigits: 1, minimumFractionDigits: 1 })} million tonnes`;
+  if (a >= 1) return `${Math.round(kt).toLocaleString("en-GB")} thousand tonnes`;
+  return `${Math.round(kt * 1000).toLocaleString("en-GB")} tonnes`;
 }
 
 function tradeTooltip(iso3) {
@@ -1611,13 +1757,15 @@ function tradeTooltip(iso3) {
 function tradeLegend() {
   const id = state.iso3;
   const title = tradeFlow() === "grown"
-    ? `Where the ${food()} ${whoOf(id)} buys was grown`
+    ? `Where the ${food()} ${whoOf(id)} buys was <b>grown</b>`
     : state.flow === "imports"
-      ? `Where ${whoOf(id)} buys its ${food()}`
-      : `Where ${whoOf(id)} sells its ${food()}`;
-  const body = `<ul>${TRADE_STEPS.map((s) => `<li><i style="background:${s.color}"></i>${s.label}</li>`).join("")}
-    <li><i style="background:${HOME}"></i>${nameOf(id)}</li>
-    <li><i style="background:${NO_DATA}"></i>little or none</li></ul>`;
+      ? `Where ${whoOf(id)} <b>buys</b> its ${food()}: share of what it buys abroad`
+      : `Where ${whoOf(id)} <b>sells</b> its ${food()}: share of what it sells abroad`;
+  const steps = [...TRADE_STEPS].reverse().map((s) => ({ color: s.color, label: s.label }));
+  const body = `<div class="scale">
+      <span class="home"><i style="background:${HOME}"></i><em>${nameOf(id)}</em></span><span class="gap"></span>
+      ${steps.map((s, i) => `<span class="${i === steps.length - 1 ? "last" : ""}${i > 0 && i < steps.length - 1 ? " mid" : ""}"><i style="background:${s.color}"></i><em>${s.label}</em></span>`).join("")}
+      <span class="gap"></span><span class="nodata"><i style="background:${NO_DATA}"></i><em>little or none</em></span></div>`;
   return [title, body];
 }
 
@@ -1681,17 +1829,58 @@ function loadItems() {
 // ------------------------------------------------------------------------------------------------
 // controls
 
+// Type a few letters, pick with a click or Enter. Matches at the start of a name come first;
+// accents are ignored ("cote" finds Côte d'Ivoire).
 function buildCountryPicker() {
-  const sel = document.getElementById("country");
-  const opts = Object.entries(state.data.countries)
-    .map(([id, c]) => [id, c.name])
-    .sort((a, b) => a[1].localeCompare(b[1], "en"));
-  sel.innerHTML = `<option value="">Choose a country…</option>` +
-    opts.map(([id, name]) => `<option value="${id}">${name}</option>`).join("");
-  sel.onchange = () => {
-    if (!sel.value) return;
-    const level = ["food", "trade", "sources", "table"].includes(state.level) ? state.level : state.level === "foods" ? "foods" : "country";
-    location.hash = hashFor({ iso3: sel.value, group: state.group, level });
-    flyTo(sel.value);
+  const input = document.getElementById("country");
+  const list = document.getElementById("country-list");
+  const plain = (t) => t.normalize("NFD").replace(/\p{Diacritic}/gu, "").toLowerCase();
+  const all = Object.entries(state.data.countries)
+    .map(([id, c]) => ({ id, name: id === EU ? "European Union (all 27)" : c.name }))
+    .map((r) => ({ ...r, key: plain(r.name) }))
+    .sort((a, b) => a.name.localeCompare(b.name, "en"));
+  let hits = [], at = 0;
+
+  const close = () => { list.hidden = true; input.setAttribute("aria-expanded", "false"); };
+  const show = () => {
+    const q = plain(input.value.trim());
+    if (!q) { close(); return; }
+    hits = [...all.filter((r) => r.key.startsWith(q)), ...all.filter((r) => !r.key.startsWith(q) && r.key.includes(q))].slice(0, 8);
+    at = 0;
+    list.innerHTML = hits.length
+      ? hits.map((r, i) => {
+        const v = pctFor(r.id, "all");
+        return `<li role="option" id="opt-${r.id}" data-id="${r.id}" aria-selected="${i === at}">
+          <span>${r.name}</span>${v == null ? "" : `<small>${lasts(v, { short: true })}</small>`}</li>`;
+      }).join("")
+      : `<li class="none">No country by that name</li>`;
+    list.hidden = false;
+    input.setAttribute("aria-expanded", "true");
+    mark();
   };
+  const mark = () => {
+    list.querySelectorAll("[data-id]").forEach((li, i) => li.setAttribute("aria-selected", i === at));
+    input.setAttribute("aria-activedescendant", hits[at] ? `opt-${hits[at].id}` : "");
+  };
+  const pick = (id) => {
+    input.value = "";
+    close();
+    input.blur();
+    const level = ["food", "trade", "sources", "table", "foods"].includes(state.level) ? state.level : "country";
+    location.hash = hashFor({ iso3: id, group: level === "foods" ? "all" : state.group, level, flow: state.flow });
+  };
+  input.addEventListener("input", show);
+  input.addEventListener("focus", show);
+  input.addEventListener("keydown", (e) => {
+    if (e.key === "ArrowDown" && hits.length) { at = (at + 1) % hits.length; mark(); e.preventDefault(); }
+    else if (e.key === "ArrowUp" && hits.length) { at = (at - 1 + hits.length) % hits.length; mark(); e.preventDefault(); }
+    else if (e.key === "Enter" && hits[at] && !list.hidden) { pick(hits[at].id); e.preventDefault(); }
+    else if (e.key === "Escape") { input.value = ""; close(); }
+  });
+  // mousedown, not click: it fires before the input loses focus and closes the list.
+  list.addEventListener("mousedown", (e) => {
+    const li = e.target.closest("[data-id]");
+    if (li) { e.preventDefault(); pick(li.dataset.id); }
+  });
+  input.addEventListener("blur", () => setTimeout(close, 100));
 }

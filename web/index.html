@@ -10,21 +10,25 @@
   <body>
     <div id="map"></div>
 
+    <!-- Which food the map shows (a menu on the right), and what its colours mean (at the bottom). -->
+    <nav id="foodrail" aria-labelledby="foodrail-title">
+      <p id="foodrail-title">Show on the map</p>
+      <div id="foods" role="group" aria-labelledby="foodrail-title"></div>
+    </nav>
+    <div id="legend" aria-label="Map key"></div>
+
     <aside id="panel">
-      <header>
-        <p class="brand">Autonomy Atlas</p>
-        <h1>Could your country feed itself?</h1>
-        <div id="controls">
-          <label class="pick">
-            <span>Country</span>
-            <select id="country"><option value="">Loading…</option></select>
-          </label>
-          <div class="pick foodpick">
-            <span>Food</span>
-            <div><div id="foods" role="group" aria-label="Food"></div><p id="foodname"></p></div>
-          </div>
-          <nav id="summary" aria-label="Produced, bought, sold, used"></nav>
-          <div id="sublinks"></div>
+      <header class="head">
+        <a class="brand" href="#">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 2c3 3.2 4.5 6.5 4.5 10S15 18.8 12 22M12 2C9 5.2 7.5 8.5 7.5 12S9 18.8 12 22M2.5 9h19M2.5 15h19" /></svg>
+          Autonomy Atlas
+        </a>
+        <div class="search">
+          <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="10.5" cy="10.5" r="6.5" /><path d="M15.5 15.5 21 21" /></svg>
+          <input id="country" type="search" autocomplete="off" spellcheck="false" placeholder="Find a country"
+            role="combobox" aria-expanded="false" aria-controls="country-list" aria-autocomplete="list"
+            aria-label="Find a country" />
+          <ul id="country-list" role="listbox" hidden></ul>
         </div>
       </header>
 
@@ -32,8 +36,6 @@
       <section id="view" aria-live="polite"></section>
       <footer id="foot"></footer>
     </aside>
-
-    <div id="legend" aria-label="Map key"></div>
 
     <script type="module" src="./src/main.js"></script>
   </body>
