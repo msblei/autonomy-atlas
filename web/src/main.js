@@ -80,8 +80,8 @@ map.on("load", async () => {
   state.data = data;
   state.names = Object.fromEntries(geo.features.map((f) => [f.properties.iso3, f.properties.name]));
 
-  // The base style colours every country; ours replace them. Insert below the base labels.
-  for (const id of ["countries-fill", "countries-boundary", "crimea-fill"]) {
+  // The base style colours every country and draws equator/tropics; ours replace them.
+  for (const id of ["countries-fill", "countries-boundary", "crimea-fill", "geolines", "geolines-label"]) {
     if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", "none");
   }
   const labels = map.getStyle().layers.find((l) => l.type === "symbol")?.id;
