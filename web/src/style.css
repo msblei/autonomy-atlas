@@ -113,6 +113,20 @@ select {
 .partners .bar { background: #3d6f96; }
 .partners .pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
 
+.wf { margin: 4px 0 8px; }
+.wf-row { margin: 7px 0; }
+.wf-head { display: flex; justify-content: space-between; gap: 8px; font-size: 15px; }
+.wf-head b { display: inline-block; width: 16px; color: var(--muted); }
+.wf-head strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wf-track { position: relative; height: 12px; background: var(--line); border-radius: 6px; margin-top: 3px; }
+.wf-track span { position: absolute; top: 0; bottom: 0; border-radius: 6px; min-width: 2px; }
+.wf .prod .wf-track span { background: var(--accent); }
+.wf .in .wf-track span { background: #3d6f96; }
+.wf .out .wf-track span { background: repeating-linear-gradient(-45deg, #c9a27a 0 4px, #e6cfb5 4px 8px); }
+.wf .used { border-top: 1px solid var(--ink); padding-top: 7px; }
+.wf .used .wf-track span { background: #c9822f; }
+.wf .used .wf-head { font-weight: 600; }
+
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button {
   font: inherit; min-height: 42px; padding: 0 16px; border: 1px solid #cfcabe; border-radius: 21px;
