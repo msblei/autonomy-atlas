@@ -17,7 +17,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from . import config
+from . import config, jrc
 from .compute import EU_BLOC
 from .harmonise import load_countries, load_products
 from .trade import load_trade_only
@@ -57,6 +57,8 @@ def sources() -> dict:
         if "catalogue_file" in src:
             entry["released"] = faostat_release(src["catalogue_file"])
             entry["downloaded"] = downloaded_on(config.RAW / "faostat" / src["catalogue_file"])
+        if key == "jrc_bal":
+            entry["downloaded"] = downloaded_on(jrc.ZIP)
         out[key] = entry
     return out
 
@@ -136,6 +138,13 @@ def export_ssr() -> None:
     products = load_products()["groups"]
 
     years = sorted(groups["years"].unique())
+    # Countries whose dairy figures come from the DG AGRI-JRC balance sheets for the whole window.
+    dairy = jrc.load_dairy()
+    jrc_dairy: set[str] = set()
+    if dairy is not None and years:
+        y0, y1 = (int(y) for y in years[-1].split("-"))
+        need = set(range(y0, y1 + 1))
+        jrc_dairy = {c for c, ys in dairy.groupby("iso3")["year"] if need <= set(ys)}
     trend_years = sorted(int(y) for y in trends["year"].unique())
     series = _trend_series(trends, trend_years)
     out: dict = {
@@ -197,6 +206,8 @@ def export_ssr() -> None:
             if r["basis"] == "tonnes":
                 # kt with one decimal so small countries keep usable kg/person precision.
                 ind["components_kt"] = {k: _round(r[k], 1) for k in PER_CAPITA_KEYS}
+                if r["group"] == "dairy" and iso3 in jrc_dairy:
+                    ind["source"] = "jrc_bal"
         isub = items[(items["iso3"] == iso3) & items["group"].notna()]
         for _, r in isub.iterrows():
             item_tables.setdefault(iso3, {}).setdefault(r["group"], []).append(

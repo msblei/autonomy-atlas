@@ -241,3 +241,28 @@ def test_eu_bloc_counts_only_trade_with_the_rest_of_the_world():
     assert eu["imports"] == pytest.approx(0.0)
     assert eu["supply"] == pytest.approx(80.0)
     assert eu["ssr"] == pytest.approx(125.0)
+
+
+def test_jrc_dairy_replaces_the_fao_balance_item_by_item():
+    from pipeline import jrc
+
+    # FAO: Germany makes milk and butter but its milk-equivalent trade makes it a net importer.
+    rows = [
+        ("DEU", "Milk - Excluding Butter", "Production", 2023, 30.0),
+        ("DEU", "Milk - Excluding Butter", "Import quantity", 2023, 20.0),
+        ("DEU", "Milk - Excluding Butter", "Export quantity", 2023, 10.0),
+        ("DEU", "Milk - Excluding Butter", "Domestic supply quantity", 2023, 40.0),
+        ("DEU", "Butter, Ghee", "Production", 2023, 2.0),
+        ("DEU", "Butter, Ghee", "Domestic supply quantity", 2023, 2.0),
+    ]
+    dairy = pd.DataFrame([("DEU", 2023, 32.0, 10.0, 15.0, 27.0)],
+                         columns=["iso3", "year", "production", "imports", "exports", "supply"])
+    wide = jrc.apply_dairy(compute.to_wide(_long(rows)), dairy, compute.UTILISATION)
+    d = wide[wide["iso3"] == "DEU"].set_index("item")
+    assert d["production"].sum() == pytest.approx(32.0)
+    assert d["supply"].sum() == pytest.approx(27.0)
+    assert d["imports"].sum() == pytest.approx(10.0)
+    assert d["exports"].sum() == pytest.approx(15.0)
+    assert (d["dairy_source"] == "jrc").all()
+    # Butter keeps its share of production (2 of 32 before, scaled with the group).
+    assert d.loc["Butter, Ghee", "production"] == pytest.approx(2.0 * 32 / 32)

@@ -67,6 +67,15 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence_url": "https://creativecommons.org/licenses/by/4.0/",
         "catalogue_file": "Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip",
     },
+    "jrc_bal": {
+        "title": "EU estimated agricultural balance sheets",
+        "publisher": "European Commission, DG AGRI and Joint Research Centre (JRC)",
+        "url": "https://data.jrc.ec.europa.eu/dataset/33243e5e-44a1-4b43-9444-31d64dc7921f",
+        "file_url": "https://datam.jrc.ec.europa.eu/datam/perm/dataset/33243e5e-44a1-4b43-9444-31d64dc7921f/download/Dataset_DG_AGRI-JRC_-_Production__trade_and_apparent_use__EU-27_.zip",
+        "licence": "European Commission reuse notice (free reuse with attribution)",
+        "licence_url": "https://commission.europa.eu/legal-notice_en",
+        "doi": "https://doi.org/10.2905/JRC.EBBTB0G",
+    },
     "gisco_countries": {
         "title": "Countries 2024, 1:20 million",
         "publisher": "Eurostat GISCO",

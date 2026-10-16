@@ -901,15 +901,21 @@ function compareFood(id) {
 }
 
 // Level 3: the receipt. Every figure behind the date, the sum, and how to look it up at FAO.
+// Dairy for EU countries comes from the EU's own balance sheets instead of FAO (pipeline/jrc.py).
+function fromJrc(id, group = state.group) {
+  return country(id)?.indicators?.[group]?.source === "jrc_bal";
+}
+
 function viewSources() {
   const id = state.iso3;
   const g = groupInfo();
   const v = pctFor(id);
+  const jrc = fromJrc(id);
   return `
     <h2>How do we know?</h2>
-    ${aboutFao()}
+    ${jrc ? aboutJrc(id) : aboutFao()}
     ${state.group === "all" ? receiptAll(id, v) : receiptGroup(id, v)}
-    ${checkYourself(id)}
+    ${jrc ? checkJrc(id) : checkYourself(id)}
     ${caveats(id, g)}
     ${mapSource()}
     <a class="next" href="${link({ level: "table" })}">Show all the numbers ›</a>`;
@@ -927,6 +933,36 @@ function viewAbout() {
     ${mapSource()}`;
 }
 
+function aboutJrc(id) {
+  const s = state.data.meta.sources.jrc_bal;
+  return `
+    <p>The dairy figures for ${whoOf(id)} come from the
+      <a href="${s.url}" target="_blank" rel="noopener">${s.title}</a> of the European Commission
+      (DG AGRI and the Joint Research Centre). They count milk, cheese, butter, cream and milk powder
+      in one unit, “milk equivalent”, and count trade between EU countries only once.</p>
+    <p class="aside">FAO's own dairy figures for many EU countries do not add up: they turn countries
+      that sell cheese and milk powder abroad, like Germany, Denmark or Ireland, into buyers. So for
+      dairy in EU countries we use the Commission's figures; everything else comes from FAO.</p>
+    <p class="small">Average of ${years().join(", ")}. Downloaded ${s.downloaded ? longDate(s.downloaded) : "–"}.
+      Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.</p>`;
+}
+
+function checkJrc(id) {
+  const s = state.data.meta.sources.jrc_bal;
+  return `
+    <h3>Check it yourself</h3>
+    <ol class="steps">
+      <li>Open the <a href="${s.url}" target="_blank" rel="noopener">EU agricultural balance sheets</a>
+        and download the EU-27 file.</li>
+      <li>Country: <strong>${id === EU ? "EU" : nameOf(id)}</strong>, years ${years().join(", ")}.</li>
+      <li>Produced: “RAW MILK”, column “Production”.</li>
+      <li>Bought and sold: for drinking milk, acidified milk, cream, buttermilk, total butter, total
+        cheese, skimmed and whole milk powder and whey powder, add up the imports and exports
+        “(MILK EQ.)”${id === EU ? " outside the EU (Extra-EU)" : ", both within and outside the EU"}.</li>
+      <li>Used = produced + bought − sold; take the average of the years.</li>
+    </ol>`;
+}
+
 function aboutFao() {
   const s = state.data.meta.sources[state.data.meta.source];
   return `
@@ -942,8 +978,9 @@ function aboutFao() {
 function receiptGroup(id, v) {
   const comp = country(id)?.indicators?.[state.group]?.components_kt ?? {};
   const el = state.data.meta.elements;
+  const jrc = fromJrc(id);
   const row = (label, fao, val) => val == null ? ""
-    : `<tr><td>${label}<br><small>FAO: “${fao}”</small></td><td>${val}</td></tr>`;
+    : `<tr><td>${label}<br><small>${jrc && fao !== el.population ? "in milk equivalent (European Commission)" : `FAO: “${fao}”`}</small></td><td>${val}</td></tr>`;
   const ratio = comp.production != null && comp.supply > 0 ? (comp.production / comp.supply) * 100 : null;
   const sum = v == null || ratio == null ? "" : `
     <h3>The sum</h3>

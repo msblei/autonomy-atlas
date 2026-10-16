@@ -82,6 +82,32 @@ With extra-EU trade it buys 5.3 Mt, sells 18.8 Mt and uses 150.6 Mt (SSR 110%). 
 101% to 105%, vegetables from 86% to 104%; meat and oilseeds barely change. With M_EU known, EU
 import dependency (IDR) is now defined.
 
+## Dairy for EU countries: DG AGRI–JRC balance sheets
+
+FAO's milk-equivalent trade for dairy is unreliable for processing countries: Germany sells
+cheese, milk powder and whey (net exporter by product weight) but FBS has it importing 4.3 Mt
+milk equivalent net (SSR 89%); Ireland, which exports most of its milk, comes out at 105%. FAO's
+own conversion factors (Technical Conversion Factors, 1990s) differ widely between countries
+(whole milk powder 3.8 kg milk/kg in Germany, 8.3 in the Netherlands) and miss whey and skimmed
+milk powder.
+
+For EU members and the EU27, `pipeline/jrc.py` replaces the FBS dairy group with the DG AGRI–JRC
+"EU estimated agricultural balance sheets" (Eurostat Comext trade, intra-EU imports taken as the
+mirror of partners' exports, DG AGRI milk-equivalent coefficients on a milk-solids basis, so
+products from the same milk add up: their production sums to the raw milk delivered):
+
+    production = raw milk produced
+    M, X       = Σ product imports / exports in milk equivalent (members: intra + extra EU;
+                 EU27: extra-EU only) over drinking milk, acidified milk, cream, buttermilk,
+                 total butter, total cheese, skimmed and whole milk powder, whey powder
+    supply     = production + M − X          (no stock data)
+
+The FBS dairy items are scaled so the group equals these totals (uses scaled with supply), which
+carries the change into the protein and calorie totals. Luxembourg is not in the dataset and keeps
+FAO's figures. 2021–2023 SSR, FAO → JRC: Germany 89 → 116%, Ireland 105 → 195%, Denmark 83 →
+140%, Netherlands 78 → 113%, Italy 76 → 89%, EU27 110 → 114%. Germany's protein headline moves
+from 92% to 100%.
+
 ## Per-person figures
 
 kg/person/year = component (1000 t) × 1000 / population (1000 persons). Population is FBS item

@@ -106,6 +106,22 @@ def baci() -> None:
     )
 
 
+def jrc() -> None:
+    """The DG AGRI-JRC balance sheets server rejects scripted downloads. Print instructions."""
+    target = config.RAW / "jrc"
+    target.mkdir(parents=True, exist_ok=True)
+    src = config.SOURCES["jrc_bal"]
+    print(
+        "DG AGRI-JRC EU estimated agricultural balance sheets must be downloaded in a browser\n"
+        "(free reuse with attribution, European Commission reuse notice):\n"
+        f"  1. Open {src['url']}\n"
+        "  2. Under 'Data access', download the ZIP 'EU estimated agricultural balance sheets (EU-27)'.\n"
+        f"  3. Save it as {target / 'Dataset_EU_estimated_agricultural_balance_sheets.zip'} and unzip\n"
+        f"     it into {target / 'bal'}\n"
+        "Without it, dairy for EU countries uses FAO's figures (see pipeline/jrc.py)."
+    )
+
+
 def crop_calendar() -> None:
     """FAO Crop Calendar API (phase 3). Endpoints are not documented here on purpose —
     inspect the API's OpenAPI/Swagger page first, then implement."""
@@ -121,6 +137,7 @@ ALL = {
     "eurostat": eurostat,
     "boundaries": boundaries,
     "baci": baci,
+    "jrc": jrc,
     "crop_calendar": crop_calendar,
 }
 
@@ -131,7 +148,7 @@ def run(sources: list[str] | None = None, *, force: bool = False) -> None:
     for name in sources:
         fn = ALL[name]
         log.info("== %s", name)
-        if name in ("baci", "crop_calendar"):
+        if name in ("baci", "jrc", "crop_calendar"):
             fn()
         else:
             fn(force=force)

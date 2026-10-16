@@ -17,6 +17,7 @@ import numpy as np
 import pandas as pd
 
 from . import config
+from . import jrc as jrc_bal
 from .harmonise import item_to_group
 
 log = logging.getLogger(__name__)
@@ -297,13 +298,16 @@ def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str]
 
 
 def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None,
-            extra: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
+            extra: pd.DataFrame | None = None,
+            dairy: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
     """Returns {'items', 'groups', 'overall', 'trends'} tidy frames.
 
     items/groups/overall cover the window (default: latest 3 years); trends has one SSR value per
     iso3 × group × year (group "all" = uncapped protein SSR) for sparklines.
     """
     wide = add_eu_bloc(to_wide(fbs), extra)
+    # EU countries' dairy from the DG AGRI-JRC balance sheets (pipeline/jrc.py).
+    wide = jrc_bal.apply_dairy(wide, dairy, UTILISATION)
     leaves = leaf_items(fbs)
     years = years or latest_window(wide)
     log.info("window %s", years)
@@ -335,7 +339,7 @@ def run(*, years: tuple[int, int] | None = None) -> None:
     if extra is None:
         log.warning("no %s: EU27 supply is the members' sum, which double counts intra-EU trade",
                     shares)
-    res = compute(fbs, years=years, extra=extra)
+    res = compute(fbs, years=years, extra=extra, dairy=jrc_bal.load_dairy())
     for name, df in res.items():
         out = config.PROCESSED / f"ssr_{name}.parquet"
         df.to_parquet(out, index=False)

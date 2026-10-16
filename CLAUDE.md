@@ -91,6 +91,7 @@ make serve       # cd web && npm run dev
 | Bilateral trade (FAO items) | FAOSTAT Detailed Trade Matrix | `.../Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip` | CC BY 4.0. 420 MB zip, 8.5 GB CSV: stream it, never unzip. Trade items (CPC), not FBS items: `mappings/trade_items.csv` maps them to groups. No fish |
 | Bilateral trade (CN8, intra-EU) | Eurostat Comext | `https://ec.europa.eu/eurostat/api/comext/dissemination/` | EU reporters only |
 | Bilateral trade (HS6, reconciled) | CEPII BACI | manual download from CEPII page | Etalab 2.0; ~2-year lag |
+| Dairy balances, EU members | DG AGRI–JRC "EU estimated agricultural balance sheets" | browser download only (`atlas download --source jrc` prints steps) → `data/raw/jrc/` | EC reuse notice (attribution). Milk equivalent, intra-EU trade counted once; replaces FAO dairy for EU members + EU27 (`pipeline/jrc.py`) |
 | Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | NUTS2, 2000–2024 |
 | Seasons | FAO Crop Calendar API | `https://api-cropcalendar.apps.fao.org/` | inspect its OpenAPI docs before coding |
 | Boundaries | Eurostat GISCO NUTS 2024; Natural Earth 50m countries | see `config.py` | GISCO non-commercial |
