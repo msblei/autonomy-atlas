@@ -97,7 +97,7 @@ Livestock products count as domestic regardless of feed origin (feed adjustment 
 stand in for imported soy or fish. That is the closer answer to "could it feed itself", and coffee,
 cocoa or bananas barely count because they carry almost no protein. The capped version is the
 stricter "could it keep today's menu, food by food?" and is shown second (and on the "How do we
-know?" page). With the cap only India reaches 100% (2021–2023); without it, 51 countries do.
+know?" page). With the cap only India reaches 100% (2021–2023); without it, 41 countries do.
 Trend lines for "all food" use the uncapped figure too.
 
 ## "How long would it last?" (what the UI shows first)

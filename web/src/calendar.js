@@ -66,6 +66,7 @@ export function lasts(pct, { short = false } = {}) {
     const n = half(m);
     return short ? `${n} months` : `about ${n} months`;
   }
+  if (pct < 0.5) return short ? "none" : "none at all";
   const weeks = Math.round((pct / 100) * 52);
   if (weeks < 1) return short ? "a few days" : "only a few days";
   const w = `${weeks} week${weeks === 1 ? "" : "s"}`;
@@ -75,6 +76,7 @@ export function lasts(pct, { short = false } = {}) {
 // "for about 10 months of the year" / "for the whole year, with 3 months to spare" / "for 2.5 years"
 export function forHowLong(pct) {
   const s = lasts(pct);
+  if (s === "none at all") return s;
   return /days|weeks|months$/.test(s) ? `for ${s} of the year` : `for ${s}`;
 }
 

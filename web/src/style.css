@@ -38,7 +38,24 @@ h2 { font-size: 20px; line-height: 1.25; margin: 0 0 8px; }
 h3 { font-size: 16px; margin: 22px 0 6px; }
 .brand { margin: 0 0 2px; font-size: 13px; font-weight: 600; color: var(--accent); letter-spacing: .02em; }
 
-.pick { display: flex; align-items: center; gap: 10px; margin-top: 12px; font-size: 15px; color: var(--muted); }
+#controls { display: flex; flex-direction: column; gap: 10px; margin-top: 12px; }
+.pick { display: flex; align-items: center; gap: 10px; font-size: 15px; color: var(--muted); }
+.pick > span { width: 62px; flex: none; }
+.foodpick { align-items: flex-start; }
+.foodpick > span { padding-top: 8px; }
+.foodpick > div { flex: 1; min-width: 0; }
+#foods { display: grid; grid-template-columns: repeat(8, minmax(0, 1fr)); gap: 4px; }
+#foods button {
+  font-size: 19px; line-height: 1; width: 100%; height: 34px; padding: 0; cursor: pointer;
+  border: 1px solid var(--line); border-radius: 8px; background: #fff;
+}
+#foods button:hover { border-color: var(--accent); }
+#foods button[aria-pressed="true"] { border: 2px solid var(--accent); background: var(--accent-soft); }
+#foodname { margin: 5px 0 0; font-size: 15px; font-weight: 600; color: var(--ink); }
+.viewseg { margin: 0; display: grid; grid-template-columns: 1.7fr 1fr 1fr; }
+.viewseg button { font-size: 14px; padding: 0 6px; white-space: nowrap; }
+.viewseg button[aria-pressed="true"] { background: var(--accent); }
+.viewseg button:disabled { color: #b5b0a5; cursor: default; }
 select {
   font: inherit; color: var(--ink); min-height: 42px; padding: 6px 10px; flex: 1;
   border: 1px solid #cfcabe; border-radius: 8px; background: #fff;

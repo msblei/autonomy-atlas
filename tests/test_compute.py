@@ -203,3 +203,14 @@ def test_trends_one_value_per_year():
     t = t[t["group"] == "cereals"].set_index("year")["ssr"]
     assert t.loc[2022] == pytest.approx(100.0)
     assert t.loc[2023] == pytest.approx(300.0)
+
+
+def test_missing_production_inside_a_balance_counts_as_zero():
+    fbs = _long([
+        ("DEU", "Coffee and products", "Import quantity", 2023, 1400.0),
+        ("DEU", "Coffee and products", "Export quantity", 2023, 890.0),
+        ("DEU", "Coffee and products", "Domestic supply quantity", 2023, 510.0),
+    ])
+    items = compute.compute(fbs)["items"].set_index("item")
+    assert items.loc["Coffee and products", "production"] == 0.0
+    assert items.loc["Coffee and products", "ssr"] == pytest.approx(0.0)

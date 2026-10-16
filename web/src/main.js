@@ -55,6 +55,13 @@ const USES = [
 ];
 
 const NO_DATA = "#ebe9e3";
+
+// One picture per food, for the food buttons and lists.
+const ICONS = {
+  all: "🍽️", cereals: "🌾", potatoes_roots: "🥔", sugar: "🍬", pulses: "🫘", oilseeds: "🌻",
+  vegetable_oils: "🫒", vegetables: "🥕", fruit: "🍎", meat: "🥩", dairy: "🥛", eggs: "🥚",
+  fish: "🐟", stimulants: "☕", wine_beer: "🍷",
+};
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
 
 // ------------------------------------------------------------------------------------------------
@@ -263,7 +270,10 @@ function link(view) {
 function route({ fly = false } = {}) {
   const prev = `${state.iso3}/${state.group}/${state.level}`;
   const prevIso3 = state.iso3;
-  Object.assign(state, parseHash());
+  const next = parseHash();
+  // Without a country the food is not in the hash; keep the one picked for the map.
+  if (!next.iso3 && next.level === "intro") next.group = state.group;
+  Object.assign(state, next);
   render();
   document.getElementById("panel").scrollTop = 0;
   if (state.level === "trade" && prev !== `${state.iso3}/${state.group}/${state.level}`) fitTrade();
@@ -467,6 +477,7 @@ function render() {
   paintMap();
   renderLegend();
   renderCrumbs();
+  renderControls();
   document.getElementById("country").value = country(state.iso3) ? state.iso3 : "";
   const views = { intro: viewIntro, about: viewAbout, country: viewCountry, foods: viewFoods,
     food: viewFood, trade: viewTrade, sources: viewSources, table: viewTable };
@@ -540,6 +551,49 @@ function renderLegend() {
   el.innerHTML = `<details ${state.legendOpen ? "open" : ""}>
     <summary>${title}</summary>${body}${bloc ? `<p>${bloc}</p>` : ""}</details>`;
   el.querySelector("details").ontoggle = (e) => { state.legendOpen = e.target.open; };
+}
+
+// The one menu at the top of the panel: country, food, and what to show. Each choice keeps the
+// other two, so switching from coffee imports to meat imports is a single tap.
+function view() {
+  return state.level === "trade" ? state.flow : "lasts";
+}
+
+function renderControls() {
+  const foods = document.getElementById("foods");
+  foods.innerHTML = state.data.groups.map((g) => `
+    <button type="button" data-food="${g.key}" title="${g.label}" aria-label="${g.label}"
+      aria-pressed="${g.key === state.group}">${ICONS[g.key] ?? "•"}</button>`).join("");
+  document.getElementById("foodname").textContent = groupInfo().label;
+  const views = document.getElementById("views");
+  const noCountry = !state.iso3;
+  views.innerHTML = [["lasts", "How long it lasts"], ["imports", "Bought"], ["exports", "Sold"]]
+    .map(([k, label]) => `<button type="button" data-view="${k}" aria-pressed="${view() === k}"
+      ${noCountry && k !== "lasts" ? `disabled title="Choose a country first"` : ""}>${label}</button>`)
+    .join("");
+  for (const b of foods.querySelectorAll("[data-food]")) b.onclick = () => chooseFood(b.dataset.food);
+  for (const b of views.querySelectorAll("[data-view]")) b.onclick = () => chooseView(b.dataset.view);
+}
+
+function chooseFood(group) {
+  if (!state.iso3 || !country(state.iso3) && state.level !== "trade") {
+    state.group = group; // no country yet: only the map changes
+    render();
+    return;
+  }
+  let level = state.level;
+  if (["country", "foods", "food", "intro", "about"].includes(level)) level = group === "all" ? "country" : "food";
+  location.hash = hashFor({ iso3: state.iso3, group, level });
+}
+
+function chooseView(v) {
+  if (v === "lasts") {
+    location.hash = hashFor({ iso3: state.iso3, group: state.group, level: state.group === "all" ? "country" : "food" });
+    return;
+  }
+  const again = state.level === "trade";
+  state.flow = v;
+  if (again) { render(); fitTrade(); } else location.hash = hashFor({ iso3: state.iso3, group: state.group, level: "trade" });
 }
 
 function renderCrumbs() {
@@ -624,7 +678,8 @@ function euLine(iso3, group = state.group) {
   if (!isMember(iso3)) return "";
   const v = pctFor(EU, group);
   if (v == null) return "";
-  return `<p class="aside">All 27 EU countries together would have enough ${forHowLong(v)}.
+  const what = v < 0.5 ? `would produce practically no ${food(group)} either` : `would have enough ${forHowLong(v)}`;
+  return `<p class="aside">All 27 EU countries together ${what}.
     <a href="${hashFor({ iso3: EU, group, level: group === "all" ? "country" : "food" })}">See the EU ›</a></p>`;
 }
 
@@ -674,7 +729,7 @@ function viewFoods() {
     <p class="q">If ${who} used only what ${id === EU ? "its" : "its own"} farms and fishing boats produce, there would be enough …</p>
     <ul class="foodlist">${rows.map(({ g, v }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
-        <span class="name">${g.label}</span>
+        <span class="name">${ICONS[g.key] ?? ""} ${g.label}</span>
         ${strip(v, { small: true })}
         <span class="when">${lasts(v, { short: true })}</span>
       </a></li>`).join("")}</ul>
@@ -721,13 +776,14 @@ function viewFood() {
   const who = id === EU ? "the EU" : nameOf(id);
   const head = v == null
     ? `<p>There are no reliable figures for ${food()} in ${who}.</p>`
-    : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough …</p>
+    : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be ${v < 0.5 ? "…" : "enough …"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `
-    <h2>${nameOf(id)} · ${g.label}</h2>
+    <h2>${ICONS[g.key] ?? ""} ${nameOf(id)} · ${g.label}</h2>
     ${head}
     ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
+    ${passThrough(id)}
     ${euLine(id)}
     ${trend(id)}
     ${perPerson(id)}
@@ -741,7 +797,7 @@ function trend(id) {
   const values = country(id)?.trend?.[state.group] ?? [];
   const yrs = state.data.meta.trend_years;
   const pts = values.map((v, i) => [i, v]).filter(([, v]) => v != null);
-  if (pts.length < 2) return "";
+  if (pts.length < 2 || pts.every(([, v]) => v < 1)) return ""; // a flat line at zero says nothing
   const vals = pts.map(([, v]) => v);
   const lo = Math.max(0, Math.min(100, ...vals) - 10);
   const hi = Math.max(100, ...vals) + 10;
@@ -1129,11 +1185,7 @@ function tradeTeaser(id) {
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
-  const head = `<h2>${nameOf(id)} · ${g.label}</h2>
-    <div class="seg" role="group" aria-label="Bought or sold">
-      <button type="button" data-flow="imports" aria-pressed="${state.flow === "imports"}">Bought from abroad</button>
-      <button type="button" data-flow="exports" aria-pressed="${state.flow === "exports"}">Sold abroad</button>
-    </div>`;
+  const head = `<h2>${ICONS[g.key] ?? ""} ${nameOf(id)} · ${state.flow === "imports" ? "bought from abroad" : "sold abroad"}</h2>`;
   if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading trade figures…</p>`; }
   if (state.group === "fish") {
     return `${head}<p>FAO's trade figures do not include fish and seafood, so we cannot show
@@ -1158,6 +1210,7 @@ function viewTrade() {
     ${head}
     <p class="q">${Who} ${imports ? "buys" : "sells"} about <strong>${tonnes(t[0] / 1000)}</strong> of
       ${food()} ${imports ? "from" : "to"} other countries a year. Most of it ${imports ? "comes from" : "goes to"}:</p>
+    ${!imports ? passThrough(id) : ""}
     <ol class="partners">${top.map((r) => `
       <li><a href="${hashFor({ iso3: r.id, group: state.group, level: "trade" })}">
         <span class="name">${nameOf(r.id)}</span>
@@ -1183,6 +1236,22 @@ function viewTrade() {
 
 function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
+// Countries that produce (almost) none of a food but sell a lot of it abroad: they buy it, process
+// or repack it and sell it on (German coffee and chocolate, Dutch cocoa). FBS figures, so imports
+// and exports are in the same primary equivalents.
+function passThrough(id) {
+  const c = country(id)?.indicators?.[state.group]?.components_kt;
+  const v = pctFor(id);
+  if (!c || state.group === "all" || v == null || v >= 10 || !c.imports || !c.exports) return "";
+  if (c.exports < 0.3 * c.imports || c.exports < 50) return "";
+  const how = state.group === "stimulants" ? "roasts coffee, makes chocolate and blends tea"
+    : state.group === "vegetable_oils" ? "refines and bottles oil"
+    : "processes or repacks it";
+  return `<p class="aside">${cap(whoOf(id))} produces almost no ${food()}, yet sells
+    <strong>${tonnes(c.exports)}</strong> abroad a year: it buys about ${tonnes(c.imports)},
+    ${how}, and sells much of it on.</p>`;
 }
 
 function tradeTooltip(iso3) {

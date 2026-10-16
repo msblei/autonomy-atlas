@@ -14,10 +14,17 @@
       <header>
         <p class="brand">Autonomy Atlas</p>
         <h1>Could your country feed itself?</h1>
-        <label class="pick">
-          <span>Country</span>
-          <select id="country"><option value="">Loading…</option></select>
-        </label>
+        <div id="controls">
+          <label class="pick">
+            <span>Country</span>
+            <select id="country"><option value="">Loading…</option></select>
+          </label>
+          <div class="pick foodpick">
+            <span>Food</span>
+            <div><div id="foods" role="group" aria-label="Food"></div><p id="foodname"></p></div>
+          </div>
+          <div class="seg viewseg" id="views" role="group" aria-label="What to show"></div>
+        </div>
       </header>
 
       <nav id="crumbs" aria-label="Where you are"></nav>

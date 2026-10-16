@@ -61,6 +61,11 @@ def to_wide(fbs: pd.DataFrame) -> pd.DataFrame:
     for k in config.FBS_ELEMENTS:
         if k not in wide:
             wide[k] = np.nan
+    # FBS leaves out elements that are zero: Germany has no "Production" row for coffee. Inside a
+    # balance that exists, a missing quantity means none, so SSR is 0%, not unknown.
+    has_balance = wide["supply"].notna()
+    for k in ("production", "imports", "exports"):
+        wide.loc[has_balance & wide[k].isna(), k] = 0.0
     return wide
 
 
