@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 import pandas as pd
 
 from . import checks, config, jrc
-from .compute import EU_BLOC
+from .compute import EU_BLOC, to_wide
 from .harmonise import load_countries, load_products
 from .trade import load_trade_only
 
@@ -55,11 +55,35 @@ def sources() -> dict:
     for key, src in config.SOURCES.items():
         entry = {k: v for k, v in src.items() if k != "catalogue_file"}
         if "catalogue_file" in src:
+            raw = config.RAW / "faostat" / src["catalogue_file"]
             entry["released"] = faostat_release(src["catalogue_file"])
-            entry["downloaded"] = downloaded_on(config.RAW / "faostat" / src["catalogue_file"])
+            entry["downloaded"] = downloaded_on(raw)
+            entry["size_mb"] = round(raw.stat().st_size / 1e6) if raw.exists() else None
         if key == "jrc_bal":
             entry["downloaded"] = downloaded_on(jrc.ZIP)
         out[key] = entry
+    return out
+
+
+def eu_intra_dairy(years: tuple[int, int]) -> dict | None:
+    """Members' FBS dairy trade with each other, Mt/year over `years`: what they report buying from
+    and selling to other members (FBS milk equivalent × intra-EU share from the trade matrix).
+    The UI quotes it to explain why the EU bloc is rebuilt instead of summed."""
+    fbs_path, shares_path = config.INTERIM / "fbs.parquet", config.INTERIM / "eu_extra_shares.parquet"
+    if not (fbs_path.exists() and shares_path.exists()):
+        return None
+    dairy = list(load_products()["groups"]["dairy"]["items"])
+    fbs = pd.read_parquet(fbs_path)
+    fbs = fbs[fbs["iso3"].isin(config.EU27) & fbs["year"].between(*years)
+              & fbs["item"].isin(dairy)]
+    wide = to_wide(fbs)
+    d = wide.groupby(["iso3", "year"], as_index=False)[["imports", "exports"]].sum()
+    sh = pd.read_parquet(shares_path)
+    sh = sh[(sh["group"] == "dairy") & sh["year"].between(*years)]
+    out = {}
+    for flow in ("imports", "exports"):
+        x = d.merge(sh[sh["flow"] == flow][["iso3", "year", "share"]], on=["iso3", "year"])
+        out[flow] = round(float((x[flow] * (1 - x["share"])).sum()) / (years[1] - years[0] + 1) / 1000)
     return out
 
 
@@ -136,6 +160,11 @@ def group_entries(products: dict) -> list[dict]:
 
 
 def export_ssr() -> None:
+    m = config.MAPPINGS
+    for name in ("groups", "items", "overall", "trends"):
+        config.require_fresh(config.PROCESSED / f"ssr_{name}.parquet",
+                             [config.INTERIM / "fbs.parquet", config.INTERIM / "eu_extra_shares.parquet",
+                              jrc.CSV, m / "products.yaml", m / "countries.yaml", m / "world.csv"])
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
     items = pd.read_parquet(config.PROCESSED / "ssr_items.parquet")
     overall = pd.read_parquet(config.PROCESSED / "ssr_overall.parquet")
@@ -144,10 +173,6 @@ def export_ssr() -> None:
     products = load_products()["groups"]
 
     years = sorted(groups["years"].unique())
-    # Foods whose figures come from the DG AGRI-JRC balance sheets for the whole window, per
-    # country: dairy as a whole group, the others as one item of a group (see JRC_GROUP).
-    jrc_foods = jrc.coverage(jrc.load_balances(),
-                             tuple(int(y) for y in years[-1].split("-"))) if years else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
     series = _trend_series(trends, trend_years)
     out: dict = {
@@ -162,6 +187,9 @@ def export_ssr() -> None:
             "sources": sources(),
             "view": "national",
             "eu_members": sorted(config.EU27),
+            # Figures quoted in the UI's text, computed here so no number there is typed by hand.
+            "claims": {"eu_intra_dairy_mt": eu_intra_dairy(
+                tuple(int(y) for y in years[-1].split("-"))) if years else None},
             "europe_avg": _averages(groups, overall, list(countries.index[countries["europe"]])),
             "world_avg": _averages(groups, overall, list(countries.index)),
             "formulas": {
@@ -198,7 +226,9 @@ def export_ssr() -> None:
                             "g_per_day": _round(r["protein"])},
                 "kcal": {"share": _round(r["kcal_share"]), "ssr": _round(r["kcal_ssr"]),
                          "per_day": _round(r["kcal"], 0)},
+                "n_foods": int(r["n_foods"]) if pd.notna(r.get("n_foods")) else None,
             }
+            entry["indicators"]["all"]["source"] = r["source"]
             entry["population_k"] = _round(r["population"], 0)
         g_rows = groups[groups["iso3"] == iso3]
         g_rows = g_rows.assign(uses_bad=checks.uses_problem(g_rows))
@@ -228,20 +258,26 @@ def export_ssr() -> None:
                         ind["uses_withheld"] = checks.RESIDUALS_LARGE
                         for k in USE_KEYS:
                             ind["components_kt"].pop(k, None)
-                foods = jrc_foods.get(iso3, set())
-                if r["group"] == "dairy" and "dairy" in foods:
-                    ind["source"] = "jrc_bal"
+                # Source as computed (compute._source): the JRC is cited exactly where it
+                # replaced FAO in this window, dairy as a whole, the others as one item.
+                ind["source"] = r["source"]
+                foods = set(filter(None, str(r.get("jrc_foods") or "").split(",")))
                 parts = [JRC_LABEL[f] for f, g in JRC_GROUP.items() if g == r["group"] and f in foods]
                 if parts:
                     ind["jrc_items"] = parts
+                if r["source"] == "jrc_bal" and "kcal" not in ind:
+                    # One milk-equivalent balance: no per-product ratio to weight by calories.
+                    ind["kcal"] = {"flag": "jrc_group_only"}
         isub = items[(items["iso3"] == iso3) & items["group"].notna()]
         for _, r in isub.iterrows():
             item_tables.setdefault(iso3, {}).setdefault(r["group"], []).append(
+                # JRC dairy: FAO's product-weight items scaled to a milk-equivalent total are
+                # neither FAO's figures nor the JRC's, so no per-product ratio is shown.
                 {
                     "item": r["item"],
-                    "ssr": _round(r["ssr"]),
-                    "supply_kt": _round(r["supply"], 0),
-                    "flag": r.get("flag") or None,
+                    "ssr": None if r.get("jrc_food") == "dairy" else _round(r["ssr"]),
+                    "supply_kt": None if r.get("jrc_food") == "dairy" else _round(r["supply"], 0),
+                    "flag": "jrc_group_only" if r.get("jrc_food") == "dairy" else (r.get("flag") or None),
                 }
             )
         out["countries"][iso3] = entry
@@ -322,18 +358,25 @@ def export_trade() -> None:
     if not src.exists():
         log.warning("no %s; run `atlas build` with the trade matrix downloaded", src)
         return
+    config.require_fresh(src, [config.INTERIM / "trade_yearly.parquet",
+                               config.PROCESSED / "ssr_groups.parquet"])
     t = pd.read_parquet(src)
     # "All food": every group added up, in tonnes as traded.
     t = pd.concat([t, t.assign(group="all")], ignore_index=True)
     countries: dict = {}
     for (iso3, group, flow), sub in t.groupby(["iso3", "group", "flow"]):
         countries.setdefault(iso3, {}).setdefault(group, {})[flow] = _trade_entry(sub)
-    mirrored = sorted(t.loc[t["source"] == "mirror", "iso3"].unique())
+    mirrored = sorted(t.loc[t["source"].isin(["mirror", "mixed"]), "iso3"].unique())
     out = {
         "meta": {
             "source": "fao_tm",
             "years": t["years"].iloc[0],
-            "basis": "tonnes as traded (product weight)",
+            "basis": {
+                "imports": "tonnes as traded (product weight)",
+                "exports": "tonnes as traded (product weight)",
+                # trade.trace_origins scales the splits to FBS import totals.
+                "grown": "tonnes in FBS primary equivalents (shares only)",
+            },
             # Countries for which some flows come from partners' reports.
             "mirror": mirrored,
         },

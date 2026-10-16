@@ -135,6 +135,16 @@ def coverage(bal: pd.DataFrame | None, years: tuple[int, int]) -> dict[str, set[
     return out
 
 
+def full_cover(bal: pd.DataFrame | None, years: tuple[int, int]) -> pd.DataFrame | None:
+    """The balances of (country, food) pairs the JRC covers for every year of `years`; others are
+    dropped so FAO stays the source of that window (Portugal's tomatoes 2021-2023: 2 of 3 years)."""
+    if bal is None or bal.empty:
+        return bal
+    cov = coverage(bal, years)
+    keep = [food in cov.get(iso3, set()) for iso3, food in zip(bal["iso3"], bal["food"], strict=True)]
+    return bal[keep]
+
+
 def apply(wide: pd.DataFrame, bal: pd.DataFrame | None, utilisation: list[str]) -> pd.DataFrame:
     """Replace the FBS balance of each food's items with the JRC one where it is available.
 

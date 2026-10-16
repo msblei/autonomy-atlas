@@ -137,13 +137,18 @@ def yearly(df: pd.DataFrame) -> pd.DataFrame:
                      ignore_index=True)
 
 
+def _source_label(s: pd.Series) -> str:
+    """reported / mirror when every year agrees, mixed when some years are partners' reports."""
+    kinds = set(s)
+    return kinds.pop() if len(kinds) == 1 else "mixed"
+
+
 def average(both: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     """Yearly flows -> yearly mean over `years` per country × group × flow × partner."""
     both = both[both["year"].between(*years)]
     n_years = years[1] - years[0] + 1
     out = (both.groupby(["reporter", "group", "flow", "partner"], as_index=False)
-           .agg(tonnes=("value", "sum"), source=("source", lambda s: "mirror"
-                                                  if (s == "mirror").all() else "reported")))
+           .agg(tonnes=("value", "sum"), source=("source", _source_label)))
     out["tonnes"] /= n_years
     return out.rename(columns={"reporter": "iso3"})
 
@@ -240,11 +245,21 @@ YEARLY = "trade_yearly.parquet"
 SHARES = "eu_extra_shares.parquet"
 
 
+def trade_inputs() -> list:
+    """Files the interim trade tables are built from."""
+    m = config.MAPPINGS
+    return [config.RAW / "faostat" / TM_ZIP, config.INTERIM / "fbs.parquet", m / "trade_items.csv",
+            m / "trade_only.csv", m / "world.csv", m / "countries.yaml"]
+
+
 def extract() -> None:
     """Read the trade matrix once for every FBS year: yearly food flows (data/interim) and the
     members' extra-EU shares that compute.py uses for the EU bloc. Runs before compute."""
     if not (config.RAW / "faostat" / TM_ZIP).exists():
         log.warning("no trade matrix; run `atlas download --source faostat` (420 MB)")
+        # Outputs from an earlier download would no longer match the balances: do not keep them.
+        for name in (YEARLY, SHARES):
+            (config.INTERIM / name).unlink(missing_ok=True)
         return
     fbs_years = pd.read_parquet(config.INTERIM / "fbs.parquet", columns=["year"])["year"]
     years = (int(fbs_years.min()), int(fbs_years.max()))
@@ -259,7 +274,9 @@ def run() -> None:
     src = config.INTERIM / YEARLY
     if not src.exists():
         log.warning("no %s; run `atlas build` with the trade matrix downloaded", src)
+        (config.PROCESSED / "trade_partners.parquet").unlink(missing_ok=True)
         return
+    config.require_fresh(src, trade_inputs())
     years = fbs_window()
     p = add_eu_bloc(average(pd.read_parquet(src), years))
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")

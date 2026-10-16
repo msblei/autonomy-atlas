@@ -269,3 +269,25 @@ def test_jrc_dairy_replaces_the_fao_balance_item_by_item():
         pytest.approx(27.0)
     # Butter keeps its share of production (2 of 32 before, scaled with the group).
     assert d.loc["Butter, Ghee", "production"] == pytest.approx(2.0 * 32 / 32)
+
+
+def test_leaf_wins_over_aggregate_with_the_same_name():
+    # FAO: "Miscellaneous" is leaf 2899 and aggregate 2928 (= 2899 + Infant food 2680).
+    fbs = pd.DataFrame({
+        "iso3": ["AAA"] * 4, "year": [2020] * 4,
+        "item_code": ["2928", "2899", "2928", "2899"],
+        "item": ["Miscellaneous"] * 4,
+        "element": ["Production", "Production", "Domestic supply quantity", "Domestic supply quantity"],
+        "value": [15.0, 10.0, 30.0, 20.0],
+    })
+    wide = compute.to_wide(fbs)
+    assert wide["production"].iloc[0] == 10.0 and wide["supply"].iloc[0] == 20.0
+
+
+def test_duplicate_balance_rows_fail_loudly():
+    fbs = pd.DataFrame({
+        "iso3": ["AAA"] * 2, "year": [2020] * 2, "item_code": ["2511"] * 2, "item": ["Wheat"] * 2,
+        "element": ["Production"] * 2, "value": [1.0, 2.0],
+    })
+    with pytest.raises(ValueError, match="same iso3/item/year/element"):
+        compute.to_wide(fbs)

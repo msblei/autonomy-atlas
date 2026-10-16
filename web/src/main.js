@@ -58,6 +58,14 @@ const USES = [
 
 const NO_DATA = "#ebe9e3";
 
+// pipeline/checks.py and export.py flags in plain words (table level).
+const FLAG_TEXT = {
+  supply_missing: "No figure: FAO publishes no domestic supply for this food.",
+  supply_nonpositive: "No figure: FAO's domestic supply is zero or negative, so the balance contradicts itself.",
+  exports_exceed_available: "No figure: FAO lists more exported than was produced, imported and taken from stocks.",
+  jrc_group_only: "Dairy comes from the European Commission's balance in milk equivalent, for dairy as a whole: no ratio per product and none weighted by calories.",
+};
+
 // Short names for the food buttons; the full label is shown below them.
 const SHORT = {
   all: "All food", potatoes_roots: "Potatoes", sugar: "Sugar", oilseeds: "Oilseeds",
@@ -398,7 +406,8 @@ function shortest(id, n = 2) {
 
 // Table level: the reader picks indicator and basis.
 function tableIndicator() {
-  if (state.group === "all") return state.indicator === "idr" ? "idr" : "share";
+  // "All food" has coverage only: no import dependency is computed across foods.
+  if (state.group === "all") return "share";
   return state.indicator;
 }
 
@@ -980,7 +989,8 @@ function aboutJrc(id) {
       (DG AGRI and the Joint Research Centre). They count milk, cheese, butter, cream and milk powder
       in one unit, “milk equivalent”, and count trade between EU countries only once.</p>
     <p class="aside">FAO's own dairy figures for many EU countries do not add up: they turn countries
-      that sell cheese and milk powder abroad, like Germany, Denmark or Ireland, into buyers. So for
+      that sell cheese and milk powder abroad, like Germany or Denmark, into buyers, and put Ireland
+      at barely self-sufficient instead of almost twice over. So for
       dairy in EU countries we use the Commission's figures; everything else comes from FAO.</p>
     <p class="small">Average of ${years().join(", ")}. Downloaded ${s.downloaded ? longDate(s.downloaded) : "–"}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.</p>`;
@@ -991,7 +1001,7 @@ function aboutJrc(id) {
 const JRC_WHY = {
   tomatoes: "tomato paste and sauce sold abroad were not counted back as tomatoes",
   "olive oil": "FAO's olive oil trade figures disagree with the EU's customs records",
-  wine: "FAO's wine figures disagree with the EU's own statistics (for Germany, FAO counts about half the wine made)",
+  wine: "FAO's wine figures disagree with the EU's own statistics (for Germany, FAO counts a little over half the wine made)",
 };
 function jrcItems(id) {
   const parts = country(id)?.indicators?.[state.group]?.jrc_items;
@@ -1095,7 +1105,7 @@ function receiptAll(id, v) {
     <p>“All food” cannot be added up in tonnes: a tonne of lettuce is not a tonne of cheese. So we
       count protein, the part of food that is hardest to replace. People ${id === EU ? "in the EU" : `in ${nameOf(id)}`}
       get about <strong>${Math.round(p?.g_per_day ?? 0)} g</strong> of protein a day.</p>
-    <p>For each of about 85 foods we take what is produced at home divided by what is used, and
+    <p>For each of the ${country(id)?.indicators?.all?.n_foods ?? "–"} foods that provide protein ${id === EU ? "in the EU" : `in ${nameOf(id)}`} we take what is produced at home divided by what is used, and
       weigh it by how much of that protein the food provides. A surplus of one food can make up for
       a shortage of another: wheat or meat can stand in for imported soy or fish. Together that
       gives <strong>${Math.round(v)}%</strong>.</p>
@@ -1129,12 +1139,18 @@ function checkYourself(id) {
       <li>Years: ${years().join(", ")}, then take the average.</li>
     </ol>
     <p class="small">Or download the whole table:
-      <a href="${s.file_url}">FAO data file</a> (zip, about 55 MB).</p>
+      <a href="${s.file_url}">FAO data file</a> (zip, ${s.size_mb ? `about ${s.size_mb} MB` : "large"}).</p>
     ${id === EU ? `<p class="aside">Our EU figures differ from FAO's own “European Union (27)” row on purpose.
       FAO adds up the member countries, but they report buying much more from each other than they
-      report selling to each other (for dairy, 104 against 78 million tonnes a year), so the EU seems
+      report selling to each other${dairyGap()}, so the EU seems
       to use more than it has. We count only the EU's trade with the rest of the world, using FAO's
       trade records to tell the two apart. Production is the same in both.</p>` : ""}`;
+}
+
+// "(for dairy, 99 against 59 million tonnes a year)", from meta.claims (export.eu_intra_dairy).
+function dairyGap() {
+  const d = state.data.meta.claims?.eu_intra_dairy_mt;
+  return d ? ` (for dairy, ${d.imports} against ${d.exports} million tonnes of milk a year)` : "";
 }
 
 function caveats(id, g) {
@@ -1172,7 +1188,7 @@ function viewTable() {
       <label>Indicator
         <select id="indicator">
           <option value="ssr" ${state.indicator === "ssr" ? "selected" : ""}>${isAll ? "Coverage (capped SSR)" : "Self-sufficiency ratio (SSR)"}</option>
-          <option value="idr" ${state.indicator === "idr" ? "selected" : ""}>Import dependency ratio (IDR)</option>
+          ${isAll ? "" : `<option value="idr" ${state.indicator === "idr" ? "selected" : ""}>Import dependency ratio (IDR)</option>`}
         </select>
       </label>
       <label>Basis
@@ -1228,12 +1244,16 @@ function expertDetail(id) {
       <tr><td>losses / residuals</td><td>${kt(comp.losses)} / ${kt(comp.residuals)}</td></tr>
       <tr><td>Population</td><td>${pop(c)}</td></tr>
     </table>
-    ${items.length ? `<h3>Largest FAO items</h3><table>${items
+    ${g.withheld ? `<p class="note">${whyWithheld(id)}</p>` : ""}
+    ${g.uses_withheld ? `<p class="note">Uses (food, feed, …) not shown: FAO's residuals exceed a quarter of domestic supply.</p>` : ""}
+    ${(state.items?.[id]?.[state.group] ?? []).some((i) => i.flag === "jrc_group_only")
+      ? `<p class="note">${FLAG_TEXT.jrc_group_only}</p>` : ""}
+    ${items.length ? `<h3>Largest items</h3><table>${items
       .map((i) => `<tr><td>${i.item}</td><td>${fmt(i.ssr)}</td></tr>`)
       .join("")}</table>` : ""}
     <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply.
       ${id === EU ? "EU bloc: production summed over members; imports and exports are trade with non-members only (members' FBS trade × extra-EU share from the trade matrix); supply = P + M − X − ΔS." : "National view: imports from other EU countries count as imports."}</p>
-    ${t.flag || k.flag ? `<p class="note">Flag: ${t.flag ?? k.flag}</p>` : ""}`;
+    ${t.flag || k.flag ? `<p class="note">${FLAG_TEXT[t.flag ?? k.flag] ?? `Flag: ${t.flag ?? k.flag}`}</p>` : ""}`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1413,7 +1433,9 @@ function viewTrade() {
       <button type="button" data-grown="1" aria-pressed="${grown}">Grown in</button>
     </div>` : "";
   if (!t || !t[0] || !rows.length) {
-    return `${head}${toggle}<p>${cap(who)} ${imports ? "buys" : "sells"} almost no ${food()} abroad.</p>`;
+    // No trade record is not the same as no trade: say what we have, not what we infer.
+    return `${head}${toggle}<p>FAO's trade records list no ${food()} ${imports ? "bought" : "sold"}
+      abroad by ${who} for ${state.trade.meta.years.replace("-", "–")}.</p>`;
   }
   // Totals from the food balance where there is one, so they match the other pages; the trade
   // records give the split by country.
@@ -1453,8 +1475,9 @@ function viewTrade() {
       <button type="button" class="linkish" data-grown="1">See where it was grown ›</button></p>` : ""}
     <h3>Good to know</h3>
     <ul class="caveats">
-      ${grown ? `<li>Traced back by assuming that every country sells on an even mix of what it grows and what it buys. It is an estimate, not a shipping record.</li>` : ""}
-      ${fbsTotal != null
+      ${grown ? `<li>Traced back by assuming that every country sells on an even mix of what it grows and what it buys. It is an estimate, not a shipping record.</li>
+        <li>Shares are of the food as grown: processed goods such as flour or juice are counted back to the grain or fruit, as in FAO's food balances.</li>` : ""}
+      ${grown ? "" : fbsTotal != null
         ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from FAO's trade records, which count tonnes as shipped (a tonne of juice counts like a tonne of fruit).</li>`
         : `<li>Counted in tonnes as shipped: a tonne of juice or cheese counts the same as a tonne of fruit or milk.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
       ${mirror ? `<li>${nameOf(id)} did not report all of its trade, so for some years we use what other countries say they sold to it or bought from it.</li>` : ""}

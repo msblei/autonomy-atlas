@@ -1,7 +1,7 @@
 import pandas as pd
 import pytest
 
-from pipeline import trade
+from pipeline import config, trade
 
 YEARS = (2022, 2023)
 
@@ -73,3 +73,22 @@ def test_trace_origins_sees_through_a_hub():
     assert deu["BRA"] == pytest.approx(50.0)
     assert deu["COL"] == pytest.approx(50.0)
     assert (o["flow"] == "grown").all()
+
+
+def test_no_fao_derived_totals_mapped():
+    # 30 "Rice; paddy (rice milled equivalent)" = FAO's sum of rice items 27-32: counted rice twice.
+    items = trade.load_item_groups()
+    assert 30 not in items
+    names = pd.read_csv(config.MAPPINGS / "trade_items.csv", comment="#", dtype=str)
+    mapped = names[names["group"].notna()]
+    assert not mapped["item"].str.contains("equivalent", case=False).any()
+
+
+def test_partner_source_label_mixed_when_years_differ():
+    both = pd.DataFrame({
+        "reporter": ["AAA"] * 3, "partner": ["BBB"] * 3, "group": ["cereals"] * 3,
+        "flow": ["imports"] * 3, "year": [2021, 2022, 2023], "value": [1.0, 1.0, 1.0],
+        "source": ["reported", "mirror", "mirror"],
+    })
+    assert trade.average(both, (2021, 2023))["source"].iloc[0] == "mixed"
+    assert trade.average(both[1:], (2022, 2023))["source"].iloc[0] == "mirror"

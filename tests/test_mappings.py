@@ -24,3 +24,20 @@ def test_exported_groups_carry_fao_items_and_plain_notes():
     for g in groups.values():
         assert "SSR" not in (g.get("plain") or "")
     assert groups["meat"]["plain"]
+
+
+def test_require_fresh_flags_outputs_older_than_inputs(tmp_path):
+    import os
+
+    import pytest
+
+    from pipeline import config
+
+    out, inp = tmp_path / "out.parquet", tmp_path / "mapping.csv"
+    out.write_text("x")
+    inp.write_text("y")
+    os.utime(out, (1, 1))
+    with pytest.raises(config.StaleError, match="older than mapping.csv"):
+        config.require_fresh(out, [inp])
+    os.utime(out, None)
+    config.require_fresh(out, [inp, tmp_path / "missing"])

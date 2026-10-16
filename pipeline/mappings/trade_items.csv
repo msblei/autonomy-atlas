@@ -3,6 +3,8 @@
 # reviewed by hand. Empty group = left out (live animals, feed, fibres, tobacco, nuts other than
 # groundnuts, non-food oils). Fish is not in this dataset. Weights are product weight as
 # traded (flour, juice, cheese), not primary equivalents: use for partner shares only.
+# Left out on purpose: 30 "Rice; paddy (rice milled equivalent)" is FAO's own total of the
+# other rice items (27, 28, 29, 31, 32) converted to milled weight; mapping it counted rice twice.
 item_code,cpc,item,group
 15,0111,Wheat,cereals
 56,0112,Maize (corn),cereals
@@ -46,7 +48,7 @@ item_code,cpc,item,group
 18,23710,Uncooked pasta; not stuffed or otherwise prepared,cereals
 20,F0020,Bread,cereals
 22,F0022,Pastry,cereals
-30,F0030,Rice; paddy (rice milled equivalent),cereals
+30,F0030,Rice; paddy (rice milled equivalent),
 882,02211,Raw milk of cattle,dairy
 982,02291,Raw milk of sheep,dairy
 888,22110.02,Skim milk of cows,dairy

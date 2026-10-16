@@ -115,6 +115,21 @@ EU27 = extra-EU only. The FBS items are scaled so they add up to the JRC product
 exports and supply (uses scaled with supply; stock change = P + M − X − supply), which carries the
 change into group totals and the protein and calorie headlines.
 
+- **One source per average.** The JRC replaces FAO in the 3-year window only for a country and
+  food it covers in every year of it (`jrc.full_cover`); otherwise FAO stays the source for the
+  whole window (Portugal's tomatoes 2021–2023: JRC has 2 of 3 years). Single-year trend points
+  use the JRC wherever it has that year.
+- **Dairy only as a whole.** The JRC dairy balance is one milk-equivalent total. FAO's dairy items
+  (milk in milk equivalent, butter and cream in product weight) scaled to it are neither FAO's
+  nor the JRC's figures (Ireland's scaled butter: 413 kt sold from 264 kt produced). So for JRC
+  dairy: no per-product rows in the table (`jrc_group_only`), no kcal-basis ratio, and in "all
+  food" the three items count as one food at the JRC group SSR, weighted by their summed protein
+  and kcal (`compute.collapse_jrc_dairy`). This moved Ireland's calorie coverage from 154% to 99%
+  and the Netherlands' from 130% to 118%; protein headlines moved by less than 3 points.
+- **Cited where used.** Every row carries `source` (`fao_fbs`, `jrc_bal`, `fao_fbs+jrc_bal` for a
+  group with one JRC item, `fao_fbs+fao_tm` for the EU27 bloc), computed from the rows the JRC
+  actually replaced, and the UI cites from that.
+
 **Comparison that decided it** (2021–2023, EU members + EU27, SSR in percentage points). Production
 agrees almost everywhere (median JRC/FAO ratio 1.00); the differences are in trade and use.
 
@@ -123,7 +138,7 @@ agrees almost everywhere (median JRC/FAO ratio 1.00); the differences are in tra
 | Dairy (milk equivalent) | large | most | **JRC**: FAO's milk-equivalent trade turns cheese and powder exporters into importers. Germany 89 → 116%, Ireland 105 → 195%, Denmark 83 → 140%, Netherlands 78 → 113%, EU 110 → 114% |
 | Tomatoes | 4 | 5 | **JRC**: paste exports not converted back (Italy uses 1.1 Mt in FAO, 19 kg/person; JRC 3.3 Mt). Italy 556 → 200%, Netherlands 64 → 144% |
 | Olive oil | 0 | 6 | **JRC**: EU27 101 → 129% (our group-level extra-EU share does not fit olive oil), Portugal 238 → 379% |
-| Wine | 9 | 6 | **JRC**: FAO's German production is about half of the 8.2 Mhl made; Germany 31 → 44%. Hectolitres × 0.1 = tonnes |
+| Wine | 9 | 6 | **JRC**: FAO's German production is a little over half (57%) of the 8.2 Mhl made; Germany 31 → 44%. Hectolitres × 0.1 = tonnes |
 | Oilseeds | 1.5 | 6 (small markets) | FAO |
 | Meat | 5 | 6 | FAO. The JRC converts meat products back to carcass weight and gets lower SSRs for big exporters (Denmark 316 vs 223%, Ireland 251 vs 191%); not clearly better, so kept FAO and noted here |
 | Cereals | 6 | 7 | FAO: FBS includes stock changes, the JRC apparent use for cereals does not (marketing years July–June) |
@@ -156,7 +171,8 @@ tourist consumption, residuals (balancing term, can be negative).
     coverage_w = Σ_i w_i · min(SSR_i, 100) / Σ_i w_i
 
 over FBS leaf items (item code < 2900, Population excluded; FAO aggregates like "Grand Total" are
-29xx), with w = protein (g/cap/day) or kcal/cap/day. Capping stops a wheat surplus from offsetting
+29xx; where an aggregate shares a leaf's name the leaf is used, so "Miscellaneous" is 2899, not
+2928 = 2899 + Infant food, which counted infant food twice), with w = protein (g/cap/day) or kcal/cap/day. Capping stops a wheat surplus from offsetting
 a soy deficit; read it as "share of what people eat that own production could cover". The uncapped
 version is reported as `*_ssr`:
 
@@ -205,7 +221,17 @@ other than groundnuts are left out). FAO's trade data has no fish.
   Use it for partner shares within one group, never to compare with FBS totals.
 - **Reporter first, mirror second.** A country's own import/export reports are used; for a
   country, flow and year with no report at all, partners' reports of the opposite flow are used
-  instead (`source = mirror`; Russia, Belarus and small states). The UI says so.
+  instead (`source = mirror`; Russia, Belarus and small states). A partner whose window mixes
+  reported and mirror years is `mixed`; every country with any mirror or mixed flow is listed in
+  `trade.json` `meta.mirror` and the UI says so. Gaps are filled per country, flow and year, not
+  per food group: FAO publishes no zero rows, so a country that reports some food trade but none
+  of one group may mean "none", and partners' figures are not put in its place.
+- **Derived totals are not mapped.** Item 30 "Rice; paddy (rice milled equivalent)" is FAO's sum
+  of the other rice items converted to milled weight (checked row by row in the 2022 data);
+  mapping it counted rice twice (EU27 cereal imports 1.9 Mt/year too high). `tests/test_trade.py`
+  keeps any "…equivalent" item out.
+- **"Grown in" shares** (re-export tracing) are in FBS primary equivalents, not product weight;
+  `trade.json` `meta.basis` gives the basis per flow.
 - **Partners without a food balance** (Japan, Singapore, Benin…) are kept via
   `pipeline/mappings/trade_only.csv` (without them 4.7% of tonnes would be lost). Regions, income
   groups and historical areas would be dropped, but none appear in the 2021–2023 rows.

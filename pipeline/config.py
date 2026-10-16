@@ -140,3 +140,19 @@ EU27 = {
 def ensure_dirs() -> None:
     for d in (RAW, INTERIM, PROCESSED, WEB_DATA):
         d.mkdir(parents=True, exist_ok=True)
+
+
+class StaleError(RuntimeError):
+    """A derived file is older than an input it was built from."""
+
+
+def require_fresh(output: Path, inputs: list[Path]) -> None:
+    """Raise StaleError if `output` is older than any existing input. Stops a step from quietly
+    reusing a file built from an older mapping or download (e.g. trade shares computed before a
+    trade_items.csv fix)."""
+    if not output.exists():
+        return
+    newer = [p for p in inputs if p.exists() and p.stat().st_mtime > output.stat().st_mtime]
+    if newer:
+        raise StaleError(f"{output.name} is older than {', '.join(p.name for p in newer)}; "
+                         "rebuild it (`atlas build`)")
