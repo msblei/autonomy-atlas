@@ -473,6 +473,28 @@ function robustWords(range, id, what) {
   return "";
 }
 
+// FAO item names in plain words: "Wheat and products" -> "wheat".
+function itemName(item) {
+  return item.replace(/ and products$/, "").replace(/ \(.*\)$/, "").replace(/^Sugar$/, "sugar").toLowerCase();
+}
+
+// A second source (USDA PSD, pipeline/usda.py) that puts an important item far from FAO's figure.
+function secondOpinion(id, group = state.group) {
+  const d = country(id)?.indicators?.[group]?.usda;
+  if (!d?.length) return "";
+  const who = id === EU ? "the EU" : nameOf(id);
+  const s = state.data.meta.sources.usda_psd;
+  const lines = d.map((x) => {
+    const flips = (x.fao >= 100) !== (x.usda >= 100);
+    return `for ${itemName(x.item)}, USDA's figures give ${Math.round(x.usda)}% of what is used, FAO's
+      ${Math.round(x.fao)}%${flips ? ` (by USDA's, ${who} would produce ${x.usda >= 100 ? "more" : "less"} than it uses)` : ""}`;
+  });
+  return `<p class="aside">Another source disagrees: ${lines.join("; ")}. The two compile their figures
+    separately and do not always count the same things; we cannot tell which is right, and show FAO's,
+    which covers every food.
+    <a href="${s.url}" target="_blank" rel="noopener">USDA ${s.title}</a>.</p>`;
+}
+
 function isMember(iso3) {
   return state.data.meta.eu_members.includes(iso3);
 }
@@ -859,6 +881,7 @@ function viewFood() {
     <h2>${nameOf(id)} · ${g.label}</h2>
     ${head}
     ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
+    ${w ? "" : secondOpinion(id)}
     ${euLine(id)}
     ${w ? "" : trend(id)}
     ${compareFood(id)}
@@ -991,6 +1014,7 @@ function viewSources() {
     ${jrc ? aboutJrc(id) : aboutFao()}
     ${jrcItems(id)}
     ${state.group === "all" ? receiptAll(id, v) : receiptGroup(id, v)}
+    ${state.group === "all" ? "" : secondOpinion(id)}
     ${jrc ? checkJrc(id) : checkYourself(id)}
     ${caveats(id, g)}
     ${mapSource()}
@@ -1020,7 +1044,8 @@ function checks() {
     <p>Before anything goes online, the files we download are compared with FAO's own website; a
       second program, written separately from the first, works out every number again from those
       files and must agree on every number we publish; and we test that this page shows exactly those
-      numbers.</p>
+      numbers. We also compare FAO's figures with an independent source, the US Department of
+      Agriculture's, and say so where the two disagree a lot.</p>
     <p>FAO's figures for ${n} combinations of country and food contradict themselves, for example
       more sold abroad than there was. We leave those out, say so where they would appear, and show
       FAO's own lines so you can see why.</p>`;

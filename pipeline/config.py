@@ -76,6 +76,14 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence_url": "https://commission.europa.eu/legal-notice_en",
         "doi": "https://doi.org/10.2905/JRC.EBBTB0G",
     },
+    "usda_psd": {
+        "title": "Production, Supply and Distribution (PSD)",
+        "publisher": "U.S. Department of Agriculture, Foreign Agricultural Service",
+        "url": "https://apps.fas.usda.gov/psdonline/app/index.html",
+        "file_url": "https://apps.fas.usda.gov/psdonline/downloads/psd_alldata_csv.zip",
+        "licence": "US government work, public domain",
+        "licence_url": "https://www.usa.gov/government-copyright",
+    },
     "gisco_countries": {
         "title": "Countries 2024, 1:20 million",
         "publisher": "Eurostat GISCO",

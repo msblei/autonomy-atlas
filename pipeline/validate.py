@@ -277,6 +277,25 @@ def check_trade(partners: pd.DataFrame, groups: pd.DataFrame) -> list[Finding]:
     return out
 
 
+def check_usda() -> list[Finding]:
+    """FAO against USDA PSD (pipeline/usda.py): large SSR gaps on items with real use. Sources may
+    differ legitimately, so these are warnings; the UI shows them next to FAO's figure."""
+    from . import usda
+
+    if not usda.OUT.exists():
+        return [Finding("usda_missing", WARN, "no usda_comparison.parquet: `atlas download "
+                        "--source usda` and `atlas build`")]
+    c = pd.read_parquet(usda.OUT)
+    out = []
+    for _, r in c[c["large_gap"]].iterrows():
+        out.append(Finding("usda_gap", WARN,
+                           f"{r['item']}: FAO {r['ssr_fao']:.0f}%, USDA {r['ssr_usda']:.0f}% "
+                           f"(production {r['production_fao']:.0f} / {r['production_usda']:.0f} kt, "
+                           f"use {r['supply_fao']:.0f} / {r['supply_usda']:.0f} kt)",
+                           r["iso3"], r["item"], _f(r["gap_pp"])))
+    return out
+
+
 # ------------------------------------------------------------------------------------------------
 # published JSON
 
@@ -379,13 +398,14 @@ def run(*, write: bool = True) -> list[Finding]:
     findings += check_trends(trends)
     findings += check_eu_bloc(groups, items)
     findings += check_jrc(groups, items)
+    findings += check_usda()
     if partners is None:
         findings.append(Finding("trade_missing", BLOCK, "no trade_partners.parquet"))
     else:
         findings += check_trade(partners[partners["flow"] != "grown"], groups)
 
     W = config.WEB_DATA
-    load = lambda n: json.loads((W / n).read_text(encoding="utf-8")) if (W / n).exists() else None  # noqa: E731
+    load = lambda n: json.loads((W / n).read_text(encoding="utf-8")) if (W / n).exists() else None
     ssr, its, trade = load("ssr.json"), load("items.json"), load("trade.json")
     if ssr is None or its is None:
         findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))

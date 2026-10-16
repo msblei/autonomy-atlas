@@ -8,7 +8,7 @@ import { forHowLong } from "../src/calendar.js";
 const data = JSON.parse(readFileSync(new URL("../public/data/ssr.json", import.meta.url), "utf8"));
 const C = data.countries;
 const GROUPS = data.groups.map((g) => g.key).filter((k) => k !== "all");
-const FIXED = ["DEU", "FRA", "NLD", "UKR", "EU27", "NGA", "JOR", "URY", "ISL", "IRL", "LUX", "USA"];
+const FIXED = ["DEU", "FRA", "NLD", "UKR", "EU27", "NGA", "JOR", "URY", "ISL", "IRL", "LUX", "USA", "TUR", "NOR"];
 let seed = 20261016;
 const rand = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
 const others = Object.keys(C).filter((k) => !FIXED.includes(k) && C[k].indicators?.all);
@@ -47,6 +47,10 @@ test("food pages: figure, withheld explanation, and the receipt's sum", async ({
         await expect(view(page)).not.toContainText("Was it always like this?");
       } else if (v != null) {
         await expect(view(page).locator(".answer")).toHaveText(`${forHowLong(v)}.`);
+        // a second source's disagreement is shown exactly where the data has one
+        const note = view(page).locator(".aside", { hasText: "Another source disagrees" });
+        await expect(note).toHaveCount(ind.usda ? 1 : 0);
+        for (const d of ind.usda ?? []) await expect(note).toContainText(`${Math.round(d.usda)}%`);
         await open(page, `${id}/${g}/sources`);
         await expect(view(page).locator(".sum strong")).toHaveText(`${Math.round(v)}%`);
       }

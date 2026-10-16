@@ -19,7 +19,8 @@ Inputs, read directly:
   the 8.5 GB CSV out of the zip (never unzipped) and keeps the tonnes rows from 2010 on in
   `verify/.cache/tm_qty_<sha>.parquet` (about 15 s, once per zip hash).
 - `data/raw/jrc/bal/Dataset_EU_estimated_agricultural_balance_sheets.csv`
-- `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv}`
+- `data/raw/usda/psd_alldata_csv.zip` (USDA PSD, read out of the zip)
+- `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv}`
 
 Outputs:
 
@@ -44,6 +45,7 @@ Outputs:
 | withheld_null_ratios | every withheld balance has no tonnes or kcal ratio |
 | withheld | group verdict (own figures + `parts_contradict`), `withheld.range`, kcal flag, `uses_withheld`, and that a `uses_withheld` group carries no uses |
 | all_food_withheld | per basis: verdict, `range`, `share_range` (readings A and B); also `n_withheld` |
+| usda_items, usda_values | per country × group, the `usda: [{item, fao, usda}]` array: which items, and both SSRs (methodology "FAO against USDA") |
 | jrc_published_ssr | the JRC's own dairy ratio (methodology "The JRC's own ratio") |
 | trade_total, trade_partner, trade_partner_set, trade_mirror | `trade.json` imports/exports: totals, every listed partner, "every partner ≥ 0.5% is listed", `meta.mirror` |
 | trade_grown_* | "Grown in" (Kastner re-export tracing) totals and partners, recomputed in full |
@@ -87,25 +89,30 @@ alternatives now are the pipeline's earlier behaviours, kept to explain any regr
    Not reached by the current data.
 5. **kcal flag on withheld groups.** Where the export has no `kcal` key at all, the withheld
    reason is not compared there; null ratios are still checked.
-6. **JRC year coverage.** A year counts only if production is present and apparent use > 0
+6. **USDA** follows the methodology's "Exact rules" as written: the 23 PSD↔FBS pairs, window
+   sum / 3, the FAO side is the published window item balance, withheld FAO SSR gets no note, EU
+   members not compared, use ≥ 50 kt on *either* source, 10% of the published group supply.
+   (*Alternative* kept for regressions: use ≥ 50 kt on both.) The "Result" summary statistics
+   are text in the doc, not exported, so they are not recomputed.
+7. **JRC year coverage.** A year counts only if production is present and apparent use > 0
     (the edge rules).
-7. **JRC series.** Tomatoes: the `TOMATOES` row, supply = P + M − X. Olive oil: `TOTAL OLIVE
+8. **JRC series.** Tomatoes: the `TOMATOES` row, supply = P + M − X. Olive oil: `TOTAL OLIVE
     OIL`, supply = apparent use. Wine: `WINE`, hectolitres × 0.1. Dairy: production =
     `RAW MILK`; trade = milk-equivalent sum of DRINKING MILK, ACIDIFIED MILK, CREAM FOR DIRECT
     CONSUMPTION, BUTTERMILK, TOTAL BUTTER, TOTAL CHEESE, SKIMMED and WHOLE MILK POWDER, WHEY
     POWDER. The file has no separate bulk raw milk trade line, so it is taken to be inside
     drinking milk. Only uses are scaled with supply; FAO's per-person kcal and protein are kept.
     Dairy uses are scaled year by year, then averaged.
-8. **EU27 extra-EU shares.** By product weight, over partners mapped to ISO3. Fallback order:
+9. **EU27 extra-EU shares.** By product weight, over partners mapped to ISO3. Fallback order:
     member's all-food share, then 1.0. EU27 uses = members' sums × D_EU / ΣD_members per item
     and year.
-9. **kcal-basis IDR** is not defined in the spec. It is computed like kcal SSR; unknown imports
+10. **kcal-basis IDR** is not defined in the spec. It is computed like kcal SSR; unknown imports
     (EU27 fish) give null.
-10. **Averages and claims** are not in the spec. `europe_avg` / `world_avg`: food kg per person
+11. **Averages and claims** are not in the spec. `europe_avg` / `world_avg`: food kg per person
     = Σ food / Σ population; protein = population-weighted `g_per_day`.
     `claims.eu_intra_dairy_mt` = FAO members' dairy trade × (1 − extra-EU share), Mt. Both were
     fitted to the export, so they are weak checks.
-11. **Trade.** "No report at all" = no tonnes row of any item for that country, flow and year.
+12. **Trade.** "No report at all" = no tonnes row of any item for that country, flow and year.
     Yearly mean = window sum / 3. "Grown" tracing runs on window-mean matrices, using the
     published (JRC-adjusted) national P and M. Trade-only countries, and countries without a
     window balance, keep trade-matrix imports and P = 0.

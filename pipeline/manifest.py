@@ -39,6 +39,7 @@ def raw_inputs() -> dict[str, Path]:
         "jrc_bal_zip": jrc.ZIP,
         "jrc_bal": jrc.CSV,
         "gisco_countries": config.RAW / "gisco" / "CNTR_RG_20M_2024_4326.geojson",
+        "usda_psd": config.RAW / "usda" / "psd_alldata_csv.zip",
     }
 
 

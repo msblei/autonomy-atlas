@@ -11,8 +11,8 @@ def frame(**cols):
 
 
 # Jordan, eggs, 2021-2023 average (kt): exports exceed production + imports, no stock change.
-JORDAN_EGGS = dict(production=81.3, imports=3.0, exports=114.3, supply=-30.0,
-                   stock_variation=0.0, residuals=-107.3)
+JORDAN_EGGS = {"production": 81.3, "imports": 3.0, "exports": 114.3, "supply": -30.0,
+               "stock_variation": 0.0, "residuals": -107.3}
 
 
 def test_jordan_eggs_is_withheld():
@@ -78,3 +78,17 @@ def test_small_contradiction_does_not_withhold_the_group():
         "supply": [20, 1400], "food": [110, 1200], "flag": [checks.FOOD_EXCEEDS, ""],
     })
     assert not bool(checks.parts_sensitivity(items, ["iso3", "group"]).iloc[0]["depends"])
+
+
+def test_usda_comparison_flags_large_gaps_only():
+    from pipeline import usda
+
+    fao = pd.DataFrame({"iso3": ["TUR", "DEU"], "item": ["Wheat and products"] * 2,
+                        "production": [19800, 22000], "imports": [0, 0], "exports": [0, 0],
+                        "supply": [32400, 19500], "ssr": [61.1, 112.8], "flag": ["", ""]})
+    psd = pd.DataFrame({"iso3": ["TUR", "DEU"], "item": ["Wheat and products"] * 2,
+                        "psd_commodity": ["Wheat"] * 2, "production": [18083, 22000],
+                        "imports": [0, 0], "exports": [0, 0], "supply": [19600, 19000]})
+    c = usda.compare(fao, psd).set_index("iso3")
+    assert bool(c.loc["TUR", "large_gap"]) and not bool(c.loc["DEU", "large_gap"])
+    assert round(c.loc["TUR", "ssr_usda"]) == 92

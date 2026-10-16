@@ -35,6 +35,7 @@ MAP = ROOT / "pipeline/mappings"
 FBS_ZIP = ROOT / "data/raw/faostat/FoodBalanceSheets_E_All_Data_(Normalized).zip"
 TM_ZIP = tm_cache.TM_ZIP
 JRC_CSV = ROOT / "data/raw/jrc/bal/Dataset_EU_estimated_agricultural_balance_sheets.csv"
+USDA_ZIP = ROOT / "data/raw/usda/psd_alldata_csv.zip"
 OUT_DIR = ROOT / "web/public/data"
 REPORT = HERE / "recompute_report.json"
 FULL_MISMATCHES = HERE / ".cache" / "mismatches_full.json"
@@ -777,6 +778,79 @@ def same(exp, rec, dp, rel=1e-6):
 
 
 # --------------------------------------------------------------------------------------------
+# FAO against USDA PSD (methodology "FAO against USDA")
+# --------------------------------------------------------------------------------------------
+# PSD commodity -> FBS item: the 23 pairs of methodology "FAO against USDA", "Exact rules".
+PSD_ITEMS = {
+    "Wheat": "Wheat and products", "Rice, Milled": "Rice and products",
+    "Barley": "Barley and products", "Corn": "Maize and products", "Rye": "Rye and products",
+    "Oats": "Oats", "Millet": "Millet and products", "Sorghum": "Sorghum and products",
+    "Oilseed, Soybean": "Soyabeans", "Oilseed, Rapeseed": "Rape and Mustardseed",
+    "Oilseed, Sunflowerseed": "Sunflower seed", "Oilseed, Peanut": "Groundnuts",
+    "Oil, Soybean": "Soyabean Oil", "Oil, Rapeseed": "Rape and Mustard Oil",
+    "Oil, Sunflowerseed": "Sunflowerseed Oil", "Oil, Olive": "Olive Oil", "Oil, Palm": "Palm Oil",
+    "Sugar, Centrifugal": "Sugar (Raw Equivalent)",
+    "Meat, Beef and Veal": "Bovine Meat", "Meat, Swine": "Pigmeat",
+    "Meat, Chicken": "Poultry Meat", "Dairy, Butter": "Butter, Ghee",
+    "Coffee, Green": "Coffee and products",
+}
+
+
+def load_usda(WIN):
+    """-> {(iso3, fbs item name): (production kt, domestic use kt)}, window means."""
+    usda_map = {r["psd_name"]: r["iso3"].strip() for r in read_csv_comments(MAP / "usda_countries.csv")}
+    z = zipfile.ZipFile(USDA_ZIP)
+    d = pd.read_csv(z.open(next(n for n in z.namelist() if n.endswith(".csv"))),
+                    usecols=["Commodity_Description", "Country_Name", "Market_Year",
+                             "Attribute_Description", "Unit_Description", "Value"])
+    d = d[d["Market_Year"].isin(WIN) & d["Commodity_Description"].isin(PSD_ITEMS)]
+    use_attr = d["Commodity_Description"].map(
+        lambda c: "Total Disappearance" if c == "Sugar, Centrifugal" else "Domestic Consumption")
+    d = d[(d["Attribute_Description"] == "Production") | (d["Attribute_Description"] == use_attr)]
+    d = d.assign(kt=d["Value"] * np.where(d["Unit_Description"].str.contains("60 KG BAGS"), 0.06, 1.0),
+                 attr=np.where(d["Attribute_Description"] == "Production", "P", "U"),
+                 iso3=d["Country_Name"].map(usda_map))
+    unmapped = sorted(set(d.loc[d["iso3"].isna(), "Country_Name"].dropna()))
+    d = d[d["iso3"].notna() & (d["iso3"] != "")]
+    d = d.assign(iso3=d["iso3"].replace({"EU27": "EU27"}))
+    # window mean of the components: sum over the window years / number of window years
+    g = d.groupby(["iso3", "Commodity_Description", "attr"])["kt"].sum() / len(WIN)
+    out = {}
+    for (iso, com, attr), v in g.items():
+        out.setdefault((iso, PSD_ITEMS[com]), {})[attr] = v
+    return {k: (v.get("P", 0.0), v.get("U", math.nan)) for k, v in out.items()}, unmapped
+
+
+def usda_flags(D, res, usda, use_rule="either"):
+    """-> {(iso, group): {item: (fao_ssr, usda_ssr)}} for the export's `usda` arrays."""
+    name_to_code = {n: c for c, n in D.item_names.items()}
+    out = defaultdict(dict)
+    for (iso, item), (up, uu) in usda.items():
+        r = res.get(iso)
+        if not r or "item_bal" not in r or iso in EU:  # members: PSD has only the EU
+            continue
+        code = name_to_code[item]
+        b = r["item_bal"].get(code)
+        if b is None:
+            continue
+        g = D.ITEM_GROUP.get(code)
+        if verdict(b["P"], b["M"], b["X"], b["S"], b["D"], b["food"]):
+            continue  # no FAO SSR
+        fao, us = ratio(b["P"], b["D"]), ratio(up, uu)
+        if isnan(fao) or isnan(us):
+            continue
+        # "use >= 50 kt" on either source's domestic use (Exact rules); "both" kept as alternative
+        if (min if use_rule == "both" else max)(b["D"], uu) < 50:
+            continue
+        if abs(fao - us) <= max(20.0, 0.2 * min(fao, us)):
+            continue
+        gd = r["groups"][g]["comp"]["D"] if g in r["groups"] else math.nan
+        if not isnan(gd) and gd > 0 and b["D"] >= 0.1 * gd:
+            out[(iso, g)][item] = (fao, us)
+    return out
+
+
+# --------------------------------------------------------------------------------------------
 # Trade partners + Kastner tracing
 # --------------------------------------------------------------------------------------------
 def build_trade(D, res, min_origin_t=0.0):
@@ -873,6 +947,7 @@ SHAS = {}
 def main():
     for k, p in {"fbs_zip": FBS_ZIP, "trade_matrix_zip": TM_ZIP, "jrc_csv": JRC_CSV}.items():
         SHAS[k] = sha256(p)
+    SHAS["usda_psd_zip"] = sha256(USDA_ZIP)
     for k in ("ssr.json", "items.json", "trade.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
@@ -882,6 +957,10 @@ def main():
     alt_res = {name: compute_balances(D, o) for name, o in ALTERNATIVES.items()}
     alts = {name: flatten(r) for name, r in alt_res.items()}
     log("alternative readings computed")
+    usda, usda_unmapped = load_usda(D.WIN)
+    usda_rec = usda_flags(D, res, usda)
+    usda_alt = usda_flags(D, res, usda, "both")
+    log(f"USDA PSD: {len(usda)} country-commodity pairs, {len(usda_rec)} groups flagged")
     trade, mirror, _ = build_trade(D, res)
     trade_alts = {
         "grown: origins < 0.5 t dropped": build_trade(D, res, 0.5)[0],
@@ -997,6 +1076,25 @@ def main():
         explained = [name for name, af in alts.items()
                      if same(exp, af.get(p, (math.nan, dp))[0], dp)]
         record(cat, describe(p, D.TREND), exp, rec, explained)
+    # FAO against USDA: the per-group `usda` arrays
+    exp_usda = {(iso, g): {x["item"]: x for x in gi.get("usda", [])}
+                for iso, v in ssr["countries"].items()
+                for g, gi in v.get("indicators", {}).items() if g != "all" and gi.get("usda")}
+    for key in sorted(set(exp_usda) | set(usda_rec)):
+        iso, g = key
+        e, r_ = exp_usda.get(key, {}), usda_rec.get(key, {})
+        w = {"file": "ssr.json", "country": iso, "group": g}
+        counts["usda_items"] += 1
+        if sorted(e) != sorted(r_):
+            why = (["usda use >= 50 kt on both sources"]
+                   if sorted(e) == sorted(usda_alt.get(key, {})) else [])
+            record("usda_items", {**w, "field": "usda[].item"}, sorted(e), sorted(r_), why)
+        for item in set(e) & set(r_):
+            for k, idx in (("fao", 0), ("usda", 1)):
+                counts["usda_values"] += 1
+                if not same(e[item].get(k), r_[item][idx], 1):
+                    record("usda_values", {**w, "field": f"usda[{item}].{k}"}, e[item].get(k),
+                           r_[item][idx])
     # withheld balances must have null ratios
     for iso, v in ssr["countries"].items():
         for g, gi in v.get("indicators", {}).items():
@@ -1116,6 +1214,7 @@ def main():
         "mismatches_listed": min(len(mism), 500),
         "mismatches": mism[:500],
         "not_recomputed": not_recomputed,
+        "usda_psd_names_with_window_data_not_compared": usda_unmapped,
         "inputs_sha256": SHAS,
     }
     REPORT.write_text(json.dumps(report, indent=1, ensure_ascii=False, default=float))

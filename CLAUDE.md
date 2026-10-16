@@ -94,6 +94,7 @@ make serve       # cd web && npm run dev
 | Bilateral trade (CN8, intra-EU) | Eurostat Comext | `https://ec.europa.eu/eurostat/api/comext/dissemination/` | EU reporters only |
 | Bilateral trade (HS6, reconciled) | CEPII BACI | manual download from CEPII page | Etalab 2.0; ~2-year lag |
 | EU balances (dairy, tomatoes, olive oil, wine) | DG AGRI–JRC "EU estimated agricultural balance sheets" | browser download only (`atlas download --source jrc` prints steps) → `data/raw/jrc/` | EC reuse notice (attribution). Intra-EU trade counted once, processed goods converted back; replaces FAO for EU dairy, tomatoes, olive oil, wine (`pipeline/jrc.py`, comparison in methodology) |
+| Second opinion on FBS (cereals, oilseeds, oils, sugar, meat, butter, coffee) | USDA FAS PSD | `https://apps.fas.usda.gov/psdonline/downloads/psd_alldata_csv.zip` (`atlas download --source usda`) | US government work, public domain. EU only as a bloc. Compared, never substituted: `pipeline/usda.py`; large gaps shown next to FAO's figure |
 | Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | NUTS2, 2000–2024 |
 | Seasons | FAO Crop Calendar API | `https://api-cropcalendar.apps.fao.org/` | inspect its OpenAPI docs before coding |
 | Boundaries | Eurostat GISCO NUTS 2024; Natural Earth 50m countries | see `config.py` | GISCO non-commercial |

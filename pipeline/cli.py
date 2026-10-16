@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 
-from . import compute, download, export, harmonise, manifest, report, trade, validate
+from . import compute, download, export, harmonise, manifest, report, trade, usda, validate
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -62,6 +62,7 @@ def main(argv: list[str] | None = None) -> int:
         trade.extract()
         compute.run(years=years)
         trade.run()
+        usda.run()
     elif args.cmd == "export":
         export.run()
     elif args.cmd == "all":
@@ -71,6 +72,7 @@ def main(argv: list[str] | None = None) -> int:
         trade.extract()
         compute.run(years=years)
         trade.run()
+        usda.run()
         export.run()
         return _validate()
     return 0

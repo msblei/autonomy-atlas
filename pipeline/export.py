@@ -84,6 +84,33 @@ def _all_basis(r: pd.Series, w: str, extra: dict) -> dict:
     return {"share": _round(r[f"{w}_share"]), "ssr": _round(r[f"{w}_ssr"])} | extra
 
 
+# A disagreement is shown for an item carrying at least this share of its group's domestic supply.
+USDA_ITEM_SHARE = 0.10
+
+
+def _usda_disagreements(items: pd.DataFrame) -> dict:
+    """(iso3, group) -> [{item, fao, usda}] where USDA's PSD puts an important item's SSR far from
+    FAO's (pipeline/usda.py `large_gap`). Shown next to FAO's figure, never instead of it."""
+    from . import usda
+
+    if not usda.OUT.exists():
+        return {}
+    config.require_fresh(usda.OUT, [config.PROCESSED / "ssr_items.parquet", usda.ZIP])
+    cmp = pd.read_parquet(usda.OUT)
+    cmp = cmp[cmp["large_gap"] & cmp["ssr_fao"].notna() & cmp["ssr_usda"].notna()]
+    groups = items[items["group"].notna()][["iso3", "item", "group", "supply"]]
+    gsum = groups.groupby(["iso3", "group"])["supply"].sum()
+    cmp = cmp.merge(groups[["iso3", "item", "group"]], on=["iso3", "item"], how="inner")
+    out: dict = {}
+    for _, r in cmp.sort_values("supply_fao", ascending=False).iterrows():
+        tot = gsum.get((r["iso3"], r["group"]))
+        if not tot or tot <= 0 or r["supply_fao"] < USDA_ITEM_SHARE * tot:
+            continue
+        out.setdefault((r["iso3"], r["group"]), []).append(
+            {"item": r["item"], "fao": _round(r["ssr_fao"]), "usda": _round(r["ssr_usda"])})
+    return out
+
+
 def eu_intra_dairy(years: tuple[int, int]) -> dict | None:
     """Members' FBS dairy trade with each other, Mt/year over `years`: what they report buying from
     and selling to other members (FBS milk equivalent × intra-EU share from the trade matrix).
@@ -192,6 +219,7 @@ def export_ssr() -> None:
     products = load_products()["groups"]
 
     years = sorted(groups["years"].unique())
+    disagree = _usda_disagreements(items)
     window = tuple(int(y) for y in years[-1].split("-")) if years else None
     jrc_pub = jrc.published_ssr(window) if window else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
@@ -296,6 +324,8 @@ def export_ssr() -> None:
                 parts = [JRC_LABEL[f] for f, g in JRC_GROUP.items() if g == r["group"] and f in foods]
                 if parts:
                     ind["jrc_items"] = parts
+                if (iso3, r["group"]) in disagree:
+                    ind["usda"] = disagree[(iso3, r["group"])]
                 if r["source"] == "jrc_bal" and r["group"] == "dairy":
                     # The JRC's own dairy ratio, on a basis its dataset does not document
                     # (jrc.published): shown next to ours, not instead of it.

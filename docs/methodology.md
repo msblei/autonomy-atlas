@@ -335,6 +335,54 @@ With all trade stopped a country keeps its production, so "available without tra
 just production per person — the SSR view already shows it. A useful scenario needs feed origin
 (phase 4) or partner-level trade to remove specific suppliers such as RU/UA (phase 2).
 
+## FAO against USDA
+
+`pipeline/usda.py` compares FBS items with USDA's Production, Supply and Distribution database,
+compiled independently of FAO (attachés, national statistics, customs data). For 23 commodities
+(cereals, oilseeds, vegetable oils, centrifugal sugar, beef, pork, chicken, butter, green coffee
+at 0.06 t per 60 kg bag) and every country in both, over the same window: PSD market year y is
+set against calendar year y; PSD domestic consumption (sugar: total disappearance) against FBS
+domestic supply; SSR = production / domestic use × 100 on both sides. EU members appear in PSD
+only as "European Union" (extra-EU trade), compared with our EU27 bloc. PSD country names map to
+ISO3 through `pipeline/mappings/usda_countries.csv` (empty = not compared).
+
+**Result, 2021–2023** (pairs where both SSRs exist and USDA's domestic use ≥ 50 kt): 977 pairs; median gap
+2.8 points; 60% within 5, 75% within 10, 87% within 20 points (weighted by consumption: 82% within
+10, 92% within 20). Production agrees (median ratio FAO/USDA 1.00): the gaps are in domestic use
+(in 80% of gaps > 20 points the use differs more than production), so they are largest for
+exporters that use little of what they produce. Commodities agreeing best: wheat, rice, palm
+oil, coffee, beef (median gap ≤ 2 points); least: barley, oats, rye, olive oil, rapeseed and
+soybean oil (5–7 points). Examples of large gaps:
+
+- Turkey, wheat: FAO 61%, USDA 92%. FAO counts 14–16 Mt a year fed to animals and 32 Mt of use;
+  USDA 20 Mt of use in total. Turkey, sugar: FAO 118%, USDA 91%, so the sources disagree on
+  whether Turkey has a surplus.
+- Norway, wheat: FAO 8%, USDA 48%. FAO's 2.6 Mt of "other uses" is most likely wheat gluten
+  for fish feed converted back to grain; USDA counts grain only. Both right by their definitions.
+- Ukraine maize 447% vs 553%, Russia sunflower oil 178% vs 263%: small differences in domestic use
+  of a large export.
+
+**Exact rules.** PSD commodities and the FBS item each is compared with: Wheat, Corn (Maize),
+Rice Milled, Barley, Rye, Oats, Sorghum, Millet (each "… and products"); Oilseed Soybean
+(Soyabeans), Oilseed Rapeseed (Rape and Mustardseed), Oilseed Sunflowerseed (Sunflower seed),
+Oilseed Peanut (Groundnuts); Oil Soybean, Oil Sunflowerseed, Oil Rapeseed (Rape and Mustard
+Oil), Oil Palm, Oil Olive; Sugar Centrifugal (Sugar (Raw Equivalent)); Meat Beef and Veal (Bovine
+Meat), Meat Swine (Pigmeat), Meat Chicken (Poultry Meat; not "Poultry, Meat, Broiler"); Dairy
+Butter (Butter, Ghee); Coffee Green (Coffee and products). PSD values are summed over market
+years 2021–2023 and divided by 3 (a missing year counts as 0), then the ratio is taken. The FAO
+side is the published window item balance (after JRC replacement); an item whose FAO SSR is
+withheld gets no note. EU members are not compared (PSD has none for these commodities);
+"European Union" is compared with our EU27. The use threshold (≥ 50 kt) applies to **either**
+source's domestic use: a pair where one source sees 86 kt used and the other 14 kt (Papua New
+Guinea palm oil) is exactly a disagreement worth showing. The 10% test divides the item's FAO
+domestic supply by the sum over the group's items (the published group supply).
+
+**Use.** Nothing is replaced. Pairs with |gap| > max(20 points, 20% of the smaller SSR) and use
+≥ 50 kt (either source) are `usda_gap` warnings in `atlas validate` and listed on the audit page. When such an
+item carries ≥ 10% of its group's domestic supply, the export adds `usda: [{item, fao, usda}]`
+to the group and the food page and "How do we know?" say that another source disagrees, with
+both figures, and note when the two fall on different sides of 100%. 2021–2023: 65 groups.
+
 ## Checks: how a published number is known to be right
 
 `make verify` runs every layer; any failure stops a release, and `npm run build`
@@ -351,6 +399,7 @@ just production per person — the SSR view already shows it. A useful scenario 
 | Known facts | `tests/test_real_data.py` | France poultry < 100% and EU > 100%, EU soybeans 10–30%, NL a cereal hub, JRC replacements in place, Jordan eggs and Ukraine oils withheld, Iceland fish not |
 | Independent recomputation | `verify/recompute.py` | written from this document alone, without reading `pipeline/`; recomputes every published number (≈250,000) from the raw files and must agree on all of them. Its first run found three pipeline bugs (EU27 per-person population, window averaging, EU27 fish kcal IDR) |
 | What the page shows | `web/tests/*.spec.js` (Playwright, installed Chrome) | headline and food-page wording = `calendar.js` of the exported figure; receipt sum = exported ratio; rankings never include a withheld figure and equal the data's top five; no factual figure typed into `main.js` |
+| Second source | `pipeline/usda.py` (section "FAO against USDA") | FAO figures far from USDA's for the same country and commodity: warnings, and a note on the page |
 | Human review | `atlas report` → `data/processed/audit.html` | every withheld figure and warning, and the 50 largest changes since the last release (`atlas release-snapshot` after publishing) |
 
 ## Pitfalls checklist

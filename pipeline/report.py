@@ -76,6 +76,22 @@ def _table(df: pd.DataFrame, cols: list[str] | None = None) -> str:
     return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
 
 
+def _usda_section() -> str:
+    from . import usda
+
+    if not usda.OUT.exists():
+        return "<h2>FAO against USDA</h2><p class='bad'>No comparison (download USDA PSD).</p>"
+    c = pd.read_parquet(usda.OUT)
+    s = usda.summary(c)
+    rows = pd.DataFrame(s.pop("by_commodity"))
+    return ("<h2>FAO against USDA PSD</h2>"
+            f"<p>{s['pairs']} country × commodity pairs with at least 50 kt of use: median SSR gap "
+            f"{s['median_gap_pp']} points; {s['share_within_5pp']:.0%} within 5, "
+            f"{s['share_within_10pp']:.0%} within 10, {s['share_within_20pp']:.0%} within 20 points. "
+            f"Median production ratio FAO/USDA {s['production_ratio_median']}.</p>"
+            + _table(rows.sort_values("median", ascending=False)))
+
+
 def run() -> None:
     W = config.WEB_DATA
     vpath = W / "validation.json"
@@ -111,11 +127,13 @@ def run() -> None:
                 f"{rec.get('compared_total', '?')} values compared, "
                 f"{rec.get('n_mismatches', '?')} mismatches.</p>")
     sections = [
-        f"<h1>Autonomy Atlas: data audit</h1><p>Generated {datetime.now(UTC):%Y-%m-%d %H:%M} UTC "
-        f"for the data window {html.escape(str(ssr['meta']['years']))}. "
-        f"Validation {'passed' if v['ok'] else '<b>FAILED</b>'}: {html.escape(json.dumps(v['counts']))}.</p>",
+        (f"<h1>Autonomy Atlas: data audit</h1><p>Generated {datetime.now(UTC):%Y-%m-%d %H:%M} UTC "
+         f"for the data window {html.escape(str(ssr['meta']['years']))}. "
+         f"Validation {'passed' if v['ok'] else '<b>FAILED</b>'}: "
+         f"{html.escape(json.dumps(v['counts']))}.</p>"),
         rec_line,
         "<h2>Blocking findings</h2>" + _table(block, ["check", "iso3", "group", "detail"]),
+        _usda_section(),
         f"<h2>Largest changes since the last release{' (' + rel['stamp'] + ')' if rel else ''}</h2>"
         + (_table(chg.head(TOP_CHANGES)) if rel else "<p>No release stored yet "
            "(`atlas release-snapshot` after publishing).</p>"),

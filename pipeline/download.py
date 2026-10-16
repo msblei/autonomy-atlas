@@ -123,6 +123,12 @@ def jrc() -> None:
     )
 
 
+def usda(*, force: bool = False) -> list[Path]:
+    """USDA PSD, all commodities (~10 MB): a second source to compare FAO with (pipeline/usda.py)."""
+    url = config.SOURCES["usda_psd"]["file_url"]
+    return [fetch(url, config.RAW / "usda" / url.rsplit("/", 1)[1], force=force)]
+
+
 def crop_calendar() -> None:
     """FAO Crop Calendar API (phase 3). Endpoints are not documented here on purpose —
     inspect the API's OpenAPI/Swagger page first, then implement."""
@@ -139,13 +145,14 @@ ALL = {
     "boundaries": boundaries,
     "baci": baci,
     "jrc": jrc,
+    "usda": usda,
     "crop_calendar": crop_calendar,
 }
 
 
 def run(sources: list[str] | None = None, *, force: bool = False) -> None:
     config.ensure_dirs()
-    sources = sources or ["faostat", "eurostat", "boundaries"]
+    sources = sources or ["faostat", "eurostat", "boundaries", "usda"]
     for name in sources:
         fn = ALL[name]
         log.info("== %s", name)
