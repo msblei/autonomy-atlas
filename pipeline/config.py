@@ -58,6 +58,15 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence_url": "https://creativecommons.org/licenses/by/4.0/",
         "catalogue_file": "FoodBalanceSheets_E_All_Data_(Normalized).zip",
     },
+    "fao_tm": {
+        "title": "Detailed trade matrix",
+        "publisher": "Food and Agriculture Organization of the United Nations (FAO), FAOSTAT",
+        "url": "https://www.fao.org/faostat/en/#data/TM",
+        "file_url": FAOSTAT_BULK_BASE + "Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip",
+        "licence": "CC BY 4.0",
+        "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+        "catalogue_file": "Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip",
+    },
     "gisco_countries": {
         "title": "Countries 2024, 1:20 million",
         "publisher": "Eurostat GISCO",

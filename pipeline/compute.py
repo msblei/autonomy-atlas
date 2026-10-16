@@ -246,7 +246,7 @@ def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None) -> dict[
     """Returns {'items', 'groups', 'overall', 'trends'} tidy frames.
 
     items/groups/overall cover the window (default: latest 3 years); trends has one SSR value per
-    iso3 × group × year (group "all" = protein share) for sparklines.
+    iso3 × group × year (group "all" = uncapped protein SSR) for sparklines.
     """
     wide = add_eu_bloc(to_wide(fbs))
     leaves = leaf_items(fbs)
@@ -258,7 +258,8 @@ def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None) -> dict[
     for y in sorted(wide["year"].dropna().unique()):
         r = _compute_window(wide, (int(y), int(y)), leaves)
         t = r["groups"][r["groups"]["basis"] == "tonnes"][["iso3", "group", "ssr"]]
-        o = r["overall"][["iso3", "protein_share"]].rename(columns={"protein_share": "ssr"})
+        # "All food" headline: total protein produced vs used (uncapped), see docs/methodology.md.
+        o = r["overall"][["iso3", "protein_ssr"]].rename(columns={"protein_ssr": "ssr"})
         o["group"] = "all"
         trend_rows.append(pd.concat([t, o], ignore_index=True).assign(year=int(y)))
     res["trends"] = pd.concat(trend_rows, ignore_index=True) if trend_rows else pd.DataFrame(

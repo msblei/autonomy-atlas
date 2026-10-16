@@ -86,8 +86,19 @@ tourist consumption, residuals (balancing term, can be negative).
 over FBS leaf items (item code < 2900, Population excluded; FAO aggregates like "Grand Total" are
 29xx), with w = protein (g/cap/day) or kcal/cap/day. Capping stops a wheat surplus from offsetting
 a soy deficit; read it as "share of what people eat that own production could cover". The uncapped
-version is reported as `*_ssr`. Livestock products count as domestic regardless of feed origin
-(feed adjustment is phase 4).
+version is reported as `*_ssr`:
+
+    ssr_w = Σ_i w_i · SSR_i / Σ_i w_i
+
+Livestock products count as domestic regardless of feed origin (feed adjustment is phase 4).
+
+**Which one is the headline.** The UI leads with the uncapped protein figure (`protein_ssr`):
+"does the country produce as much protein as its people eat?", letting a wheat or meat surplus
+stand in for imported soy or fish. That is the closer answer to "could it feed itself", and coffee,
+cocoa or bananas barely count because they carry almost no protein. The capped version is the
+stricter "could it keep today's menu, food by food?" and is shown second (and on the "How do we
+know?" page). With the cap only India reaches 100% (2021–2023); without it, 51 countries do.
+Trend lines for "all food" use the uncapped figure too.
 
 ## "How long would it last?" (what the UI shows first)
 
@@ -95,7 +106,7 @@ The first figure readers see is a duration, not a ratio:
 
     months = min(p, 100) / 100 × 12
 
-with p = protein coverage for "all food" and tonnes SSR for a single food. Text rounds to half
+with p = uncapped protein SSR for "all food" and tonnes SSR for a single food. Text rounds to half
 months ("about 10 months of the year"), switches to weeks below about 2 months and to "a few
 days" below one week. Above 100% it says "the whole year, with N months to spare",
 N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the same bands (under
@@ -110,6 +121,29 @@ date is still shown on the "How do we know?" page as an alternative reading of t
 It is a thought experiment and the "How do we know?" page says so: a year's production treated
 as one store, seasons and perishability ignored, the diet unchanged. It adds no information
 beyond SSR, so the methodology above still applies unchanged.
+
+## Trade partners (who buys from and sells to whom)
+
+Source: FAOSTAT Detailed Trade Matrix (`pipeline/trade.py`), same 3-year window as the FBS
+figures, yearly mean. Items are mapped to the food groups by CPC code in
+`pipeline/mappings/trade_items.csv` (feed such as oilcakes, live animals, fibres, tobacco and nuts
+other than groundnuts are left out). FAO's trade data has no fish.
+
+- **Product weight, not primary equivalent.** A tonne of flour, juice or cheese counts as a tonne.
+  Use it for partner shares within one group, never to compare with FBS totals.
+- **Reporter first, mirror second.** A country's own import/export reports are used; for a
+  country, flow and year with no report at all, partners' reports of the opposite flow are used
+  instead (`source = mirror`; Russia, Belarus and small states). The UI says so.
+- **Partners without a food balance** (Japan, Singapore, Benin…) are kept via
+  `pipeline/mappings/trade_only.csv` (without them 4.7% of tonnes would be lost). Regions, income
+  groups and historical areas would be dropped, but none appear in the 2021–2023 rows.
+- **EU bloc:** members' trade with non-members only. This is the M_extra the eu_bloc view needs;
+  EU-bloc IDR still waits for a primary-equivalent conversion.
+- **Re-export hubs:** the Netherlands and Belgium show up as large suppliers of food they only
+  transship (Rotterdam, Antwerp). The UI notes this when they are among the top five; no
+  adjustment is applied.
+- **Export file:** `trade.json` keeps, per country × group × flow, the total and every partner with
+  at least 0.5% (at most 24), plus "all food" = all groups added up by weight.
 
 ## Trends
 

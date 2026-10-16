@@ -1,0 +1,32 @@
+# Countries and territories that appear as trade partners in the FAOSTAT Detailed Trade Matrix but
+# have no Food Balance Sheet (so they are not in world.csv). M49 -> ISO3 (ISO 3166-1 numeric ==
+# M49 for these). Regions, income groups and historical areas (USSR, Yugoslav SFR,
+# Belgium-Luxembourg) are left out on purpose.
+m49,iso3,name
+096,BRN,Brunei
+108,BDI,Burundi
+140,CAF,Central African Republic
+148,TCD,Chad
+184,COK,Cook Islands
+204,BEN,Benin
+212,DMA,Dominica
+226,GNQ,Equatorial Guinea
+232,ERI,Eritrea
+234,FRO,Faroe Islands
+254,GUF,French Guiana
+275,PSE,Palestine
+312,GLP,Guadeloupe
+392,JPN,Japan
+466,MLI,Mali
+474,MTQ,Martinique
+492,MCO,Monaco
+570,NIU,Niue
+585,PLW,Palau
+630,PRI,Puerto Rico
+638,REU,Réunion
+702,SGP,Singapore
+706,SOM,Somalia
+728,SSD,South Sudan
+729,SDN,Sudan
+768,TGO,Togo
+772,TKL,Tokelau

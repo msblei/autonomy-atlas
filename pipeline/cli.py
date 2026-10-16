@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 
-from . import compute, download, export, harmonise
+from . import compute, download, export, harmonise, trade
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -46,12 +46,14 @@ def main(argv: list[str] | None = None) -> int:
     elif args.cmd == "build":
         harmonise.run()
         compute.run(years=years)
+        trade.run()
     elif args.cmd == "export":
         export.run()
     elif args.cmd == "all":
         download.run()
         harmonise.run()
         compute.run(years=years)
+        trade.run()
         export.run()
     return 0
 

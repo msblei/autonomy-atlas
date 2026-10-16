@@ -4,6 +4,8 @@ Outputs (web/public/data/):
     countries.geojson   country polygons in scope, properties {iso3, iso2, name}
     ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend}}}
     items.json          {iso3: {group: [{item, ssr, supply_kt}]}}  (expert view, loaded lazily)
+    trade.json          {meta, names, countries{iso3: {group: {imports|exports: [total_t,
+                        [[partner, t], ...]]}}}}  (trade view, loaded lazily)
 """
 
 from __future__ import annotations
@@ -18,6 +20,7 @@ import pandas as pd
 from . import config
 from .compute import EU_BLOC
 from .harmonise import load_countries, load_products
+from .trade import load_trade_only
 
 log = logging.getLogger(__name__)
 
@@ -263,7 +266,49 @@ def export_countries_geojson() -> None:
     log.info("wrote %s (%d features, %.0f KB)", dest, len(feats), dest.stat().st_size / 1024)
 
 
+# Partners kept per country × food × flow: everyone with at least this share, at most this many.
+TRADE_MIN_SHARE = 0.005
+TRADE_MAX_PARTNERS = 24
+
+
+def _trade_entry(sub: pd.DataFrame) -> list:
+    """[total tonnes, [[partner, tonnes], ...]] largest first; the rest is total minus the list."""
+    total = sub["tonnes"].sum()
+    s = sub.groupby("partner")["tonnes"].sum().sort_values(ascending=False)
+    s = s[s >= TRADE_MIN_SHARE * total].head(TRADE_MAX_PARTNERS)
+    return [round(total), [[p, round(t)] for p, t in s.items()]]
+
+
+def export_trade() -> None:
+    src = config.PROCESSED / "trade_partners.parquet"
+    if not src.exists():
+        log.warning("no %s; run `atlas build` with the trade matrix downloaded", src)
+        return
+    t = pd.read_parquet(src)
+    # "All food": every group added up, in tonnes as traded.
+    t = pd.concat([t, t.assign(group="all")], ignore_index=True)
+    countries: dict = {}
+    for (iso3, group, flow), sub in t.groupby(["iso3", "group", "flow"]):
+        countries.setdefault(iso3, {}).setdefault(group, {})[flow] = _trade_entry(sub)
+    mirrored = sorted(t.loc[t["source"] == "mirror", "iso3"].unique())
+    out = {
+        "meta": {
+            "source": "fao_tm",
+            "years": t["years"].iloc[0],
+            "basis": "tonnes as traded (product weight)",
+            # Countries for which some flows come from partners' reports.
+            "mirror": mirrored,
+        },
+        "names": dict(zip(*load_trade_only()[["iso3", "name"]].T.values, strict=True)),
+        "countries": countries,
+    }
+    dest = config.WEB_DATA / "trade.json"
+    dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)
+
+
 def run() -> None:
     config.ensure_dirs()
     export_countries_geojson()
     export_ssr()
+    export_trade()

@@ -18,7 +18,8 @@ the EU as a bloc. The map opens on one plain question: if a country ate only wha
 produce, for how many months of the year would its food last? Readers then dig deeper
 one level at a time: food by food, a single food (trend, per person, where the harvest goes),
 "How do we know?" (the FAO figures, the sum worked out, how to check it on FAOSTAT) and finally
-all the numbers (SSR/IDR, tonnes/kcal, FAO items).
+all the numbers (SSR/IDR, tonnes/kcal, FAO items). A "bought and sold" view shows who each
+country buys each food from and sells it to, on the map, from the FAO trade matrix.
 
 ## Quick start
 

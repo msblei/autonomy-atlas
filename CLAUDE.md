@@ -88,7 +88,7 @@ make serve       # cd web && npm run dev
 |---|---|---|---|
 | Supply/utilisation, SSR/IDR | FAOSTAT FBS (2010–) | `https://bulks-faostat.fao.org/production/FoodBalanceSheets_E_All_Data_(Normalized).zip` | CC BY 4.0. Elements: Production, Import quantity, Export quantity, Domestic supply quantity, Stock Variation, Feed, Food supply (kcal/capita/day) |
 | Production | FAOSTAT QCL | `.../Production_Crops_Livestock_E_All_Data_(Normalized).zip` | national, 1961– |
-| Bilateral trade (FAO items) | FAOSTAT Detailed Trade Matrix | `.../Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip` | already in FAO item codes — easiest join |
+| Bilateral trade (FAO items) | FAOSTAT Detailed Trade Matrix | `.../Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip` | CC BY 4.0. 420 MB zip, 8.5 GB CSV: stream it, never unzip. Trade items (CPC), not FBS items: `mappings/trade_items.csv` maps them to groups. No fish |
 | Bilateral trade (CN8, intra-EU) | Eurostat Comext | `https://ec.europa.eu/eurostat/api/comext/dissemination/` | EU reporters only |
 | Bilateral trade (HS6, reconciled) | CEPII BACI | manual download from CEPII page | Etalab 2.0; ~2-year lag |
 | Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | NUTS2, 2000–2024 |

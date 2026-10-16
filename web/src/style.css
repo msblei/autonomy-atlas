@@ -74,6 +74,27 @@ select {
 }
 .next:hover { background: #255b3f; }
 
+.more { display: inline-block; margin-top: 12px; font-weight: 600; text-decoration: none; padding: 6px 0; }
+.more:hover { text-decoration: underline; }
+
+.seg { display: flex; border: 1px solid #cfcabe; border-radius: 10px; overflow: hidden; margin: 4px 0 14px; }
+.seg button {
+  flex: 1; font: inherit; font-size: 15px; min-height: 42px; border: 0; background: #fff; color: var(--ink); cursor: pointer;
+}
+.seg button + button { border-left: 1px solid #cfcabe; }
+.seg button[aria-pressed="true"] { background: #1f4a6e; color: #fff; font-weight: 600; }
+
+.partners { list-style: none; margin: 6px 0 12px; padding: 0; }
+.partners a, .partners .rest {
+  display: grid; grid-template-columns: 1fr 90px 44px; gap: 10px; align-items: center;
+  padding: 7px 4px; border-bottom: 1px solid var(--line); color: var(--ink); text-decoration: none;
+}
+.partners a:hover { background: var(--bg); }
+.partners .rest { color: var(--muted); }
+.partners .track { height: 10px; margin: 0; }
+.partners .bar { background: #3d6f96; }
+.partners .pct { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+
 .chips { display: flex; flex-wrap: wrap; gap: 8px; }
 .chips button {
   font: inherit; min-height: 42px; padding: 0 16px; border: 1px solid #cfcabe; border-radius: 21px;
