@@ -106,6 +106,42 @@ def _simple(d: pd.DataFrame, food: str) -> pd.DataFrame:
     return out.assign(food=food)
 
 
+def published(path=CSV) -> pd.DataFrame | None:
+    """The JRC's own production and apparent use per top-level commodity (what its "Self
+    sufficiency (RATIO)" column divides), for comparing with ours. Columns: food, iso3, year,
+    production, use. Dairy: the RAW MILK row in milk equivalent. Its apparent use is not
+    production + imports - exports of the dairy products (Germany 2022: 22.3 Mt against 28.4 Mt
+    from the product rows), and the dataset does not document how it is derived, so for dairy the
+    two ratios differ (docs/methodology.md)."""
+    if not path.exists():
+        return None
+    d = _read(path)
+    rows = []
+    me = _ME[1:-1]
+    raw = d[d["Commodity (Type)"] == "RAW MILK"]
+    rows.append(pd.DataFrame({"food": "dairy", "iso3": raw["iso3"], "year": raw["year"],
+                              "production": raw[f"Production ({me})"],
+                              "use": raw[f"Apparent use ({me})"]}))
+    for food, (commodity, unit, _, _) in FOODS.items():
+        s = d[d["Commodity"] == commodity]
+        rows.append(pd.DataFrame({"food": food, "iso3": s["iso3"], "year": s["year"],
+                                  "production": s[f"Production ({unit})"],
+                                  "use": s[f"Apparent use ({unit})"]}))
+    return pd.concat(rows, ignore_index=True).dropna(subset=["production", "use"])
+
+
+def published_ssr(years: tuple[int, int], path=CSV) -> dict[tuple[str, str], float]:
+    """(iso3, food) -> the JRC's ratio over `years`: mean production / mean use * 100."""
+    pub = published(path)
+    if pub is None:
+        return {}
+    w = pub[pub["year"].between(*years)]
+    n = w.groupby(["iso3", "food"])["year"].nunique()
+    m = w.groupby(["iso3", "food"])[["production", "use"]].mean()
+    m = m[(n == years[1] - years[0] + 1) & (m["use"] > 0)]
+    return (m["production"] / m["use"] * 100).to_dict()
+
+
 def load_balances(path=CSV) -> pd.DataFrame | None:
     """Columns: food, iso3 (members + EU27), year, production, imports, exports, supply (1000 t).
     None when the file has not been downloaded."""

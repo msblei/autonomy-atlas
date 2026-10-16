@@ -65,6 +65,25 @@ def sources() -> dict:
     return out
 
 
+def _range(lo, hi) -> list | None:
+    """The two readings of a withheld ratio (compute.group_tonnes / overall), for "more than it
+    uses" / "less than it uses" in words when both agree. None when there is no reading."""
+    lo, hi = _round(lo), _round(hi)
+    return None if lo is None else [lo, hi]
+
+
+def _all_basis(r: pd.Series, w: str, extra: dict) -> dict:
+    """ "All food" on one basis (protein or kcal): withheld like a food when it rests on
+    contradictory balances (compute.overall `{w}_flag`)."""
+    flag = r.get(f"{w}_flag") or ""
+    if flag:
+        return extra | {"withheld": {"reason": flag,
+                                     "range": _range(r.get(f"{w}_ssr_low"), r.get(f"{w}_ssr_high")),
+                                     "share_range": _range(r.get(f"{w}_share_low"),
+                                                           r.get(f"{w}_share_high"))}}
+    return {"share": _round(r[f"{w}_share"]), "ssr": _round(r[f"{w}_ssr"])} | extra
+
+
 def eu_intra_dairy(years: tuple[int, int]) -> dict | None:
     """Members' FBS dairy trade with each other, Mt/year over `years`: what they report buying from
     and selling to other members (FBS milk equivalent × intra-EU share from the trade matrix).
@@ -173,6 +192,8 @@ def export_ssr() -> None:
     products = load_products()["groups"]
 
     years = sorted(groups["years"].unique())
+    window = tuple(int(y) for y in years[-1].split("-")) if years else None
+    jrc_pub = jrc.published_ssr(window) if window else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
     series = _trend_series(trends, trend_years)
     out: dict = {
@@ -222,11 +243,13 @@ def export_ssr() -> None:
         if len(o):
             r = o.iloc[0]
             entry["indicators"]["all"] = {
-                "protein": {"share": _round(r["protein_share"]), "ssr": _round(r["protein_ssr"]),
-                            "g_per_day": _round(r["protein"])},
-                "kcal": {"share": _round(r["kcal_share"]), "ssr": _round(r["kcal_ssr"]),
-                         "per_day": _round(r["kcal"], 0)},
+                w: _all_basis(r, w, extra) for w, extra in
+                (("protein", {"g_per_day": _round(r["protein"])}),
+                 ("kcal", {"per_day": _round(r["kcal"], 0)}))
+            } | {
                 "n_foods": int(r["n_foods"]) if pd.notna(r.get("n_foods")) else None,
+                # foods left out because FAO's balance for them contradicts itself
+                "n_withheld": int(r["n_withheld"]) if r.get("n_withheld") else None,
             }
             entry["indicators"]["all"]["source"] = r["source"]
             entry["population_k"] = _round(r["population"], 0)
@@ -249,7 +272,15 @@ def export_ssr() -> None:
                 # kt with one decimal so small countries keep usable kg/person precision.
                 comp = {k: _round(r[k], 1) for k in (*PER_CAPITA_KEYS, "stock_variation")}
                 if reason:
-                    ind["withheld"] = {"reason": reason, "components_kt": comp}
+                    ind["withheld"] = {"reason": reason, "components_kt": comp,
+                                       "range": _range(r.get("ssr_low"), r.get("ssr_high"))}
+                    if reason == checks.PARTS_CONTRADICT:
+                        # which foods' own figures contradict themselves, for the explanation
+                        bad = items[(items["iso3"] == iso3) & (items["group"] == r["group"])
+                                    & (items["flag"].fillna("") != "")
+                                    & (items["production"].fillna(0).abs()
+                                       + items["imports"].fillna(0).abs() > 0)]
+                        ind["withheld"]["items"] = sorted(bad["item"])
                 else:
                     ind["components_kt"] = {k: comp[k] for k in PER_CAPITA_KEYS}
                     # FAO's uses (food, feed, ...) do not add up to domestic supply: keep the
@@ -265,6 +296,11 @@ def export_ssr() -> None:
                 parts = [JRC_LABEL[f] for f, g in JRC_GROUP.items() if g == r["group"] and f in foods]
                 if parts:
                     ind["jrc_items"] = parts
+                if r["source"] == "jrc_bal" and r["group"] == "dairy":
+                    # The JRC's own dairy ratio, on a basis its dataset does not document
+                    # (jrc.published): shown next to ours, not instead of it.
+                    pub = jrc_pub.get((iso3, "dairy"))
+                    ind["jrc_published_ssr"] = _round(pub) if pub is not None else None
                 if r["source"] == "jrc_bal" and "kcal" not in ind:
                     # One milk-equivalent balance: no per-product ratio to weight by calories.
                     ind["kcal"] = {"flag": "jrc_group_only"}

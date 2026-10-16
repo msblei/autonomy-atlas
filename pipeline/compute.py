@@ -70,9 +70,13 @@ def to_wide(fbs: pd.DataFrame) -> pd.DataFrame:
             wide[k] = np.nan
     # FBS leaves out elements that are zero: Germany has no "Production" row for coffee. Inside a
     # balance that exists, a missing quantity means none, so SSR is 0%, not unknown.
+    # The same holds for stock variation and the uses: averaged over a window, a use FAO reports in
+    # one year only must count as zero in the others (Afghanistan soybeans: stock change 25 kt in
+    # 2023 alone, averaged over one year it was 3x too large and made the balance contradict).
     has_balance = wide["supply"].notna()
-    for k in ("production", "imports", "exports"):
-        wide.loc[has_balance & wide[k].isna(), k] = 0.0
+    for k in COMPONENTS:
+        if k != "supply":
+            wide.loc[has_balance & wide[k].isna(), k] = 0.0
     return wide
 
 
@@ -95,8 +99,19 @@ def window_mean(wide: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     """Average each component over [y0, y1] per iso3 × item. Ratios are computed afterwards."""
     y0, y1 = years
     sub = wide[(wide["year"] >= y0) & (wide["year"] <= y1)]
-    cols = [c for c in COMPONENTS + PER_CAPITA_ELEMENTS + ["population"] if c in sub]
-    out = sub.groupby(["iso3", "item"], as_index=False)[cols].mean()
+    # Divide by the years the country reports at all (Population present), not by the years an
+    # item or element happens to appear: an item FAO leaves out in one year had none that year.
+    # Countries that stopped reporting (Cuba after 2019) keep the years they have.
+    reported = sub[sub["item"] == POPULATION_ITEM].groupby("iso3")["year"].nunique()
+    if reported.empty:  # synthetic frames without a Population item
+        reported = sub.groupby("iso3")["year"].nunique()
+    sums = [c for c in COMPONENTS + PER_CAPITA_ELEMENTS if c in sub]
+    out = sub.groupby(["iso3", "item"], as_index=False)[sums].sum(min_count=1)
+    n = out["iso3"].map(reported)
+    out[sums] = out[sums].div(n, axis=0)
+    if "population" in sub:
+        pop = sub.groupby(["iso3", "item"], as_index=False)["population"].mean()
+        out = out.merge(pop, on=["iso3", "item"], how="left")
     if "jrc_food" in sub:
         # Which JRC food replaced the item; compute() only lets the JRC cover a whole window.
         jf = sub.dropna(subset=["jrc_food"]).groupby(["iso3", "item"])["jrc_food"].first()
@@ -132,6 +147,34 @@ def group_tonnes(items: pd.DataFrame) -> pd.DataFrame:
         min_count=1
     )
     agg = add_ratios(agg)
+    if "jrc_food" in g:
+        # A JRC dairy balance is checked on its own terms: its P, M, X and D come from the JRC,
+        # the food line is FAO's (scaled), so "more eaten than used" compares two sources.
+        jd = g[g["jrc_food"] == JRC_WHOLE_GROUP][["iso3", "group", "years"]].drop_duplicates()
+        is_jd = agg.merge(jd.assign(_jd=True), on=["iso3", "group", "years"], how="left")["_jd"]
+        is_jd = is_jd.fillna(False).astype(bool).to_numpy()
+        if is_jd.any():
+            redo = add_ratios(agg.loc[is_jd].drop(columns=["food", "ssr", "idr", "flag"]))
+            agg.loc[is_jd, ["ssr", "idr", "flag"]] = redo[["ssr", "idr", "flag"]].to_numpy()
+    # A group whose ratio rests on items that contradict themselves is withheld like they are;
+    # ssr_low / ssr_high keep the two readings so the UI can still say "more" or "less" when both
+    # agree (pipeline/checks.py, parts_sensitivity).
+    if "flag" in g:
+        keys = ["iso3", "group", "group_label", "years"]
+        g = g.copy()
+        if "jrc_food" in g:  # JRC dairy is judged as one balance, not by its scaled items
+            g.loc[g["jrc_food"] == JRC_WHOLE_GROUP, "flag"] = ""
+        sens = checks.parts_sensitivity(g, keys).reset_index()
+        agg = agg.merge(sens, on=keys, how="left")
+        hit = agg["depends"].fillna(False).astype(bool) & (agg["flag"] == "")
+        agg.loc[hit, "flag"] = checks.PARTS_CONTRADICT
+        agg.loc[hit, ["ssr", "idr"]] = np.nan
+        lo = agg[["ssr_pub", "ssr_adj"]].min(axis=1)
+        hi = agg[["ssr_pub", "ssr_adj"]].max(axis=1)
+        withheld = agg["flag"] != ""
+        agg["ssr_low"] = lo.where(withheld)
+        agg["ssr_high"] = hi.where(withheld & agg["ssr_pub"].notna())
+        agg = agg.drop(columns=["ssr_pub", "ssr_adj", "depends"])
     agg["basis"] = "tonnes"
     return agg
 
@@ -149,7 +192,8 @@ def group_kcal(items: pd.DataFrame) -> pd.DataFrame:
         return pd.Series(
             {
                 "ssr": np.average(sub["ssr"], weights=w),
-                "idr": np.average(sub["idr"].fillna(0), weights=w),
+                # unknown imports (EU27 fish: no trade records) stay unknown, not 0%
+                "idr": np.average(sub["idr"], weights=w) if sub["idr"].notna().all() else np.nan,
                 "kcal": w.sum(),
                 "n_items": len(sub),
             }
@@ -246,14 +290,14 @@ def add_eu_bloc(wide: pd.DataFrame, extra: pd.DataFrame | None = None) -> pd.Dat
     m = members.drop(columns="population").merge(pop, on=["iso3", "year"], how="left")
     for c in PER_CAPITA_ELEMENTS:
         m[c] = m[c] * m["population"]  # -> population-weighted sum, divided below
-        m[f"{c}_w"] = m["population"].where(m[c].notna())
 
     cols = [c for c in COMPONENTS if c in m]
-    sums = m.groupby(["item", "year"], as_index=False)[
-        cols + PER_CAPITA_ELEMENTS + [f"{c}_w" for c in PER_CAPITA_ELEMENTS]
-    ].sum(min_count=1)
+    sums = m.groupby(["item", "year"], as_index=False)[cols + PER_CAPITA_ELEMENTS].sum(min_count=1)
+    # Per person for the whole EU: divided by all members' population, not only by the members
+    # that report the item (a member without the item eats none of it).
+    eu_pop_y = pop.groupby("year")["population"].sum()
     for c in PER_CAPITA_ELEMENTS:
-        sums[c] = sums[c] / sums.pop(f"{c}_w")
+        sums[c] = sums[c] / sums["year"].map(eu_pop_y)
     sums[["imports", "exports"]] = np.nan
     if extra is not None and len(extra):
         sums = _extra_eu_trade(sums, members, extra)
@@ -307,22 +351,49 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
     leaf item i. Capping stops a wheat surplus from hiding a soy deficit. `*_ssr` is the uncapped
     weighted mean (can exceed 100) for experts. Livestock products count as home-grown even when
     fed on imported feed (phase 4 adjusts for that).
+
+    Items whose balance contradicts itself (`flag`, pipeline/checks.py) have no SSR and are left
+    out of the shares; `protein` / `kcal` (per person per day) still count every leaf item. The
+    shares are also computed with those items read generously (supply at least their food line);
+    `protein_flag` / `kcal_flag` = parts_contradict when the two differ by more than checks.PARTS_PP / PARTS_REL, and
+    `*_low` / `*_high` keep both readings.
     """
-    g = items[items["item"].isin(leaves) & items["ssr"].notna()]
+    g = items[items["item"].isin(leaves)].copy()
+    bad = g["flag"].fillna("") != "" if "flag" in g else pd.Series(False, index=g.index)
+    floor = pd.concat([g["supply"].fillna(0), g["food"].fillna(0) if "food" in g else g["supply"] * 0,
+                       pd.Series(0.0, index=g.index)], axis=1).max(axis=1)
+    g["ssr_b"] = g["ssr"].where(~bad, 100 * g["production"] / floor.where(floor > 0))
     rows = []
     for (iso3, years), sub in g.groupby(["iso3", "years"]):
+        ok = sub[sub["ssr"].notna()]
         row = {"iso3": iso3, "years": years,
-               "n_foods": int((sub["protein"].fillna(0) > 0).sum())}
+               "n_foods": int((ok["protein"].fillna(0) > 0).sum()),
+               "n_withheld": int(((sub["protein"].fillna(0) > 0) & sub["ssr"].isna()).sum())}
         for w in PER_CAPITA_ELEMENTS:
-            s = sub[sub[w].notna() & (sub[w] > 0)]
-            tot = s[w].sum()
-            row[w] = tot if tot > 0 else np.nan
-            row[f"{w}_share"] = (s[w] * s["ssr"].clip(upper=100)).sum() / tot if tot > 0 else np.nan
-            row[f"{w}_ssr"] = (s[w] * s["ssr"]).sum() / tot if tot > 0 else np.nan
+            depends = False
+            allw = sub[w].where(sub[w] > 0).sum()
+            row[w] = allw if allw > 0 else np.nan
+            for suffix, cap in (("_share", 100), ("_ssr", None)):
+                vals = {}
+                for name, col, frame in (("a", "ssr", ok), ("b", "ssr_b", sub)):
+                    s = frame[frame[w].notna() & (frame[w] > 0) & frame[col].notna()]
+                    tot = s[w].sum()
+                    v = s[col].clip(upper=cap) if cap else s[col]
+                    vals[name] = (s[w] * v).sum() / tot if tot > 0 else np.nan
+                row[f"{w}{suffix}"] = vals["a"]
+                both = pd.Series([vals["a"], vals["b"]], dtype=float)
+                lo, hi = both.min(), both.max()
+                row[f"{w}{suffix}_low"], row[f"{w}{suffix}_high"] = lo, hi
+                # same rule as for groups: 10% of the generous reading (B)
+                if pd.notna(vals["a"]) and pd.notna(vals["b"]) and abs(vals["a"] - vals["b"]) > max(
+                        checks.PARTS_PP, checks.PARTS_REL * vals["b"]):
+                    depends = True
+            row[f"{w}_flag"] = checks.PARTS_CONTRADICT if depends else ""
         rows.append(row)
-    return pd.DataFrame(rows, columns=["iso3", "years", "n_foods"] + [
-        f"{w}{suffix}" for w in PER_CAPITA_ELEMENTS for suffix in ("", "_share", "_ssr")
-    ])
+    cols = ["iso3", "years", "n_foods", "n_withheld", "protein_flag", "kcal_flag"] + [
+        f"{w}{suffix}{b}" for w in PER_CAPITA_ELEMENTS for suffix in ("", "_share", "_ssr")
+        for b in (("",) if suffix == "" else ("", "_low", "_high"))]
+    return pd.DataFrame(rows, columns=cols)
 
 
 # ------------------------------------------------------------------------------------------------
@@ -407,7 +478,10 @@ def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None,
         r = _compute_window(wide, (int(y), int(y)), leaves)
         t = r["groups"][r["groups"]["basis"] == "tonnes"][["iso3", "group", "ssr", "jrc_foods"]]
         # "All food" headline: total protein produced vs used (uncapped), see docs/methodology.md.
-        o = r["overall"][["iso3", "protein_ssr", "jrc_foods"]].rename(columns={"protein_ssr": "ssr"})
+        o = r["overall"][["iso3", "protein_ssr", "jrc_foods", "protein_flag"]].rename(
+            columns={"protein_ssr": "ssr"})
+        o.loc[o["protein_flag"] != "", "ssr"] = np.nan  # a headline that rests on contradictions
+        o = o.drop(columns="protein_flag")
         o["group"] = "all"
         trend_rows.append(pd.concat([t, o], ignore_index=True).assign(year=int(y)))
     res["trends"] = pd.concat(trend_rows, ignore_index=True) if trend_rows else pd.DataFrame(

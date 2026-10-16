@@ -63,6 +63,8 @@ const FLAG_TEXT = {
   supply_missing: "No figure: FAO publishes no domestic supply for this food.",
   supply_nonpositive: "No figure: FAO's domestic supply is zero or negative, so the balance contradicts itself.",
   exports_exceed_available: "No figure: FAO lists more exported than was produced, imported and taken from stocks.",
+  food_exceeds_supply: "No figure: FAO lists more eaten than there is left for use at home.",
+  parts_contradict: "No figure: the total rests on single foods whose figures contradict themselves.",
   jrc_group_only: "Dairy comes from the European Commission's balance in milk equivalent, for dairy as a whole: no ratio per product and none weighted by calories.",
 };
 
@@ -449,11 +451,26 @@ function whyWithheld(id, group = state.group) {
   if (w.reason === "supply_missing" || c.supply == null) {
     return `FAO publishes no complete balance for ${food(group)} in ${who}.`;
   }
-  const more = X > P + M - S
+  const what = {
+    food_exceeds_supply: `FAO counts more ${food(group)} eaten (${tonnes(c.food)}) than there is left for use at home (${tonnes(c.supply)})`,
+    parts_contradict: `the total rests on ${w.items?.length ? `figures for ${w.items.map((i) => i.toLowerCase()).join(", ")} that contradict themselves` : "single foods whose figures contradict themselves"}, and it changes a lot depending on how they are read`,
+  }[w.reason] ?? (X > P + M - S
     ? `they list more ${food(group)} sold abroad (${tonnes(X)}) than was produced (${tonnes(P)}) and bought abroad (${tonnes(M)}) together${S ? "" : ", with nothing taken out of storage"}`
-    : `production (${tonnes(P)}) plus imports (${tonnes(M)}) minus exports (${tonnes(X)}) leaves ${tonnes(c.supply)} for use at home`;
-  const resid = c.residuals ? ` FAO closes the gap with an unexplained “Residuals” line of ${tonnes(c.residuals)}.` : "";
-  return `FAO's figures for ${food(group)} in ${who} do not add up: ${more}.${resid}`;
+    : `production (${tonnes(P)}) plus imports (${tonnes(M)}) minus exports (${tonnes(X)}) leaves ${tonnes(c.supply)} for use at home`);
+  const resid = c.residuals && w.reason !== "parts_contradict"
+    ? ` FAO closes the gap with an unexplained “Residuals” line of ${tonnes(c.residuals)}.` : "";
+  return `FAO's figures for ${food(group)} in ${who} do not add up: ${what}.${resid}`;
+}
+
+// What still holds when a figure is withheld: both readings (as published, and with the
+// contradictory parts read generously) on the same side of 100%.
+function robustWords(range, id, what) {
+  if (!range) return "";
+  const [lo, hi] = range;
+  const who = id === EU ? "the EU" : nameOf(id);
+  if (lo >= 104.17) return `On any reading of FAO's figures, ${who} produces more ${what} than it uses.`;
+  if (hi != null && hi < 99.5) return `On any reading of FAO's figures, ${who} produces less ${what} than it uses.`;
+  return "";
 }
 
 function isMember(iso3) {
@@ -522,7 +539,9 @@ function tooltip(iso3) {
   const id = entity(iso3);
   if (!country(id)) return `<strong>${nameOf(iso3)}</strong><br>No figures from FAO.`;
   const v = mapValue(id);
-  const text = v == null ? "no figures for this food"
+  const contradicts = state.group === "all"
+    ? country(id)?.indicators?.all?.protein?.withheld : withheld(id);
+  const text = v == null ? (contradicts ? "FAO's figures contradict themselves" : "no figures for this food")
     : state.level === "table" ? fmt(v)
     : `${state.group === "all" ? "Own food" : groupInfo().label}: ${lasts(v, { short: true })}`;
   return `<strong>${nameOf(id)}</strong><br>${text}`;
@@ -744,6 +763,14 @@ function viewCountry() {
   const id = state.iso3;
   const v = pctFor(id, "all");
   const who = id === EU ? "the 27 EU countries" : nameOf(id);
+  const wAll = country(id)?.indicators?.all?.protein?.withheld;
+  if (v == null && wAll) {
+    return `<h2>${nameOf(id)}</h2>
+      <p>For some foods, FAO's figures for ${nameOf(id)} contradict themselves, and the total changes a
+        lot depending on how they are read, so we show no figure.
+        ${robustWords(wAll.range, id, "protein")}</p>
+      <a class="next" href="${link({ level: "foods" })}">Look food by food ›</a>`;
+  }
   if (v == null) {
     return `<h2>${nameOf(id)}</h2><p>There are not enough figures for ${nameOf(id)} to work this out.</p>
       <a class="next" href="${link({ level: "foods" })}">Look food by food ›</a>`;
@@ -821,7 +848,8 @@ function viewFood() {
   const w = withheld(id);
   const head = w
     ? `<p>${whyWithheld(id)} So we show no figure for it here, and leave ${who} out of every
-        comparison for ${food()}.</p>`
+        comparison for ${food()}.</p>
+       ${robustWords(w.range, id, food()) ? `<p>${robustWords(w.range, id, food())}</p>` : ""}`
     : v == null
     ? `<p>There are no figures for ${food()} in ${who}.</p>`
     : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be ${v < 0.5 ? "…" : "enough …"}</p>
@@ -977,23 +1005,53 @@ function viewAbout() {
     <p>For each country and food we divide what is produced there (farmed, fished or made, like wine) by what the
       country uses, then turn that share into months of the year: 85% of 12 months is about
       10 months. Choose a country to see its own figures worked out.</p>
+    ${checks()}
     ${caveats(null, groupInfo("all"))}
     ${mapSource()}`;
+}
+
+// How the figures are checked (Makefile `verify`), with the count of left-out figures taken
+// from the data itself.
+function checks() {
+  const n = Object.values(state.data.countries)
+    .reduce((a, c) => a + Object.values(c.indicators ?? {}).filter((i) => i.withheld).length, 0);
+  return `
+    <h3>How we check the figures</h3>
+    <p>Before anything goes online, the files we download are compared with FAO's own website; a
+      second program, written separately from the first, works out every number again from those
+      files and must agree on every number we publish; and we test that this page shows exactly those
+      numbers.</p>
+    <p>FAO's figures for ${n} combinations of country and food contradict themselves, for example
+      more sold abroad than there was. We leave those out, say so where they would appear, and show
+      FAO's own lines so you can see why.</p>`;
 }
 
 function aboutJrc(id) {
   const s = state.data.meta.sources.jrc_bal;
   return `
-    <p>The dairy figures for ${whoOf(id)} come from the
+    <p>The dairy figures for ${whoOf(id)} are built from the
       <a href="${s.url}" target="_blank" rel="noopener">${s.title}</a> of the European Commission
-      (DG AGRI and the Joint Research Centre). They count milk, cheese, butter, cream and milk powder
-      in one unit, “milk equivalent”, and count trade between EU countries only once.</p>
+      (DG AGRI and the Joint Research Centre): the raw milk produced, and the trade in milk, cheese,
+      butter, cream and milk powder, which the Commission converts into one unit, “milk equivalent”,
+      counting trade between EU countries only once.</p>
+    ${pubDairy(id)}
     <p class="aside">FAO's own dairy figures for many EU countries do not add up: they turn countries
       that sell cheese and milk powder abroad, like Germany or Denmark, into buyers, and put Ireland
       at barely self-sufficient instead of almost twice over. So for
       dairy in EU countries we use the Commission's figures; everything else comes from FAO.</p>
     <p class="small">Average of ${years().join(", ")}. Downloaded ${s.downloaded ? longDate(s.downloaded) : "–"}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.</p>`;
+}
+
+// The Commission's own dairy ratio differs from the one its production and trade figures give.
+function pubDairy(id) {
+  const pub = country(id)?.indicators?.dairy?.jrc_published_ssr;
+  const ours = country(id)?.indicators?.dairy?.tonnes?.ssr;
+  if (pub == null || ours == null || Math.abs(pub - ours) < 2) return "";
+  return `<p class="aside">The Commission's file also lists its own dairy ratio for ${whoOf(id)}:
+    ${Math.round(pub)}% instead of our ${Math.round(ours)}%. It works out how much milk is used at
+    home in a way the file does not explain, so we cannot check it. We show the share that follows
+    from its production and trade figures, which you can add up yourself (see below).</p>`;
 }
 
 // Foods that are one item of a group and come from the Commission (tomatoes in vegetables, ...),
@@ -1034,9 +1092,10 @@ function aboutFao() {
   const s = state.data.meta.sources[state.data.meta.source];
   return `
     <p>All food figures come from the <a href="${s.url}" target="_blank" rel="noopener">Food Balances</a>
-      of the UN Food and Agriculture Organization (FAO). Countries report what they produce,
-      buy, sell and use each year; FAO fills gaps with its own estimates and publishes the figures for free.
-      We take them as published and leave out figures that contradict themselves.</p>
+      of the UN Food and Agriculture Organization (FAO). Countries report what they produce and
+      trade; FAO builds the food balances from that and from its own estimates, and marks every
+      figure in them as estimated or imputed. We take them as published, check them, and leave out
+      figures that contradict themselves.</p>
     <p class="small">Edition used: released ${s.released ? longDate(s.released) : "–"}.
       We use the average of ${years().join(", ")}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>
@@ -1099,12 +1158,25 @@ function inMonths(id, v) {
 
 function receiptAll(id, v) {
   const p = country(id)?.indicators?.all?.protein;
+  if (v == null && p?.withheld) {
+    const r = p.withheld.range;
+    return `
+    <h3>Why we show no figure for ${nameOf(id)}</h3>
+    <p>For some foods, FAO's figures contradict themselves: more is sold abroad or eaten than there
+      was. Leaving those foods out gives ${r ? `${Math.round(r[0])}%` : "one figure"}; counting them with at
+      least what FAO says people eat gives ${r?.[1] != null ? `${Math.round(r[1])}%` : "another"}. The two
+      are too far apart to show either as the answer. ${robustWords(r, id, "protein")}</p>`;
+  }
   if (v == null) return "";
   return `
     <h3>The sum for ${nameOf(id)}</h3>
     <p>“All food” cannot be added up in tonnes: a tonne of lettuce is not a tonne of cheese. So we
       count protein, the part of food that is hardest to replace. People ${id === EU ? "in the EU" : `in ${nameOf(id)}`}
       get about <strong>${Math.round(p?.g_per_day ?? 0)} g</strong> of protein a day.</p>
+    ${country(id)?.indicators?.all?.n_withheld ? `<p class="aside">${country(id).indicators.all.n_withheld}
+      ${country(id).indicators.all.n_withheld === 1 ? "food is" : "foods are"} left out because FAO's figures for
+      ${country(id).indicators.all.n_withheld === 1 ? "it contradict" : "them contradict"} themselves (more sold or eaten
+      than there was). Their protein still counts in the daily total.</p>` : ""}
     <p>For each of the ${country(id)?.indicators?.all?.n_foods ?? "–"} foods that provide protein ${id === EU ? "in the EU" : `in ${nameOf(id)}`} we take what is produced at home divided by what is used, and
       weigh it by how much of that protein the food provides. A surplus of one food can make up for
       a shortage of another: wheat or meat can stand in for imported soy or fish. Together that

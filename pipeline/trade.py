@@ -225,10 +225,10 @@ def trace_origins(p: pd.DataFrame, fbs: pd.DataFrame) -> pd.DataFrame:
         eu_origin = share[:, ~eu] @ z[~eu][:, eu].sum(axis=1)
         for j_name, j in idx.items():
             col = origin[:, j]
-            for k in np.nonzero(col > 0.5)[0]:
+            for k in np.nonzero(col > 1e-6)[0]:
                 if k != j:
                     rows.append((j_name, group, names[k], col[k]))
-        for k in np.nonzero((eu_origin > 0.5) & ~eu)[0]:
+        for k in np.nonzero((eu_origin > 1e-6) & ~eu)[0]:
             rows.append((EU_BLOC, group, names[k], eu_origin[k]))
     out = pd.DataFrame(rows, columns=["iso3", "group", "partner", "tonnes"])
     return out.assign(flow="grown", source="traced")

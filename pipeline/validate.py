@@ -1,0 +1,419 @@
+"""Invariant checks on everything the site publishes. `atlas validate` runs them after export.
+
+Each check yields findings with a severity:
+
+    block     the release must not go out (a bug in our pipeline, or inputs that do not fit it)
+    withhold  one figure is not shown (already applied in the export, listed here for the record)
+    warn      shown, but worth a human look before release (listed in the audit report)
+
+Findings go to data/processed/validation.parquet and web/public/data/validation.json, which also
+records the sha256 of every published data file: the web build (web/scripts/check-data.mjs)
+refuses to ship data files that differ from the ones validated here, or any `block` finding.
+See docs/methodology.md, "Checks".
+"""
+
+from __future__ import annotations
+
+import hashlib
+import json
+import logging
+import math
+from dataclasses import asdict, dataclass
+from datetime import UTC, datetime
+
+import numpy as np
+import pandas as pd
+
+from . import checks, config, jrc
+from .compute import EU_BLOC, to_wide
+from .harmonise import load_products
+
+log = logging.getLogger(__name__)
+
+BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
+PUBLISHED = ["ssr.json", "items.json", "trade.json", "countries.geojson"]
+
+# Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
+KT_TOL = 0.5  # kt, for identities between exported components
+REL_TOL = 0.005  # 0.5%, for identities between processed (unrounded) figures
+KCAL_RANGE = (1400, 4200)  # kcal/person/day: below or above is not a national average
+PROTEIN_RANGE = (25, 160)  # g/person/day
+SSR_REVIEW = 1000  # % above which a figure is real but extreme enough to look at
+TREND_JUMP = 3.0  # a single year differing from its neighbours by this factor
+NEG_ITEMS_SHARE = 0.05  # items with negative supply above this share of a group's |supply|
+JRC_TOL_PP = 2.0  # percentage points between our JRC-based SSR and the JRC's own
+FAO_EU27_TOL = 0.005  # our EU27 production vs FAO's own EU27 row
+TRADE_FBS_RATIO = (1 / 3, 3.0)  # trade-matrix total vs FBS imports, product vs primary weight
+
+
+@dataclass
+class Finding:
+    check: str
+    severity: str
+    detail: str
+    iso3: str | None = None
+    group: str | None = None
+    value: float | None = None
+
+
+def _f(x) -> float | None:
+    try:
+        x = float(x)
+    except (TypeError, ValueError):
+        return None
+    return None if math.isnan(x) else round(x, 3)
+
+
+# ------------------------------------------------------------------------------------------------
+# processed tables
+
+
+def check_balance_identity(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
+    """D = P + M - X - dS. FAO's own balances satisfy it to rounding in 99.6% of rows (a miss is
+    a warning); rows we build (JRC-replaced items, the EU27 bloc) must satisfy it exactly. Rows
+    without trade figures (EU27 fish: FAO's trade records have no fish) are not balances."""
+    out = []
+
+    def gaps(df):
+        lhs = df[["production", "imports", "exports"]].fillna(0)
+        rebuilt = lhs["production"] + lhs["imports"] - lhs["exports"] - df["stock_variation"].fillna(0)
+        scale = df[["production", "imports", "exports", "supply"]].abs().max(axis=1).clip(lower=1)
+        has_trade = df["imports"].notna() | df["exports"].notna()
+        return rebuilt, (df["supply"] - rebuilt).abs(), scale, has_trade & df["supply"].notna()
+
+    g = groups[groups["basis"] == "tonnes"]
+    rebuilt, gap, scale, ok = gaps(g)
+    for _, r in g[ok & (gap > np.maximum(1.0, REL_TOL * scale))].iterrows():
+        ours = r["iso3"] == EU_BLOC or r.get("source") == "jrc_bal"
+        out.append(Finding("balance_identity", BLOCK if ours else WARN,
+                           f"supply {r['supply']:.0f} kt but P+M-X-dS = {rebuilt.loc[r.name]:.0f} kt"
+                           + (" (built by us)" if ours else " (as FAO publishes it)"),
+                           r["iso3"], r["group"], _f(gap.loc[r.name])))
+    if "jrc_food" in items:
+        it = items[items["jrc_food"].notna()]
+        rebuilt, gap, scale, ok = gaps(it)
+        for _, r in it[ok & (gap > 0.01 + 1e-6 * scale)].iterrows():
+            out.append(Finding("balance_identity_jrc", BLOCK,
+                               f"{r['item']}: supply {r['supply']:.2f} kt but P+M-X-dS = "
+                               f"{rebuilt.loc[r.name]:.2f} kt", r["iso3"], r["group"],
+                               _f(gap.loc[r.name])))
+    return out
+
+
+def check_group_sums(items: pd.DataFrame, groups: pd.DataFrame) -> list[Finding]:
+    """A group's tonnes are the sum of its items, and every mapped item is counted exactly once."""
+    out = []
+    products = load_products()["groups"]
+    seen: dict[str, str] = {}
+    for key, g in products.items():
+        for it in g["items"]:
+            if it in seen:
+                out.append(Finding("item_in_two_groups", BLOCK, f"{it!r} in {seen[it]} and {key}"))
+            seen[it] = key
+    it = items[items["group"].notna()]
+    s = it.groupby(["iso3", "group"])[["production", "imports", "exports", "supply"]].sum(min_count=1)
+    t = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])
+    j = t.join(s, rsuffix="_items", how="left")
+    for c in ("production", "imports", "exports", "supply"):
+        d = (j[c] - j[f"{c}_items"]).abs()
+        bad = j[d > np.maximum(0.05, REL_TOL * j[c].abs())]
+        for (iso3, group), r in bad.iterrows():
+            out.append(Finding("group_equals_items", BLOCK,
+                               f"{c}: group {r[c]:.1f} kt, items sum {r[f'{c}_items']:.1f} kt",
+                               iso3, group, _f(r[c])))
+    return out
+
+
+def check_ranges(groups: pd.DataFrame, items: pd.DataFrame, overall: pd.DataFrame) -> list[Finding]:
+    out = []
+    t = groups[groups["basis"] == "tonnes"]
+    for c in ("production", "imports", "exports"):
+        for _, r in t[t[c] < -0.05].iterrows():
+            out.append(Finding("negative_quantity", BLOCK, f"{c} {r[c]:.1f} kt", r["iso3"],
+                               r["group"], _f(r[c])))
+    shown = t[t["flag"].fillna("") == ""]
+    for _, r in shown[shown["ssr"] > SSR_REVIEW].iterrows():
+        out.append(Finding("ssr_extreme", WARN,
+                           f"SSR {r['ssr']:.0f}%: produces {r['production']:.0f} kt, uses "
+                           f"{r['supply']:.0f} kt", r["iso3"], r["group"], _f(r["ssr"])))
+    for _, r in overall.iterrows():
+        k, p = r.get("kcal"), r.get("protein")
+        if pd.notna(k) and not KCAL_RANGE[0] <= k <= KCAL_RANGE[1]:
+            out.append(Finding("kcal_range", WARN, f"{k:.0f} kcal/person/day", r["iso3"], "all", _f(k)))
+        if pd.notna(p) and not PROTEIN_RANGE[0] <= p <= PROTEIN_RANGE[1]:
+            out.append(Finding("protein_range", WARN, f"{p:.0f} g protein/person/day", r["iso3"],
+                               "all", _f(p)))
+    # Items with negative supply shrink a group's supply without being visible anywhere.
+    neg = items[items["group"].notna() & (items["supply"] < 0)]
+    negsum = neg.groupby(["iso3", "group"])["supply"].sum()
+    gs = t.set_index(["iso3", "group"])["supply"].abs()
+    for (iso3, group), v in negsum.items():
+        tot = gs.get((iso3, group))
+        if tot and abs(v) > NEG_ITEMS_SHARE * tot and t.set_index(["iso3", "group"]).loc[(iso3, group), "flag"] == "":
+            out.append(Finding("negative_items_in_group", WARN,
+                               f"items with negative supply ({v:.0f} kt) are {abs(v) / tot:.0%} of "
+                               f"the group's {tot:.0f} kt", iso3, group, _f(v)))
+    return out
+
+
+def check_trends(trends: pd.DataFrame) -> list[Finding]:
+    out = []
+    for (iso3, group), s in trends.sort_values("year").groupby(["iso3", "group"]):
+        v = s.set_index("year")["ssr"].dropna()
+        if len(v) < 3:
+            continue
+        for y in v.index[1:-1]:
+            a, b, c = v.get(y - 1), v[y], v.get(y + 1)
+            if a is None or c is None or min(a, b, c) < 5:
+                continue
+            if (b > TREND_JUMP * max(a, c)) or (b * TREND_JUMP < min(a, c)):
+                out.append(Finding("trend_spike", WARN,
+                                   f"{y}: {b:.0f}% between {a:.0f}% and {c:.0f}%", iso3, group, _f(b)))
+    return out
+
+
+def check_eu_bloc(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
+    """EU27 production = members' sum; extra-EU trade can't exceed members' total trade; our
+    production agrees with FAO's own EU27 row."""
+    out = []
+    t = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])
+    if EU_BLOC not in t.index.get_level_values(0):
+        return [Finding("eu_bloc_missing", BLOCK, "no EU27 rows in ssr_groups")]
+    members = t[t.index.get_level_values(0).isin(config.EU27)].groupby(level="group")
+    msum = members[["production", "imports", "exports"]].sum()
+    eu = t.loc[EU_BLOC]
+    for group, r in eu.iterrows():
+        if group not in msum.index or str(r.get("source", "")).startswith("jrc"):
+            continue
+        p, mp = r["production"], msum.loc[group, "production"]
+        if abs(p - mp) > max(0.5, REL_TOL * abs(mp)):
+            out.append(Finding("eu_production_sum", BLOCK, f"EU27 {p:.0f} kt, members {mp:.0f} kt",
+                               EU_BLOC, group, _f(p)))
+        for c in ("imports", "exports"):
+            if pd.notna(r[c]) and r[c] > msum.loc[group, c] * (1 + REL_TOL) + 0.5:
+                out.append(Finding(f"eu_extra_{c}", BLOCK,
+                                   f"extra-EU {c} {r[c]:.0f} kt > members' total {msum.loc[group, c]:.0f} kt",
+                                   EU_BLOC, group, _f(r[c])))
+    path = config.INTERIM / "FoodBalanceSheets_fao_eu27.parquet"
+    if not path.exists():
+        out.append(Finding("fao_eu27_missing", WARN, f"no {path.name}: rerun `atlas build`"))
+        return out
+    fao = pd.read_parquet(path)
+    years = groups["years"].iloc[0]
+    y0, y1 = (int(y) for y in years.split("-"))
+    fw = to_wide(fao[fao["year"].between(y0, y1)].assign(iso3=EU_BLOC))
+    fw = fw.groupby("item")["production"].sum() / (y1 - y0 + 1)
+    # Item by item, where FAO is the source (JRC items have the JRC's production by design).
+    ours = items[(items["iso3"] == EU_BLOC) & items["group"].notna()]
+    if "jrc_food" in ours:
+        ours = ours[ours["jrc_food"].isna()]
+    for _, r in ours.iterrows():
+        fp = fw.get(r["item"])
+        if fp is None or pd.isna(fp) or fp < 1:
+            continue
+        # FAO rounds every member and its own EU row to 1 kt: up to 27 x 0.5 kt apart by rounding
+        if abs(r["production"] - fp) > FAO_EU27_TOL * fp + 0.5 * len(config.EU27):
+            out.append(Finding("eu_production_vs_fao", BLOCK,
+                               f"{r['item']}: ours {r['production']:.0f} kt, FAO's EU27 row {fp:.0f} kt",
+                               EU_BLOC, r["group"], _f(r["production"])))
+    return out
+
+
+def check_jrc(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
+    """Where we cite the JRC, our ratio should be the JRC's own. True by construction for
+    tomatoes, olive oil and wine (its production and apparent use); for dairy the JRC's ratio
+    rests on an apparent use the dataset does not derive, so a gap there is a warning, shown in
+    the UI next to ours (export: jrc_published_ssr)."""
+    out = []
+    years = groups["years"].iloc[0]
+    window = tuple(int(y) for y in years.split("-"))
+    pub = jrc.published_ssr(window)
+    if not pub:
+        return out
+    t = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])
+    it = items.set_index(["iso3", "item"])
+    for (iso3, food), theirs in pub.items():
+        if food == "dairy":
+            if (iso3, "dairy") not in t.index or t.loc[(iso3, "dairy"), "source"] != "jrc_bal":
+                continue
+            ours = t.loc[(iso3, "dairy"), "ssr"]
+            sev = WARN
+        else:
+            fbs_items = jrc.FOODS[food][3]
+            rows = [it.loc[(iso3, i)] for i in fbs_items if (iso3, i) in it.index]
+            if not rows or str(rows[0].get("jrc_food")) != food:
+                continue
+            p, d = sum(r["production"] for r in rows), sum(r["supply"] for r in rows)
+            ours = p / d * 100 if d > 0 else np.nan
+            sev = BLOCK
+        if pd.notna(ours) and abs(ours - theirs) > JRC_TOL_PP:
+            out.append(Finding(f"jrc_ratio_{food}", sev,
+                               f"ours {ours:.0f}%, JRC's own {theirs:.0f}%", iso3,
+                               "dairy" if food == "dairy" else food, _f(ours)))
+    return out
+
+
+def check_trade(partners: pd.DataFrame, groups: pd.DataFrame) -> list[Finding]:
+    out = []
+    p = partners
+    self_trade = p[p["iso3"] == p["partner"]]
+    for _, r in self_trade.iterrows():
+        out.append(Finding("trade_self", BLOCK, f"{r['flow']} with itself", r["iso3"], r["group"]))
+    neg = p[p["tonnes"] < 0]
+    for _, r in neg.iterrows():
+        out.append(Finding("trade_negative", BLOCK, f"{r['flow']} {r['tonnes']:.0f} t from "
+                           f"{r['partner']}", r["iso3"], r["group"], _f(r["tonnes"])))
+    # Trade matrix (product weight) vs FBS imports (primary equivalent): they differ by design,
+    # but by more than 3x something is off in one of them.
+    tm = p[p["flow"] == "imports"].groupby(["iso3", "group"])["tonnes"].sum() / 1000
+    t = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])["imports"]
+    j = pd.concat([tm.rename("tm"), t.rename("fbs")], axis=1).dropna()
+    j = j[(j["fbs"] > 20) | (j["tm"] > 20)]
+    ratio = j["tm"] / j["fbs"].where(j["fbs"] > 0)
+    for (iso3, group), r in j[(ratio < TRADE_FBS_RATIO[0]) | (ratio > TRADE_FBS_RATIO[1])].iterrows():
+        out.append(Finding("trade_vs_fbs", WARN,
+                           f"trade records {r['tm']:.0f} kt bought abroad, food balance "
+                           f"{r['fbs']:.0f} kt", iso3, group, _f(r["tm"])))
+    return out
+
+
+# ------------------------------------------------------------------------------------------------
+# published JSON
+
+
+def _walk_numbers(x, path=""):
+    if isinstance(x, dict):
+        for k, v in x.items():
+            yield from _walk_numbers(v, f"{path}.{k}")
+    elif isinstance(x, list):
+        for i, v in enumerate(x):
+            yield from _walk_numbers(v, f"{path}[{i}]")
+    elif isinstance(x, float):
+        yield path, x
+
+
+def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]:
+    """The JSON the browser reads: finite numbers, withheld figures carry nothing usable, every
+    cited source exists, trend series aligned, partner shares add up."""
+    out = []
+    for path, v in _walk_numbers({"ssr": ssr, "items": items, "trade": trade or {}}):
+        if not math.isfinite(v):
+            out.append(Finding("json_nonfinite", BLOCK, f"{path} = {v}"))
+    sources = ssr["meta"]["sources"]
+    n_years = len(ssr["meta"]["trend_years"])
+    for iso3, c in ssr["countries"].items():
+        for group, ind in c.get("indicators", {}).items():
+            src = ind.get("source")
+            for s in (src or "").split("+"):
+                if s and s not in sources:
+                    out.append(Finding("unknown_source", BLOCK, f"source {s!r}", iso3, group))
+            if group == "all":
+                for basis in ("protein", "kcal"):
+                    b = ind.get(basis, {})
+                    if "withheld" in b and (b.get("ssr") is not None or b.get("share") is not None):
+                        out.append(Finding("withheld_leak", BLOCK, f"all/{basis} withheld but "
+                                           "exports a share", iso3, group))
+                    if "withheld" in b:
+                        out.append(Finding("withheld", WITHHOLD, b["withheld"]["reason"], iso3,
+                                           f"all/{basis}"))
+                continue
+            if "withheld" in ind:
+                usable = [b for b in ("tonnes", "kcal") if ind.get(b, {}).get("ssr") is not None]
+                if usable or "components_kt" in ind:
+                    out.append(Finding("withheld_leak", BLOCK,
+                                       f"withheld ({ind['withheld']['reason']}) but exports "
+                                       f"{usable or 'components_kt'}", iso3, group))
+                out.append(Finding("withheld", WITHHOLD, ind["withheld"]["reason"], iso3, group))
+                continue
+            comp = ind.get("components_kt")
+            t = ind.get("tonnes", {})
+            if comp and t.get("ssr") is not None and comp.get("supply"):
+                ssr_c = comp["production"] / comp["supply"] * 100
+                # components are rounded to 0.1 kt: allow for that in the ratio
+                tol = 0.06 + 100 * 0.05 * (1 / abs(comp["supply"]) + (comp["production"] or 0)
+                                         / comp["supply"] ** 2)
+                if abs(ssr_c - t["ssr"]) > max(tol, 0.06):
+                    out.append(Finding("ssr_vs_components", BLOCK,
+                                       f"ssr {t['ssr']} but production/supply = {ssr_c:.2f}",
+                                       iso3, group, t["ssr"]))
+            if ind.get("uses_withheld"):
+                out.append(Finding("uses_withheld", WITHHOLD, ind["uses_withheld"], iso3, group))
+        for group, series in c.get("trend", {}).items():
+            if len(series) != n_years:
+                out.append(Finding("trend_length", BLOCK, f"{len(series)} points for {n_years} years",
+                                   iso3, group))
+    if trade:
+        for iso3, gs in trade["countries"].items():
+            for group, flows in gs.items():
+                for flow, (total, parts) in flows.items():
+                    s = sum(t for _, t in parts)
+                    # every figure is rounded to whole tonnes
+                    if s > total + 0.5 * (len(parts) + 1):
+                        out.append(Finding("trade_parts_exceed_total", BLOCK,
+                                           f"{flow}: partners {s} t > total {total} t", iso3, group))
+                    if any(p == iso3 for p, _ in parts):
+                        out.append(Finding("trade_self", BLOCK, f"{flow} lists itself", iso3, group))
+    return out
+
+
+# ------------------------------------------------------------------------------------------------
+
+
+def _sha(path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def run(*, write: bool = True) -> list[Finding]:
+    P = config.PROCESSED
+    groups = pd.read_parquet(P / "ssr_groups.parquet")
+    items = pd.read_parquet(P / "ssr_items.parquet")
+    overall = pd.read_parquet(P / "ssr_overall.parquet")
+    trends = pd.read_parquet(P / "ssr_trends.parquet")
+    partners_path = P / "trade_partners.parquet"
+    partners = pd.read_parquet(partners_path) if partners_path.exists() else None
+
+    findings: list[Finding] = []
+    findings += check_balance_identity(groups, items)
+    findings += check_group_sums(items, groups)
+    findings += check_ranges(groups, items, overall)
+    findings += check_trends(trends)
+    findings += check_eu_bloc(groups, items)
+    findings += check_jrc(groups, items)
+    if partners is None:
+        findings.append(Finding("trade_missing", BLOCK, "no trade_partners.parquet"))
+    else:
+        findings += check_trade(partners[partners["flow"] != "grown"], groups)
+
+    W = config.WEB_DATA
+    load = lambda n: json.loads((W / n).read_text(encoding="utf-8")) if (W / n).exists() else None  # noqa: E731
+    ssr, its, trade = load("ssr.json"), load("items.json"), load("trade.json")
+    if ssr is None or its is None:
+        findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))
+    else:
+        findings += check_published(ssr, its, trade)
+
+    # Withholding by the consistency verdicts (checks.py) is applied upstream; count it here.
+    counts = pd.Series([f.severity for f in findings]).value_counts().to_dict()
+    log.info("validation: %s", counts)
+    for f in findings:
+        if f.severity == BLOCK:
+            log.error("BLOCK %s %s/%s: %s", f.check, f.iso3, f.group, f.detail)
+
+    if write:
+        df = pd.DataFrame([asdict(f) for f in findings],
+                          columns=["check", "severity", "detail", "iso3", "group", "value"])
+        df.to_parquet(P / "validation.parquet", index=False)
+        doc = {
+            "generated": datetime.now(UTC).isoformat(timespec="seconds"),
+            "ok": counts.get(BLOCK, 0) == 0,
+            "counts": counts,
+            "by_check": df.groupby(["check", "severity"]).size().rename("n").reset_index()
+                          .to_dict("records"),
+            "files": {n: _sha(W / n) for n in PUBLISHED if (W / n).exists()},
+            "thresholds": {"residual_share": checks.RESIDUAL_SHARE, "ssr_review": SSR_REVIEW,
+                           "jrc_tol_pp": JRC_TOL_PP, "fao_eu27_tol": FAO_EU27_TOL},
+            "findings": [asdict(f) for f in findings if f.severity != WITHHOLD],
+        }
+        (W / "validation.json").write_text(json.dumps(doc, ensure_ascii=False, indent=1),
+                                           encoding="utf-8")
+    return findings

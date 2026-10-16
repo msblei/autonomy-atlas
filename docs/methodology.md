@@ -35,26 +35,66 @@ Values of D ≤ 0 happen (a country exports a product it barely consumes). Retur
 
 ### Withheld: balances that contradict themselves
 
-`pipeline/checks.py` gives every balance (item, group, country, window and single year) one
+`pipeline/checks.py` gives every balance (item, group, "all food"; window and single year) one
 verdict, and every view obeys it. A withheld balance has no ratio, no per-person figures, no trend
-point and no place in any ranking or comparison; the UI shows FAO's raw lines and says why.
+point and no place in any ranking, map colour or comparison; the UI shows FAO's raw lines and
+says why.
 
-| Test | Verdict | Why |
+**Items and groups, on their own figures** (`checks.problems`, first match wins):
+
+| Test | Reason | Why |
 |---|---|---|
-| D missing | ratio withheld (`supply_missing`) | nothing to divide by |
-| D ≤ 0 | ratio withheld (`supply_nonpositive`) | negative use at home is impossible |
-| X > (P + M − ΔS) × 1.02 + 1 kt | ratio withheld (`exports_exceed_available`) | more sold than there was |
-| \|residuals\| > 25% of D | uses breakdown withheld (`uses_withheld`) | food, feed, … don't add up to D |
+| D missing | `supply_missing` | nothing to divide by |
+| D ≤ 0 | `supply_nonpositive` | negative use at home is impossible |
+| X > (P + M − ΔS) × 1.02 + 1 kt | `exports_exceed_available` | more sold than there was |
+| food > D × 1.25 + 1 kt | `food_exceeds_supply` | food is one of the uses of D; FAO closes the gap with a negative residual |
 
-The residual test withholds only the breakdown, not the ratio: residuals sit on the utilisation
-side (D = food + feed + … + residuals), SSR uses only the availability side. A very high SSR is not
-a reason (Iceland catches about 20 times the fish it eats). Example: Jordan, eggs 2021–2023,
-P 81, M 3, X 114 kt, ΔS 0, residuals −107 kt, D −30 kt. Before this rule the ratio was blank
-but the per-person ranking still listed Jordan first with +10 kg "to spare".
+Not reasons: a very high SSR (Iceland catches about 20 times the fish it eats); a large residual
+on its own (`uses_withheld`, below). Example: Jordan, eggs 2021–2023, P 81, M 3, X 114 kt, ΔS 0,
+residuals −107 kt, D −30 kt. Before this rule the ratio was blank but the per-person ranking
+still listed Jordan first with +10 kg "to spare". Ireland, beef 2016: P 588 kt, D 3 kt, ~50 kt
+eaten (FAO's own food line): SSR 19 600%, which spiked Ireland's "all food" trend to 1474%.
 
-Withheld items also drop out of the group kcal mean and "all food" (they have no SSR). On the
-2021–2023 data no headline figure moved by this; 63 group balances are withheld and 39 have
-their uses breakdown withheld.
+A withheld item has no SSR, so it drops out of the group kcal mean and "all food". JRC dairy is
+judged as one balance: the `food` test is not applied to it (its P, M, X, D are the JRC's, the
+food line FAO's), and its scaled items are not judged one by one.
+
+**Groups that rest on contradictory items** (`checks.parts_sensitivity`, reason
+`parts_contradict`). The tonnes group sums all its items, contradictory ones included (that is
+FAO's total). It is also computed with each contradictory item's D raised to max(D, food, 0), the
+least FAO's own figures say was used:
+
+    ssr_pub = Σ P / Σ D                ssr_adj = Σ P / Σ D'     (D' = max(D, food, 0) for flagged items)
+
+If |ssr_pub − ssr_adj| > max(10 points, 10% of ssr_adj), or one of them is undefined, the group's
+ratios are withheld. `ssr_low` / `ssr_high` (min and max of the two) are exported as
+`withheld.range` for every withheld group, whatever the reason; when one reading is undefined
+(Σ D ≤ 0) the range is `[defined, null]`, and `null` when neither is; when both are ≥ 104.17 the UI says "on any reading of FAO's figures, X produces
+more … than it uses", both < 99.5 "less". Ukraine, vegetable oils: sunflower oil's D is 125 kt
+but 239 kt are eaten; the group is 1196% or 969% depending on the reading, so no number is shown,
+but "more than it uses" is. Small contradictions do not withhold a group (Dutch offals in meat).
+
+**"All food"** (`compute.overall`), per basis (protein, kcal) separately:
+
+- `protein` g/day and `kcal` per day count every leaf item, withheld ones included (people eat
+  them; only their ratio is unknown).
+- `share` (capped) and `ssr` (uncapped) are weighted over the items with an SSR (reading A);
+  `n_foods` counts the leaf items with an SSR **and** protein > 0 (those that carry weight in
+  the protein figure the UI quotes), `n_withheld` the leaf items with protein > 0 but no SSR
+  (absent from the export when 0).
+- Reading B uses, for withheld items, SSR = P / max(D, food, 0). If A and B differ by more than
+  max(10 points, 10% of B) in `share` or `ssr`, that basis is withheld (`parts_contradict`) with
+  `withheld.range` (from `ssr`) and `withheld.share_range`. The protein verdict also withholds
+  the "all" trend point of that year. 2021–2023: Uruguay, Paraguay and Ecuador protein (beef or
+  oilseeds), six countries' kcal (e.g. Ukraine, through sunflower oil).
+
+**Uses breakdown** (`uses_withheld`): |residuals| > 25% of D and > 1 kt. Only food, feed, seed,
+losses, processing, other uses, tourist and residuals are left out of `components_kt`; the ratio
+stands, because residuals sit on the utilisation side (D = food + … + residuals) and SSR uses only
+the availability side.
+
+2021–2023 counts: 95 group balances withheld (63 `supply_nonpositive`, 10 `food_exceeds_supply`,
+22 `parts_contradict`), 20 uses breakdowns withheld, 3 protein and 6 kcal "all food" headlines.
 
 ## Aggregation to product groups
 
@@ -71,7 +111,12 @@ chart without saying so.
 ## Time averaging
 
 Default window = latest three available FBS years. Average the components (P, M, X, D, kcal) over
-the window, then compute ratios. Also keep the single latest year for users who want it; label it
+the window, then compute ratios. The divisor is the number of window years the country reports
+at all (its Population row; if D itself is never reported in the window, the balance is
+missing, `supply_missing`, not zero), and inside a balance FAO publishes, a missing element counts as
+zero in that year, for every component, not only P, M, X: a stock change reported in one year of
+three is a third of it on average, not all of it (Afghanistan soybeans 2021–2023). Countries
+that stopped reporting (Cuba after 2019, North Korea after 2018) have no window figures. Also keep the single latest year for users who want it; label it
 as volatile.
 
 ## National vs EU-bloc view
@@ -85,7 +130,9 @@ as volatile.
 Always offer both. They answer different questions ("could France feed itself?" vs "could Europe?").
 
 **Implemented:** `compute.add_eu_bloc` adds a pseudo-country `EU27` (years with all 27 members).
-Production, stock variation and the per-person elements are summed over members. Imports and
+Production and stock variation are summed over members; the per-person elements (kcal, protein)
+are population-weighted over **all** members (Σ value × population / EU population: a member
+without an item eats none of it). Imports and
 exports are the trade with non-members only, in FBS primary equivalents:
 
     M_EU = Σ_j M_j · s_imp,j      s_imp,j = share of member j's imports from outside the EU
@@ -115,6 +162,14 @@ EU27 = extra-EU only. The FBS items are scaled so they add up to the JRC product
 exports and supply (uses scaled with supply; stock change = P + M − X − supply), which carries the
 change into group totals and the protein and calorie headlines.
 
+- **Edge rules.** A JRC year with production missing or apparent use ≤ 0 does not count as
+  covered; a JRC year is not applied where FAO's supply for the food is missing or ≤ 0 (Estonia
+  olive oil 2010, Malta 2020), since there are no items to scale. A negative JRC production
+  (Luxembourg tomatoes 2019: −0.05 kt, rounding in the source) is clipped to 0.
+- **The JRC's own ratio** (`jrc_published_ssr`, dairy only, shown next to ours): window mean of
+  the RAW MILK row's production divided by the window mean of its apparent use (milk
+  equivalent), × 100, when all window years have both. The dataset does not say how that
+  apparent use is derived; it is not production + imports − exports of the dairy products.
 - **One source per average.** The JRC replaces FAO in the 3-year window only for a country and
   food it covers in every year of it (`jrc.full_cover`); otherwise FAO stays the source for the
   whole window (Portugal's tomatoes 2021–2023: JRC has 2 of 3 years). Single-year trend points
@@ -279,6 +334,24 @@ figures stay 3-year averages.
 With all trade stopped a country keeps its production, so "available without trade" per person is
 just production per person — the SSR view already shows it. A useful scenario needs feed origin
 (phase 4) or partner-level trade to remove specific suppliers such as RU/UA (phase 2).
+
+## Checks: how a published number is known to be right
+
+`make verify` runs every layer; any failure stops a release, and `npm run build`
+(`web/scripts/check-data.mjs`) refuses to build data that did not pass. What each layer catches:
+
+| Layer | Where | Catches |
+|---|---|---|
+| Raw files pinned | `pipeline/manifest.py`, `data/raw/manifest.json` | a raw file replaced by hand; build refuses until re-recorded (`atlas download` / `atlas manifest`) |
+| Raw shape | `manifest.check_fbs_shape`, `harmonise._check_areas` | renamed elements, unexpected units (all quantities `1000 t`), unknown flags, duplicate rows, an FAO area neither mapped nor a known aggregate |
+| Stale outputs | `config.require_fresh` | an interim or processed file older than a mapping or input it was built from |
+| Consistency verdicts | `pipeline/checks.py` (section "Withheld") | balances that contradict themselves; withheld everywhere, explained in the UI |
+| Invariants | `pipeline/validate.py` → `validation.json` | identity P + M − X − ΔS = D on rows we build; group = sum of items; EU27 production = members' sum and = FAO's own EU27 row item by item (within FAO's rounding); extra-EU trade ≤ members' total; our JRC-based ratio = the JRC's own for tomatoes, olive oil, wine; exported ratio = exported components; withheld figures carry nothing usable; trade partners ≤ total; no self-trade. Warnings for review: very high SSRs, one-year trend spikes, trade records vs FBS imports more than 3× apart, JRC dairy vs the JRC's own ratio, negative-supply items in groups |
+| FAOSTAT live sample | `tests/golden/`, `tests/test_golden.py` | 1,695 three-year totals (20 countries × 23 items × P/M/X/D, population, kcal, protein) read from FAOSTAT's website in a browser; harmonised data and window averages must equal them. A wrong M49 → ISO3 line fails it (tested: Brazil/USA swapped, 187 values off) |
+| Known facts | `tests/test_real_data.py` | France poultry < 100% and EU > 100%, EU soybeans 10–30%, NL a cereal hub, JRC replacements in place, Jordan eggs and Ukraine oils withheld, Iceland fish not |
+| Independent recomputation | `verify/recompute.py` | written from this document alone, without reading `pipeline/`; recomputes every published number (≈250,000) from the raw files and must agree on all of them. Its first run found three pipeline bugs (EU27 per-person population, window averaging, EU27 fish kcal IDR) |
+| What the page shows | `web/tests/*.spec.js` (Playwright, installed Chrome) | headline and food-page wording = `calendar.js` of the exported figure; receipt sum = exported ratio; rankings never include a withheld figure and equal the data's top five; no factual figure typed into `main.js` |
+| Human review | `atlas report` → `data/processed/audit.html` | every withheld figure and warning, and the 50 largest changes since the last release (`atlas release-snapshot` after publishing) |
 
 ## Pitfalls checklist
 

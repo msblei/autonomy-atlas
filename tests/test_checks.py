@@ -46,9 +46,35 @@ def test_big_exporter_is_not_withheld():
 
 
 def test_large_residual_withholds_uses_not_ratio():
-    # Uruguay beef: residual -33 kt against 28 kt used. The uses do not add up; the ratio stands.
+    # A large residual alone (no food line given) withholds the uses breakdown, not the ratio.
     df = frame(production=596, imports=56, exports=625, supply=27.7, residuals=-32.7)
     assert checks.problems(df).iloc[0] == ""
     assert bool(checks.uses_problem(df).iloc[0])
     small = frame(production=596, imports=56, exports=625, supply=27.7, residuals=-3)
     assert not bool(checks.uses_problem(small).iloc[0])
+
+
+def test_more_eaten_than_available_is_withheld():
+    # Ireland, beef 2016: 588 kt produced, 3 kt domestic supply, ~50 kt eaten (FAO's food line).
+    df = frame(production=588, imports=40, exports=625, supply=3, stock_variation=0, food=50)
+    assert checks.problems(df).iloc[0] == checks.FOOD_EXCEEDS
+
+
+def test_group_ratio_that_rests_on_a_contradiction_is_withheld():
+    # Uruguay meat: beef's supply (28 kt) is below what FAO says is eaten (60 kt).
+    items = pd.DataFrame({
+        "iso3": ["URY"] * 2, "group": ["meat"] * 2, "production": [596, 300],
+        "supply": [27.7, 200], "food": [60.3, 150], "flag": [checks.FOOD_EXCEEDS, ""],
+    })
+    out = checks.parts_sensitivity(items, ["iso3", "group"]).iloc[0]
+    assert bool(out["depends"]) and out["ssr_adj"] < out["ssr_pub"]
+    assert out["ssr_adj"] > 100  # both readings: more than it uses
+
+
+def test_small_contradiction_does_not_withhold_the_group():
+    # Offals 1% of a big meat group: the group figure barely moves.
+    items = pd.DataFrame({
+        "iso3": ["NLD"] * 2, "group": ["meat"] * 2, "production": [300, 3200],
+        "supply": [20, 1400], "food": [110, 1200], "flag": [checks.FOOD_EXCEEDS, ""],
+    })
+    assert not bool(checks.parts_sensitivity(items, ["iso3", "group"]).iloc[0]["depends"])

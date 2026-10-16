@@ -12,7 +12,7 @@ import argparse
 import logging
 import sys
 
-from . import compute, download, export, harmonise, trade
+from . import compute, download, export, harmonise, manifest, report, trade, validate
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,6 +31,10 @@ def main(argv: list[str] | None = None) -> int:
                    help="window, inclusive (default: latest 3 FBS years)")
 
     sub.add_parser("export", help="write web/public/data/*.json")
+    sub.add_parser("validate", help="check processed and published data; exit 1 on a blocking finding")
+    sub.add_parser("manifest", help="record sha256 of the raw files as they are now")
+    sub.add_parser("report", help="write data/processed/audit.html for review before a release")
+    sub.add_parser("release-snapshot", help="store the published data as the next report's baseline")
     a = sub.add_parser("all", help="download + build + export")
     a.add_argument("--years", nargs=2, type=int, metavar=("Y0", "Y1"))
 
@@ -43,7 +47,17 @@ def main(argv: list[str] | None = None) -> int:
     years = tuple(args.years) if getattr(args, "years", None) else None
     if args.cmd == "download":
         download.run(args.source, force=args.force)
+        manifest.record()
+    elif args.cmd == "manifest":
+        manifest.record()
+    elif args.cmd == "validate":
+        return _validate()
+    elif args.cmd == "report":
+        report.run()
+    elif args.cmd == "release-snapshot":
+        report.snapshot()
     elif args.cmd == "build":
+        manifest.check()
         harmonise.run()
         trade.extract()
         compute.run(years=years)
@@ -52,12 +66,19 @@ def main(argv: list[str] | None = None) -> int:
         export.run()
     elif args.cmd == "all":
         download.run()
+        manifest.record()
         harmonise.run()
         trade.extract()
         compute.run(years=years)
         trade.run()
         export.run()
+        return _validate()
     return 0
+
+
+def _validate() -> int:
+    findings = validate.run()
+    return 1 if any(f.severity == validate.BLOCK for f in findings) else 0
 
 
 if __name__ == "__main__":

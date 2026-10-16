@@ -67,6 +67,8 @@ make download    # atlas download (FAOSTAT bulk, Eurostat, boundaries)
 make build       # atlas build   (harmonise + compute)
 make export      # atlas export  (write web/public/data)
 make test        # pytest
+make verify      # every data check: tests, atlas validate, verify/recompute.py, browser tests, audit page
+make release     # all + verify + gated web build (web/scripts/check-data.mjs)
 make serve       # cd web && npm run dev
 ```
 
@@ -111,6 +113,11 @@ before assuming it — FAO renames files occasionally.
   consume can produce supply ≤ 0 in FBS). Return NaN and flag it.
 - Any number shown in the UI must be traceable: carry `source`, `years` and `basis` columns through
   to the exported JSON.
+- Nothing is published that `make verify` has not passed (docs/methodology.md, "Checks"). A figure
+  whose FAO balance contradicts itself is withheld everywhere (`pipeline/checks.py`), never shown
+  in one view and hidden in another. No factual number is typed into UI text; compute it in the
+  pipeline (`meta.claims`). `verify/recompute.py` must stay independent: change it only from the
+  methodology, never by reading `pipeline/`.
 - When adding a new source, add it to the table above, to `docs/research-report.md` Part 2 if it is
   not already there, and note its licence.
 

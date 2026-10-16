@@ -70,6 +70,29 @@ def _clean_m49(s: pd.Series) -> pd.Series:
     return s.astype(str).str.replace("'", "", regex=False).str.strip().str.zfill(3)
 
 
+# FAO areas that are not countries: world, continents, M49 regions, the EU and country groups,
+# and "China" (159 = mainland 156 + Hong Kong + Macao + Taiwan, each of which we have separately).
+FAO_EU27_M49 = "097"
+KNOWN_AGGREGATES = {
+    "001", "002", "005", "009", "011", "013", "014", "015", "017", "018", "019", "021", "029",
+    "030", "034", "035", "039", "053", "054", "057", "061", "097", "142", "143", "145", "150",
+    "151", "154", "155", "159", "199", "432", "722", "901", "902",
+}
+
+
+class UnknownAreaError(ValueError):
+    pass
+
+
+def _check_areas(unmapped: set[str], fname: str) -> None:
+    """An FAO area we neither map nor know as an aggregate would silently drop a country (FAO
+    adds and renames areas between releases)."""
+    unknown = sorted(unmapped - KNOWN_AGGREGATES)
+    if unknown:
+        raise UnknownAreaError(f"{fname}: M49 areas neither in world.csv/countries.yaml nor known "
+                               f"aggregates: {unknown}")
+
+
 def read_faostat_zip(path: Path) -> pd.DataFrame:
     """Read the All_Data CSV inside a FAOSTAT Normalized bulk ZIP, restricted to scope countries."""
     countries = load_countries()
@@ -87,6 +110,13 @@ def read_faostat_zip(path: Path) -> pd.DataFrame:
             )
     df = df.rename(columns=_FAO_COLS)
     df["m49"] = _clean_m49(df["m49"])
+    _check_areas(set(df["m49"]) - set(countries["m49"]), path.name)
+    eu = df[df["m49"] == FAO_EU27_M49]
+    if len(eu):
+        # FAO's own EU27 row: members summed, intra-EU trade included. Kept to cross-check our
+        # bloc's production (pipeline/validate.py), never shown.
+        eu.assign(iso3="EU27_FAO").drop(columns="m49").to_parquet(
+            config.INTERIM / f"{path.stem.split('_E_')[0]}_fao_eu27.parquet", index=False)
     df = df.merge(countries[["m49", "iso3"]], on="m49", how="inner").drop(columns="m49")
     df["value"] = pd.to_numeric(df["value"], errors="coerce")
     df["source"] = path.stem.split("_E_")[0]
@@ -96,8 +126,14 @@ def read_faostat_zip(path: Path) -> pd.DataFrame:
 
 def harmonise_fbs(*, raw: Path | None = None) -> Path:
     raw = raw or config.RAW / "faostat" / config.FAOSTAT_FILES["fbs"]
+    from .manifest import FBS_COLUMNS, check_fbs_shape, check_zip_header
+
+    problems = check_zip_header(raw, FBS_COLUMNS)
     df = read_faostat_zip(raw)
     df = df[df["element"].isin(config.FBS_ELEMENTS.values())]
+    problems += check_fbs_shape(df)
+    if problems:
+        raise ValueError("FBS file is not shaped as the pipeline assumes:\n  " + "\n  ".join(problems))
 
     # Report mapping gaps so products.yaml can be fixed.
     mapped = set(item_to_group()["item"])
