@@ -82,31 +82,41 @@ With extra-EU trade it buys 5.3 Mt, sells 18.8 Mt and uses 150.6 Mt (SSR 110%). 
 101% to 105%, vegetables from 86% to 104%; meat and oilseeds barely change. With M_EU known, EU
 import dependency (IDR) is now defined.
 
-## Dairy for EU countries: DG AGRI–JRC balance sheets
+## EU countries: where the DG AGRI–JRC balance sheets replace FAO
 
-FAO's milk-equivalent trade for dairy is unreliable for processing countries: Germany sells
-cheese, milk powder and whey (net exporter by product weight) but FBS has it importing 4.3 Mt
-milk equivalent net (SSR 89%); Ireland, which exports most of its milk, comes out at 105%. FAO's
-own conversion factors (Technical Conversion Factors, 1990s) differ widely between countries
-(whole milk powder 3.8 kg milk/kg in Germany, 8.3 in the Netherlands) and miss whey and skimmed
-milk powder.
+`pipeline/jrc.py` reads the European Commission's DG AGRI–JRC "EU estimated agricultural balance
+sheets" (Eurostat Comext trade with intra-EU imports taken as the mirror of partners' exports,
+processed products converted back to the primary product with DG AGRI coefficients) and replaces
+the FBS balance of selected items for EU members and the EU27. Members' trade = intra + extra EU;
+EU27 = extra-EU only. The FBS items are scaled so they add up to the JRC production, imports,
+exports and supply (uses scaled with supply; stock change = P + M − X − supply), which carries the
+change into group totals and the protein and calorie headlines.
 
-For EU members and the EU27, `pipeline/jrc.py` replaces the FBS dairy group with the DG AGRI–JRC
-"EU estimated agricultural balance sheets" (Eurostat Comext trade, intra-EU imports taken as the
-mirror of partners' exports, DG AGRI milk-equivalent coefficients on a milk-solids basis, so
+**Comparison that decided it** (2021–2023, EU members + EU27, SSR in percentage points). Production
+agrees almost everywhere (median JRC/FAO ratio 1.00); the differences are in trade and use.
+
+| Food | Median gap | > 15 pp | Decision |
+|---|---|---|---|
+| Dairy (milk equivalent) | large | most | **JRC**: FAO's milk-equivalent trade turns cheese and powder exporters into importers. Germany 89 → 116%, Ireland 105 → 195%, Denmark 83 → 140%, Netherlands 78 → 113%, EU 110 → 114% |
+| Tomatoes | 4 | 5 | **JRC**: paste exports not converted back (Italy uses 1.1 Mt in FAO, 19 kg/person; JRC 3.3 Mt). Italy 556 → 200%, Netherlands 64 → 144% |
+| Olive oil | 0 | 6 | **JRC**: EU27 101 → 129% (our group-level extra-EU share does not fit olive oil), Portugal 238 → 379% |
+| Wine | 9 | 6 | **JRC**: FAO's German production is about half of the 8.2 Mhl made; Germany 31 → 44%. Hectolitres × 0.1 = tonnes |
+| Oilseeds | 1.5 | 6 (small markets) | FAO |
+| Meat | 5 | 6 | FAO. The JRC converts meat products back to carcass weight and gets lower SSRs for big exporters (Denmark 316 vs 223%, Ireland 251 vs 191%); not clearly better, so kept FAO and noted here |
+| Cereals | 6 | 7 | FAO: FBS includes stock changes, the JRC apparent use for cereals does not (marketing years July–June) |
+| Apples | 4 | 5 | FAO: large gaps (Hungary 80 vs 190%, Poland 420 vs 319%) without a clear reason |
+| Oranges | – | – | not comparable (JRC oranges only, FAO oranges and mandarins) |
+
+Dairy is built from products in milk equivalent (DG AGRI coefficients, milk-solids basis, so
 products from the same milk add up: their production sums to the raw milk delivered):
+production = raw milk; trade = Σ over drinking milk (also bulk raw milk), acidified milk, cream,
+buttermilk, total butter, total cheese, skimmed and whole milk powder, whey powder; supply =
+P + M − X (no stock data). Tomatoes: supply = P + M − X. Olive oil and wine: supply = JRC apparent
+use, which includes stock changes (marketing years Oct–Sep and Aug–Jul, labelled by start year).
 
-    production = raw milk produced
-    M, X       = Σ product imports / exports in milk equivalent (members: intra + extra EU;
-                 EU27: extra-EU only) over drinking milk, acidified milk, cream, buttermilk,
-                 total butter, total cheese, skimmed and whole milk powder, whey powder
-    supply     = production + M − X          (no stock data)
-
-The FBS dairy items are scaled so the group equals these totals (uses scaled with supply), which
-carries the change into the protein and calorie totals. Luxembourg is not in the dataset and keeps
-FAO's figures. 2021–2023 SSR, FAO → JRC: Germany 89 → 116%, Ireland 105 → 195%, Denmark 83 →
-140%, Netherlands 78 → 113%, Italy 76 → 89%, EU27 110 → 114%. Germany's protein headline moves
-from 92% to 100%.
+Coverage: dairy 26 members (not Luxembourg) + EU27; tomatoes and olive oil all members; wine the
+19 producing members. Countries or years outside the dataset keep FAO's figures. The UI cites the
+Commission on the affected pages ("How do we know?").
 
 ## Per-person figures
 

@@ -914,6 +914,7 @@ function viewSources() {
   return `
     <h2>How do we know?</h2>
     ${jrc ? aboutJrc(id) : aboutFao()}
+    ${jrcItems(id)}
     ${state.group === "all" ? receiptAll(id, v) : receiptGroup(id, v)}
     ${jrc ? checkJrc(id) : checkYourself(id)}
     ${caveats(id, g)}
@@ -945,6 +946,24 @@ function aboutJrc(id) {
       dairy in EU countries we use the Commission's figures; everything else comes from FAO.</p>
     <p class="small">Average of ${years().join(", ")}. Downloaded ${s.downloaded ? longDate(s.downloaded) : "–"}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.</p>`;
+}
+
+// Foods that are one item of a group and come from the Commission (tomatoes in vegetables, ...),
+// with the reason in plain words (docs/methodology.md has the figures).
+const JRC_WHY = {
+  tomatoes: "tomato paste and sauce sold abroad were not counted back as tomatoes",
+  "olive oil": "FAO's olive oil trade figures disagree with the EU's customs records",
+  wine: "FAO's wine figures disagree with the EU's own statistics (for Germany, FAO counts about half the wine made)",
+};
+function jrcItems(id) {
+  const parts = country(id)?.indicators?.[state.group]?.jrc_items;
+  if (!parts?.length) return "";
+  const s = state.data.meta.sources.jrc_bal;
+  const what = parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+  return `<p class="aside">One part is different: for ${whoOf(id)}, the figures for <strong>${what}</strong>
+    come from the European Commission's <a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>,
+    because FAO's do not add up: ${parts.map((p) => JRC_WHY[p]).filter(Boolean).join("; ")}.
+    The rest is FAO's.</p>`;
 }
 
 function checkJrc(id) {

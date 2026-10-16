@@ -84,6 +84,11 @@ EU_ENTRY = {
 }
 
 
+# JRC foods that are one item inside a products.yaml group, and how the UI names them.
+JRC_GROUP = {"tomatoes": "vegetables", "olive_oil": "vegetable_oils", "wine": "wine_beer"}
+JRC_LABEL = {"tomatoes": "tomatoes", "olive_oil": "olive oil", "wine": "wine"}
+
+
 def _compact(x):
     """Drop None values and empty containers from dicts (lists keep None to stay aligned)."""
     if isinstance(x, dict):
@@ -138,13 +143,10 @@ def export_ssr() -> None:
     products = load_products()["groups"]
 
     years = sorted(groups["years"].unique())
-    # Countries whose dairy figures come from the DG AGRI-JRC balance sheets for the whole window.
-    dairy = jrc.load_dairy()
-    jrc_dairy: set[str] = set()
-    if dairy is not None and years:
-        y0, y1 = (int(y) for y in years[-1].split("-"))
-        need = set(range(y0, y1 + 1))
-        jrc_dairy = {c for c, ys in dairy.groupby("iso3")["year"] if need <= set(ys)}
+    # Foods whose figures come from the DG AGRI-JRC balance sheets for the whole window, per
+    # country: dairy as a whole group, the others as one item of a group (see JRC_GROUP).
+    jrc_foods = jrc.coverage(jrc.load_balances(),
+                             tuple(int(y) for y in years[-1].split("-"))) if years else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
     series = _trend_series(trends, trend_years)
     out: dict = {
@@ -206,8 +208,12 @@ def export_ssr() -> None:
             if r["basis"] == "tonnes":
                 # kt with one decimal so small countries keep usable kg/person precision.
                 ind["components_kt"] = {k: _round(r[k], 1) for k in PER_CAPITA_KEYS}
-                if r["group"] == "dairy" and iso3 in jrc_dairy:
+                foods = jrc_foods.get(iso3, set())
+                if r["group"] == "dairy" and "dairy" in foods:
                     ind["source"] = "jrc_bal"
+                parts = [JRC_LABEL[f] for f, g in JRC_GROUP.items() if g == r["group"] and f in foods]
+                if parts:
+                    ind["jrc_items"] = parts
         isub = items[(items["iso3"] == iso3) & items["group"].notna()]
         for _, r in isub.iterrows():
             item_tables.setdefault(iso3, {}).setdefault(r["group"], []).append(

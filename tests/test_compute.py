@@ -255,14 +255,17 @@ def test_jrc_dairy_replaces_the_fao_balance_item_by_item():
         ("DEU", "Butter, Ghee", "Production", 2023, 2.0),
         ("DEU", "Butter, Ghee", "Domestic supply quantity", 2023, 2.0),
     ]
-    dairy = pd.DataFrame([("DEU", 2023, 32.0, 10.0, 15.0, 27.0)],
-                         columns=["iso3", "year", "production", "imports", "exports", "supply"])
-    wide = jrc.apply_dairy(compute.to_wide(_long(rows)), dairy, compute.UTILISATION)
+    bal = pd.DataFrame([("dairy", "DEU", 2023, 32.0, 10.0, 15.0, 27.0)],
+                       columns=["food", "iso3", "year", "production", "imports", "exports", "supply"])
+    wide = jrc.apply(compute.to_wide(_long(rows)), bal, compute.UTILISATION)
     d = wide[wide["iso3"] == "DEU"].set_index("item")
     assert d["production"].sum() == pytest.approx(32.0)
     assert d["supply"].sum() == pytest.approx(27.0)
     assert d["imports"].sum() == pytest.approx(10.0)
     assert d["exports"].sum() == pytest.approx(15.0)
-    assert (d["dairy_source"] == "jrc").all()
+    assert (d["jrc_food"] == "dairy").all()
+    # Stock change set so the balance holds item by item.
+    assert (d["production"] + d["imports"] - d["exports"] - d["stock_variation"]).sum() == \
+        pytest.approx(27.0)
     # Butter keeps its share of production (2 of 32 before, scaled with the group).
     assert d.loc["Butter, Ghee", "production"] == pytest.approx(2.0 * 32 / 32)
