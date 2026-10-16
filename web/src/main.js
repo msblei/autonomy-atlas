@@ -1056,6 +1056,8 @@ const TRADE_STEPS = [
   { min: 0, color: "#d8e5f0", label: "less than 2%" },
 ];
 const HOME = "#e8b84a";
+// Transit hubs: food "bought from" these countries often only arrived there by ship.
+const PORTS = { NLD: "Rotterdam", BEL: "Antwerp" };
 const ARCS = 5; // lines for the biggest partners only; more would turn into spaghetti
 
 function emptyFC() {
@@ -1169,7 +1171,8 @@ function viewTrade() {
     ${fromEu != null && fromEu >= 1 ? `<p>About <strong>${Math.round(fromEu)}%</strong> of it ${imports ? "comes from" : "goes to"} other EU countries.</p>` : ""}
     ${id === EU ? `<p class="aside">Only trade with countries outside the EU counts here: what the EU as a whole buys and sells.</p>` : ""}
     ${hubs.length && imports ? `<p class="aside">${cap(namesList(hubs.map((r) => r.id)))} ${hubs.length > 1 ? "are" : "is"} often only
-      where food arrives by ship: much of it was grown further away and passes through ports like Rotterdam and Antwerp.</p>` : ""}
+      where food arrives by ship: much of it was grown further away and passes through the port of
+      ${hubs.map((r) => PORTS[r.id]).join(" or ")}.</p>` : ""}
     <h3>Good to know</h3>
     <ul class="caveats">
       <li>Counted in tonnes as shipped: a tonne of juice or cheese counts the same as a tonne of fruit or milk.${state.group === "all" ? " All foods are added up by weight." : ""}</li>
