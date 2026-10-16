@@ -15,7 +15,7 @@ product, with every number traceable to its source.
 
 **Phase 1 working locally.** The pipeline builds FAO Food Balance figures for ~178 countries plus
 the EU as a bloc. The map opens on one plain question: if a country ate only what its own farms
-produce, starting on 1 January, until which date would the food last? Readers then dig deeper
+produce, for how many months of the year would its food last? Readers then dig deeper
 one level at a time: food by food, a single food (trend, per person, where the harvest goes),
 "How do we know?" (the FAO figures, the sum worked out, how to check it on FAOSTAT) and finally
 all the numbers (SSR/IDR, tonnes/kcal, FAO items).

@@ -89,21 +89,27 @@ a soy deficit; read it as "share of what people eat that own production could co
 version is reported as `*_ssr`. Livestock products count as domestic regardless of feed origin
 (feed adjustment is phase 4).
 
-## Running-out day (what the UI shows first)
+## "How long would it last?" (what the UI shows first)
 
-The first figure readers see is a date, not a ratio:
+The first figure readers see is a duration, not a ratio:
 
-    days = min(p, 100) / 100 × 365,   last day with food = 1 January + days − 1
+    months = min(p, 100) / 100 × 12
 
-with p = protein coverage for "all food" and tonnes SSR for a single food. Above 100% the UI says
-"the whole year, with N months to spare", N = round((p − 100) / 100 × 12); from 200% it says
-"p/100 years". Map colours use the same date bands (before July, July–September,
-October–November, December, whole year, more than enough), so map and text always agree
+with p = protein coverage for "all food" and tonnes SSR for a single food. Text rounds to half
+months ("about 10 months of the year"), switches to weeks below about 2 months and to "a few
+days" below one week. Above 100% it says "the whole year, with N months to spare",
+N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the same bands (under
+6 months, 6–9, 9–11, 11–12, the whole year, more than enough), so map and text always agree
 (`web/src/calendar.js`).
 
-It is a thought experiment and the "How do we know?" page says so: stores spread evenly over the
-year, seasons and perishability ignored, the diet stays the same. It adds no information beyond
-SSR, so the methodology above still applies unchanged.
+A duration was chosen over a date ("runs out on 5 November", counting from 1 January) and over
+"from today": both suggest a real starting point and invite questions about harvest timing that
+the data cannot answer, and "from today" would change the wording daily on fixed averages. The
+date is still shown on the "How do we know?" page as an alternative reading of the same share.
+
+It is a thought experiment and the "How do we know?" page says so: a year's production treated
+as one store, seasons and perishability ignored, the diet unchanged. It adds no information
+beyond SSR, so the methodology above still applies unchanged.
 
 ## Trends
 

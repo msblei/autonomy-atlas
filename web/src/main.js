@@ -1,6 +1,6 @@
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import { SEASONS, lasts, season, strip } from "./calendar.js";
+import { SEASONS, forHowLong, lastDay, lasts, months, strip } from "./calendar.js";
 
 // ------------------------------------------------------------------------------------------------
 // state
@@ -282,7 +282,7 @@ function groupInfo(group = state.group) {
   return state.data.groups.find((x) => x.key === group) ?? { label: group };
 }
 
-// The figure every calendar is built from: protein coverage for "all food", else the tonnes SSR.
+// The figure every month strip is built from: protein coverage for "all food", else the tonnes SSR.
 function pctFor(id, group = state.group) {
   const ind = country(id)?.indicators?.[group];
   const v = group === "all" ? ind?.protein?.share : ind?.tonnes?.ssr;
@@ -330,12 +330,6 @@ function fmt(v) {
 
 function food(group = state.group) {
   return group === "all" ? "food" : groupInfo(group).label.toLowerCase();
-}
-
-// "there would be enough until 23 November" / "… enough for the whole year"
-function enough(pct) {
-  const s = lasts(pct);
-  return s.startsWith("until") ? `enough ${s}` : `enough for ${s}`;
 }
 
 function kg(v) {
@@ -458,7 +452,7 @@ function renderLegend() {
   } else {
     // "All food" is capped at 100%, so "more than enough" cannot occur.
     const seasons = state.group === "all" ? SEASONS.slice(0, -1) : SEASONS;
-    title = `If each country ate only its own ${food()}, it would…`;
+    title = `If each country had only its own ${food()}, it would last…`;
     body = `<ul>${seasons.map((s) => `<li><i style="background:${s.color}"></i>${s.label}</li>`).join("")}${hatchKey}</ul>`;
   }
   el.innerHTML = `<details ${state.legendOpen ? "open" : ""}>
@@ -515,7 +509,7 @@ function viewIntro() {
   return `
     <p class="lead">Choose your country above, or tap it on the map.</p>
     <p>For each country we work out how long the food from its own farms would last its people,
-      if it had to manage without buying anything from abroad, and show it as a date in the calendar.</p>
+      if it had to manage without buying anything from abroad, counted in months of the year.</p>
     <p class="small">For example:</p>
     <div class="chips">${EXAMPLES.filter(country)
       .map((id) => `<button type="button" data-go="#${id}" data-fly="${id}">${nameOf(id)}</button>`)
@@ -533,7 +527,7 @@ function euLine(iso3, group = state.group) {
   if (!isMember(iso3)) return "";
   const v = pctFor(EU, group);
   if (v == null) return "";
-  return `<p class="aside">All 27 EU countries together would have ${enough(v)}.
+  return `<p class="aside">All 27 EU countries together would have enough ${forHowLong(v)}.
     <a href="${hashFor({ iso3: EU, group, level: group === "all" ? "country" : "food" })}">See the EU ›</a></p>`;
 }
 
@@ -548,9 +542,8 @@ function viewCountry() {
   }
   return `
     <h2>${nameOf(id)}</h2>
-    <p class="q">If ${who} ate only food from ${id === EU ? "their" : "its"} own farms, starting on 1&nbsp;January,
-      there would be …</p>
-    <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${enough(v)}</a>.</p>
+    <p class="q">If ${who} ate only food from ${id === EU ? "their" : "its"} own farms, there would be enough …</p>
+    <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
     ${strip(v)}
     ${euLine(id, "all")}
     <a class="next" href="${link({ level: "foods" })}">Which foods run out first? ›</a>`;
@@ -618,8 +611,8 @@ function viewFood() {
   const who = id === EU ? "the EU" : nameOf(id);
   const head = v == null
     ? `<p>There are no reliable figures for ${food()} in ${who}.</p>`
-    : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, starting on 1&nbsp;January, there would be …</p>
-       <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${enough(v)}</a>.</p>
+    : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough …</p>
+       <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `
     <h2>${nameOf(id)} · ${g.label}</h2>
@@ -659,12 +652,12 @@ function trend(id) {
         <circle cx="${x(li)}" cy="${y(lv)}" r="3" class="dot" />
         <text x="${x(fi)}" y="${H + 12}" class="yr" text-anchor="middle">${yrs[fi]}</text>
         <text x="${x(li)}" y="${H + 12}" class="yr" text-anchor="middle">${yrs[li]}</text>
-        <text x="${x(fi) - 6}" y="${y(fv) + 4}" class="val" text-anchor="end">${lasts(fv, { short: true }).replace("until ", "")}</text>
-        <text x="${x(li) + 6}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true }).replace("until ", "")}</text>
+        <text x="${x(fi) - 6}" y="${y(fv) + 4}" class="val" text-anchor="end">${lasts(fv, { short: true })}</text>
+        <text x="${x(li) + 6}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true })}</text>
       </svg>
     </div>
-    <p class="small">One year at a time. Droughts and good harvests move the date by weeks; the
-      date above is the ${state.data.meta.years.replace("-", "–")} average.</p>`;
+    <p class="small">One year at a time. Droughts and good harvests can move it by weeks; the
+      figure above is the ${state.data.meta.years.replace("-", "–")} average.</p>`;
 }
 
 function perPerson(id) {
@@ -743,8 +736,8 @@ function viewAbout() {
     ${aboutFao()}
     <h3>The sum</h3>
     <p>For each country and food we divide what its farms and fishing boats produce by what the
-      country uses, then turn that share into days of the year: 90% of 365 days is 329 days,
-      which takes you to 25 November. Choose a country to see its own figures worked out.</p>
+      country uses, then turn that share into months of the year: 85% of 12 months is about
+      10 months. Choose a country to see its own figures worked out.</p>
     ${caveats(null, groupInfo("all"))}
     ${mapSource()}`;
 }
@@ -770,9 +763,7 @@ function receiptGroup(id, v) {
   const sum = v == null || ratio == null ? "" : `
     <h3>The sum</h3>
     <p class="sum">${tonnes(comp.production)} produced<br>÷ ${tonnes(comp.supply)} used<br>= <strong>${Math.round(ratio)}%</strong> of what is used</p>
-    <p>${v >= 99.5
-      ? `That is at least a whole year's worth${v > 104 ? `: ${lasts(v)}` : ""}.`
-      : `${Math.round(v)}% of 365 days is ${Math.round((v / 100) * 365)} days. Counting from 1 January, that is ${lasts(v)}.`}</p>`;
+    ${inMonths(id, v)}`;
   return `
     <h3>The figures for ${nameOf(id)}, ${food()}</h3>
     <p class="small">Per year, average of ${years().join(", ")}.</p>
@@ -786,6 +777,18 @@ function receiptGroup(id, v) {
     ${sum}`;
 }
 
+// From the share to the months on the front page, and the same share as a date.
+function inMonths(id, v) {
+  if (v >= 99.5) {
+    return `<p>That is at least a whole year's worth${v > 104 ? `: ${lasts(v)}` : ""}.</p>`;
+  }
+  const whose = id === EU ? "the EU's" : `${nameOf(id)}'s`;
+  return `
+    <p>${Math.round(v)}% of 12 months is ${months(v).toFixed(1)} months, so ${lasts(v)}.</p>
+    <p class="aside">Put as a date: if ${whose} own ${food()} were eaten from 1 January onwards,
+      it would run out on <strong>${lastDay(v)}</strong>.</p>`;
+}
+
 function receiptAll(id, v) {
   const p = country(id)?.indicators?.all?.protein;
   if (v == null) return "";
@@ -797,8 +800,7 @@ function receiptAll(id, v) {
     <p>For each of about 85 foods we take what is produced at home divided by what is used, at
       most 100% (a surplus of wheat cannot make up for missing soy), and weigh it by how much of
       that protein the food provides. Together that gives <strong>${Math.round(v)}%</strong>.</p>
-    <p>${Math.round(v)}% of 365 days is ${Math.round((v / 100) * 365)} days. Counting from 1 January,
-      that is ${lasts(v)}.</p>
+    ${inMonths(id, v)}
     <p class="small">Food by food, with tonnes for each, is on the
       <a href="${link({ level: "foods", group: "all" })}">food-by-food page</a>.</p>`;
 }
@@ -831,7 +833,7 @@ function caveats(id, g) {
   return `
     <h3>What this leaves out</h3>
     <ul class="caveats">
-      <li>It is a thought experiment. Real stores are not eaten from 1 January onwards, and fresh
+      <li>It is a thought experiment. It treats a year's harvest as one big store, although fresh
         food cannot be kept all year.</li>
       <li>It assumes people keep eating the same mix of foods.</li>
       ${g.plain ? `<li>${g.plain}</li>` : ""}
