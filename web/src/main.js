@@ -608,8 +608,8 @@ function renderCrumbs() {
     trail.push(["How do we know?", state.iso3 ? link({ level: "sources" }) : "#about"]);
   }
   if (state.level === "table") trail.push(["All the numbers", link({ level: "table" })]);
-  if (state.level === "trade") trail.push(["Bought and sold", link({ level: "trade" })]);
-  if (state.level === "used") trail.push(["Used for", link({ level: "used" })]);
+  if (state.level === "trade") trail.push(["Buys and sells", link({ level: "trade" })]);
+  if (state.level === "used") trail.push(["Uses", link({ level: "used" })]);
   const up = trail.length > 1 ? trail[trail.length - 2][1] : "#";
   el.innerHTML = `
     <a class="back" href="${up}">‹ Back</a>
@@ -838,12 +838,12 @@ function perPerson(id) {
   const where = id === EU ? "in the EU" : `in ${nameOf(id)}`;
   const trade = id === EU
     ? `<p class="small">Trade between EU countries is not counted here, only what the EU as a whole produces and uses.</p>`
-    : `<p class="small">Bought from abroad: <strong>${kg(pc.imports)}</strong> · Sold abroad: <strong>${kg(pc.exports)}</strong> per person.</p>`;
+    : `<p class="small">Buys abroad: <strong>${kg(pc.imports)}</strong> · Sells abroad: <strong>${kg(pc.exports)}</strong> per person.</p>`;
   return `
     <h3>Per person, per year</h3>
-    <div class="row"><span>Produced here</span><strong>${kg(pc.production)}</strong></div>
+    <div class="row"><span>Produces</span><strong>${kg(pc.production)}</strong></div>
     <div class="track">${bar(pc.production, max, "var(--accent)")}</div>
-    <div class="row"><span>Used here</span><strong>${kg(pc.supply)}</strong></div>
+    <div class="row"><span>Uses</span><strong>${kg(pc.supply)}</strong></div>
     <div class="track">${uses.map((u) => bar(u.v, max, u.color)).join("")}</div>
     <ul class="uses">${uses
       .map((u) => `<li><i style="background:${u.color}"></i>${kg(u.v)} ${u.label}</li>`)
@@ -859,7 +859,7 @@ function viewUsed() {
   const id = state.iso3;
   return `
     <h2>${nameOf(id)} · ${groupInfo().label}: what it is used for</h2>
-    <p>“Used” is everything that stays in ${whoOf(id)}: eaten, fed to animals, made into other
+    <p>What ${whoOf(id)} uses is everything that stays in the country: eaten, fed to animals, made into other
       foods, kept as seed or lost after harvest.</p>
     ${perPerson(id)}`;
 }
@@ -937,10 +937,10 @@ function receiptGroup(id, v) {
     <h3>The figures for ${nameOf(id)}, ${food()}</h3>
     <p class="small">Per year, average of ${years().join(", ")}.</p>
     <table class="receipt">
-      ${row("Produced here", el.production, tonnes(comp.production))}
-      ${row("Bought from abroad", el.imports, tonnes(comp.imports))}
-      ${row("Sold abroad", el.exports, tonnes(comp.exports))}
-      ${row("Used here", el.supply, tonnes(comp.supply))}
+      ${row("Produces", el.production, tonnes(comp.production))}
+      ${row("Buys abroad", el.imports, tonnes(comp.imports))}
+      ${row("Sells abroad", el.exports, tonnes(comp.exports))}
+      ${row("Uses", el.supply, tonnes(comp.supply))}
       ${row("Population", el.population, people(country(id)?.population_k))}
     </table>
     ${sum}`;
@@ -1012,7 +1012,7 @@ function caveats(id, g) {
       <li>It assumes people keep eating the same mix of foods.</li>
       ${g.plain ? `<li>${g.plain}</li>` : ""}
       ${id === EU ? `<li>For the EU, trade between member countries is left out: only what the EU as a whole produces and uses counts.</li>` : ""}
-      ${id && isMember(id) ? `<li>Food bought from other EU countries counts as bought from abroad.</li>` : ""}
+      ${id && isMember(id) ? `<li>Food it buys from other EU countries counts as buying abroad.</li>` : ""}
     </ul>`;
 }
 
@@ -1119,15 +1119,15 @@ function summaryRows(id) {
     const rows = [];
     const v = pctFor(id, "all");
     if (state.group === "all" && v != null) {
-      rows.push({ key: "produced", label: "Own farms", value: lasts(v, { short: true }), bar: [0, Math.min(v, 100)],
+      rows.push({ key: "produced", label: "Own food lasts", value: lasts(v, { short: true }), bar: [0, Math.min(v, 100)],
         title: "How long the protein from its own farms would last", ...prodGo });
     }
     const M = tm("imports")?.[0], X = tm("exports")?.[0];
     const top = Math.max(M ?? 0, X ?? 0) || 1;
     const t = (x) => (x == null ? (state.trade ? "–" : "…") : shortTonnes(x / 1000));
     if (state.trade ? M != null || X != null : true) {
-      rows.push({ key: "imports", sign: "+", label: "Bought", value: t(M), bar: [0, ((M ?? 0) / top) * 100], ...go("trade", { flow: "imports" }) });
-      rows.push({ key: "exports", sign: "−", label: "Sold", value: t(X), bar: [0, ((X ?? 0) / top) * 100], ...go("trade", { flow: "exports" }) });
+      rows.push({ key: "imports", sign: "+", label: "Buys", value: t(M), bar: [0, ((M ?? 0) / top) * 100], ...go("trade", { flow: "imports" }) });
+      rows.push({ key: "exports", sign: "−", label: "Sells", value: t(X), bar: [0, ((X ?? 0) / top) * 100], ...go("trade", { flow: "exports" }) });
     }
     return { rows };
   }
@@ -1146,10 +1146,10 @@ function summaryRows(id) {
   const out = id === EU ? " outside the EU" : "";
   return {
     rows: [
-      { key: "produced", label: "Produced", value: shortTonnes(P), bar: [0, pct(P)], ...prodGo },
-      { key: "imports", sign: "+", label: `Bought${out}`, value: shortTonnes(M), bar: [pct(P), pct(M)], ...go("trade", { flow: "imports" }) },
-      { key: "exports", sign: "−", label: `Sold${out}`, value: shortTonnes(X), bar: [pct(P + M - X), pct(X)], ...go("trade", { flow: "exports" }) },
-      { key: "used", sign: "=", label: "Used", value: shortTonnes(D), bar: [0, pct(D)],
+      { key: "produced", label: "Produces", value: shortTonnes(P), bar: [0, pct(P)], ...prodGo },
+      { key: "imports", sign: "+", label: `Buys${out}`, value: shortTonnes(M), bar: [pct(P), pct(M)], ...go("trade", { flow: "imports" }) },
+      { key: "exports", sign: "−", label: `Sells${out}`, value: shortTonnes(X), bar: [pct(P + M - X), pct(X)], ...go("trade", { flow: "exports" }) },
+      { key: "used", sign: "=", label: "Uses", value: shortTonnes(D), bar: [0, pct(D)],
         title: "Eaten, fed to animals, made into other foods or lost", ...go("used") },
     ],
     note: id === EU ? "Trade with the rest of the world, by weight as shipped, so the rows do not add up exactly."
@@ -1256,7 +1256,7 @@ function whoOf(id) {
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
-  const head = `<h2>${nameOf(id)} · ${g.label}, ${state.flow === "imports" ? "bought from abroad" : "sold abroad"}</h2>`;
+  const head = `<h2>${nameOf(id)} · ${g.label}, ${state.flow === "imports" ? "what it buys abroad" : "what it sells abroad"}</h2>`;
   if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading trade figures…</p>`; }
   if (state.group === "fish") {
     return `${head}<p>FAO's trade figures do not include fish and seafood, so we cannot show
@@ -1338,8 +1338,8 @@ function tradeTooltip(iso3) {
 function tradeLegend() {
   const id = state.iso3;
   const title = state.flow === "imports"
-    ? `Where ${whoOf(id)}'s ${food()} from abroad comes from`
-    : `Where ${whoOf(id)}'s ${food()} sold abroad goes`;
+    ? `Where ${whoOf(id)} buys its ${food()}`
+    : `Where ${whoOf(id)} sells its ${food()}`;
   const body = `<ul>${TRADE_STEPS.map((s) => `<li><i style="background:${s.color}"></i>${s.label}</li>`).join("")}
     <li><i style="background:${HOME}"></i>${nameOf(id)}</li>
     <li><i style="background:${NO_DATA}"></i>little or none</li></ul>`;
