@@ -56,11 +56,10 @@ const USES = [
 
 const NO_DATA = "#ebe9e3";
 
-// One picture per food, for the food buttons and lists.
-const ICONS = {
-  all: "🍽️", cereals: "🌾", potatoes_roots: "🥔", sugar: "🍬", pulses: "🫘", oilseeds: "🌻",
-  vegetable_oils: "🫒", vegetables: "🥕", fruit: "🍎", meat: "🥩", dairy: "🥛", eggs: "🥚",
-  fish: "🐟", stimulants: "☕", wine_beer: "🍷",
+// Short names for the food buttons; the full label is shown below them.
+const SHORT = {
+  all: "All food", potatoes_roots: "Potatoes", sugar: "Sugar", oilseeds: "Oilseeds",
+  vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, tea", wine_beer: "Wine, beer",
 };
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
 
@@ -562,9 +561,11 @@ function view() {
 function renderControls() {
   const foods = document.getElementById("foods");
   foods.innerHTML = state.data.groups.map((g) => `
-    <button type="button" data-food="${g.key}" title="${g.label}" aria-label="${g.label}"
-      aria-pressed="${g.key === state.group}">${ICONS[g.key] ?? "•"}</button>`).join("");
-  document.getElementById("foodname").textContent = groupInfo().label;
+    <button type="button" data-food="${g.key}" title="${g.label}"
+      aria-pressed="${g.key === state.group}">${SHORT[g.key] ?? g.label}</button>`).join("");
+  // The full name only where the button had to shorten it ("Coffee, tea" -> "Coffee, cocoa, tea").
+  const label = groupInfo().label;
+  document.getElementById("foodname").textContent = (SHORT[state.group] ?? label) === label ? "" : label;
   const views = document.getElementById("views");
   const noCountry = !state.iso3;
   views.innerHTML = [["lasts", "How long it lasts"], ["imports", "Bought"], ["exports", "Sold"]]
@@ -729,7 +730,7 @@ function viewFoods() {
     <p class="q">If ${who} used only what ${id === EU ? "its" : "its own"} farms and fishing boats produce, there would be enough …</p>
     <ul class="foodlist">${rows.map(({ g, v }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
-        <span class="name">${ICONS[g.key] ?? ""} ${g.label}</span>
+        <span class="name">${g.label}</span>
         ${strip(v, { small: true })}
         <span class="when">${lasts(v, { short: true })}</span>
       </a></li>`).join("")}</ul>
@@ -780,7 +781,7 @@ function viewFood() {
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `
-    <h2>${ICONS[g.key] ?? ""} ${nameOf(id)} · ${g.label}</h2>
+    <h2>${nameOf(id)} · ${g.label}</h2>
     ${head}
     ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
     ${passThrough(id)}
@@ -1049,7 +1050,7 @@ function viewTable() {
     <p class="small">The map now shows this indicator.</p>
     ${expertDetail(id)}
     ${g.notes ? `<p class="note">${g.notes}</p>` : ""}
-    ${c.notes ? `<p class="note">⚠ ${c.notes}</p>` : ""}`;
+    ${c.notes ? `<p class="note">Note: ${c.notes}</p>` : ""}`;
 }
 
 function expertDetail(id) {
@@ -1185,7 +1186,7 @@ function tradeTeaser(id) {
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
-  const head = `<h2>${ICONS[g.key] ?? ""} ${nameOf(id)} · ${state.flow === "imports" ? "bought from abroad" : "sold abroad"}</h2>`;
+  const head = `<h2>${nameOf(id)} · ${g.label}, ${state.flow === "imports" ? "bought from abroad" : "sold abroad"}</h2>`;
   if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading trade figures…</p>`; }
   if (state.group === "fish") {
     return `${head}<p>FAO's trade figures do not include fish and seafood, so we cannot show
