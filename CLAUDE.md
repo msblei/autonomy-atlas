@@ -36,7 +36,8 @@ Formulas and methodological rules: `docs/methodology.md`.
   and small JSON/GeoJSON for the web in `web/public/data/`. Frontend is Vite + vanilla JS +
   MapLibre GL JS. deck.gl ArcLayer for trade flows (phase 2). No framework until it earns its place.
 - **Licensing:** default stack is open-licensed (FAOSTAT CC BY 4.0, Eurostat/Comext, BACI Etalab
-  2.0, Natural Earth public domain). GISCO NUTS boundaries are non-commercial only — fine for now,
+  2.0, Natural Earth public domain; typeface Atkinson Hyperlegible Next, SIL OFL, self-hosted, map
+  label glyphs in `web/public/fonts` built by `npm run glyphs`). GISCO NUTS boundaries are non-commercial only — fine for now,
   swap for Natural Earth / geoBoundaries if the project ever goes commercial. Never redistribute raw
   UN Comtrade extracts.
 

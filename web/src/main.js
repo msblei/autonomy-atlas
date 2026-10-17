@@ -85,13 +85,14 @@ const SEASON_SHORT = ["under 6 months", "6 to 9", "9 to 11", "11 to 12", "a full
 // map
 
 // No base map: the ocean is the background, the countries are our own shapes, and the labels are
-// ours too, so tiny places (Vatican, Guernsey) never crowd the big ones. Only the label font is
-// fetched from the MapLibre demo server.
+// ours too, so tiny places (Vatican, Guernsey) never crowd the big ones. The label font is the
+// site's own, as glyph tiles in public/fonts (scripts/build-glyphs.mjs): nothing comes from a
+// third-party server.
 const map = new maplibregl.Map({
   container: "map",
   style: {
     version: 8,
-    glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
+    glyphs: `${new URL("fonts/", document.baseURI).href}{fontstack}/{range}.pbf`,
     sources: {},
     layers: [{ id: "ocean", type: "background", paint: { "background-color": "#d6dfe0" } }],
   },
@@ -324,7 +325,7 @@ function addLabels() {
       filter: ["all", [">=", ["get", "area"], min], ["<", ["get", "area"], max]],
       layout: {
         "text-field": ["get", "name"],
-        "text-font": ["Open Sans Semibold"],
+        "text-font": ["Atkinson Hyperlegible Next SemiBold"],
         "text-size": ["interpolate", ["linear"], ["zoom"], 1, i ? 10 : 11, 6, i ? 13 : 15],
         "text-max-width": 7,
         "text-letter-spacing": 0.02,
@@ -1518,7 +1519,8 @@ function mapSource() {
     <h3>The map</h3>
     <p class="small">Borders: <a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.
-      Label font: MapLibre demo tiles. Typeface: Atkinson Hyperlegible Next, Braille Institute (SIL Open Font License).</p>`;
+      Typeface, also on the map: Atkinson Hyperlegible Next, Braille Institute
+      (<a href="fonts/OFL.txt" target="_blank" rel="noopener">SIL Open Font License</a>).</p>`;
 }
 
 // Level 4: everything, in the vocabulary of the methodology (SSR, IDR, tonnes, kcal).
