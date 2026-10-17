@@ -804,6 +804,15 @@ function setFolded(folded) {
   else showWorld();
 }
 grab.onclick = () => setFolded(!panel.classList.contains("folded"));
+// Phones: open the folded-away search box, and fold it again once it has done its job.
+document.getElementById("find").onclick = () => {
+  panel.classList.add("searching");
+  panel.scrollTop = 0;
+  document.getElementById("country").focus();
+};
+document.getElementById("country").addEventListener("blur", () => {
+  setTimeout(() => panel.classList.remove("searching"), 150);
+});
 document.getElementById("peek").onclick = () => setFolded(false);
 
 // Swipes: down folds the sheet, up unfolds it. On the handle, the search bar and the folded line
@@ -976,10 +985,11 @@ function cardRows(id, group = state.group) {
   const w = group === "all" ? country(id)?.indicators?.all?.protein?.withheld : withheld(id, group);
   const row = (label, sign, href) => ({ label, sign, href, value: null, bar: [0, 0], empty: "no data", why: "No data from FAO" });
   const rows = {
-    food: { ...row("Produced", "", overview), always: true },
-    imports: row(`Bought${out}`, "+", go("trade", "imports")),
-    exports: row(`Sold${out}`, "−", go("trade", "exports")),
-    used: row("Used at home", "=", go("used")),
+    // Present tense: every figure is a yearly average ("Germany produces …").
+    food: { ...row("Produces", "", overview), always: true },
+    imports: row(`Buys${out}`, "+", go("trade", "imports")),
+    exports: row(`Sells${out}`, "−", go("trade", "exports")),
+    used: row("Uses at home", "=", go("used")),
   };
   // A withheld balance: FAO's own figures contradict themselves, and trade records next to them
   // would disagree with them too, so none is shown.
@@ -1034,6 +1044,8 @@ function renderFrame() {
   const frame = document.getElementById("frame");
   const id = state.iso3;
   frame.hidden = !id || state.level === "about";
+  // Phones fold the search box away on a place's pages (style.css); #find opens it.
+  panel.classList.toggle("at-place", !frame.hidden);
   const [up, upLabel] = upTarget();
   const back = document.getElementById("up");
   back.href = up;
@@ -1382,7 +1394,7 @@ function compareFood(id) {
   const signed = (v) => `${v > 0 ? "+" : "−"}${kg(Math.abs(v))}`;
   return `
     <h3>Who has ${food()} to spare?</h3>
-    <p class="small">Produced minus used, per person a year</p>
+    <p class="small">What it produces minus what it uses, per person a year</p>
     <div class="cols">
       <div><p class="small">Most to spare</p>${rankList(rows.slice(0, 5), signed)}</div>
       <div><p class="small">Most missing</p>${rankList(rows.slice(-5).reverse(), signed)}</div>
@@ -1530,9 +1542,9 @@ function receiptGroup(id, v) {
     <h3>FAO's figures for ${nameOf(id)}, ${food()}</h3>
     <p class="small">Per year, average of ${years().join(", ")}, exactly as FAO publishes them.</p>
     <table class="receipt">
-      ${row("Produced", el.production, tonnes(raw.production))}
-      ${row("Bought abroad", el.imports, tonnes(raw.imports))}
-      ${row("Sold abroad", el.exports, tonnes(raw.exports))}
+      ${row("Produces", el.production, tonnes(raw.production))}
+      ${row("Buys abroad", el.imports, tonnes(raw.imports))}
+      ${row("Sells abroad", el.exports, tonnes(raw.exports))}
       ${raw.stock_variation ? row("Change in stocks", el.stock_variation, tonnes(raw.stock_variation)) : ""}
       ${row("Left for use at home", el.supply, tonnes(raw.supply))}
       ${raw.residuals ? row("Unexplained remainder", el.residuals, tonnes(raw.residuals)) : ""}
