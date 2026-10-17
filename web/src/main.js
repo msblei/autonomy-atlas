@@ -977,7 +977,8 @@ function cardRows(id, group = state.group) {
 
 // Built once: four rows whose text, links and bar widths change in place (so the bars animate).
 function buildCard() {
-  document.getElementById("card").innerHTML = CARD.map((r) => `
+  // The marker is the highlight of the open row; it slides from row to row.
+  document.getElementById("card").innerHTML = `<span class="marker" aria-hidden="true"></span>` + CARD.map((r) => `
     <a class="sum-row ${r.cls}" data-row="${r.key}">
       <span class="wf-head"><span class="label"></span><strong><span class="value"></span>${CHEVRON}</strong></span>
       <span class="wf-track"><span></span></span>
@@ -1014,6 +1015,27 @@ function renderFrame() {
     if (a.dataset.row === here && on) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
+  moveMarker();
+}
+
+// Slide the highlight to the open row. When it was hidden (no row open, or the card just
+// appeared) it appears in place instead of sliding in from elsewhere.
+function moveMarker() {
+  const marker = document.querySelector("#card .marker");
+  const row = document.querySelector("#card .sum-row[aria-current]");
+  if (!row) { marker.classList.remove("on"); return; }
+  const place = `translateY(${row.offsetTop}px)`;
+  if (!marker.classList.contains("on")) {
+    marker.classList.add("jump");
+    marker.style.transform = place;
+    marker.style.height = `${row.offsetHeight}px`;
+    void marker.offsetWidth; // apply without transition before switching it back on
+    marker.classList.remove("jump");
+    marker.classList.add("on");
+    return;
+  }
+  marker.style.transform = place;
+  marker.style.height = `${row.offsetHeight}px`;
 }
 
 function renderFoot() {

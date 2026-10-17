@@ -192,7 +192,17 @@ details.notes ul, details.notes p { margin-top: 8px; }
 /* ------------------------------------------------------------------------------------------------
    flow card: produced, bought, sold, used; also the menu of a food's pages */
 
-.sumcard { display: block; background: var(--card); border: 1px solid var(--edge); border-radius: 11px; padding: 4px; }
+.sumcard { display: block; position: relative; background: var(--card); border: 1px solid var(--edge); border-radius: 11px; padding: 4px; }
+/* The open row's highlight: one element that glides between rows. */
+#card .marker {
+  position: absolute; top: 0; left: 4px; right: 4px; height: 46px; z-index: 0;
+  border-radius: 8px; background: var(--sunken); box-shadow: inset 2px 0 0 var(--ink);
+  opacity: 0; pointer-events: none;
+  transition: transform .26s cubic-bezier(.22, 1, .36, 1), height .26s cubic-bezier(.22, 1, .36, 1), opacity .16s;
+}
+#card .marker.on { opacity: 1; }
+#card .marker.jump { transition: none; }
+#card .sum-row { position: relative; z-index: 1; }
 .sum-row {
   display: block; box-sizing: border-box; height: 46px; padding: 6px 10px 0; border-radius: 8px;
   color: var(--ink); text-decoration: none; box-shadow: inset 2px 0 0 transparent;
@@ -200,7 +210,8 @@ details.notes ul, details.notes p { margin-top: 8px; }
 }
 .sum-row + .sum-row { margin-top: 2px; }
 a.sum-row[href]:hover { background: var(--sunken); }
-.sum-row[aria-current] { background: var(--sunken); box-shadow: inset 2px 0 0 var(--ink); }
+.sum-row[aria-current] { background: transparent; } /* the marker draws it */
+a.sum-row[href][aria-current]:hover { background: transparent; }
 .sum-row[aria-disabled] { color: var(--ink-faint); cursor: default; }
 .sum-row .wf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 15px; }
 .sum-row .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
