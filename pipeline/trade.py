@@ -10,7 +10,9 @@ share comes from where" within one food group, not for comparing with FBS totals
 
 Flows come from the reporting country. When a country reported nothing for a flow in a year
 (Russia, Belarus and others since 2022), its partners' reports are used instead: exports that
-others say they sent it become its imports ("mirror" flows), and vice versa.
+others say they sent it become its imports ("mirror" flows), and vice versa. When a country
+leaves one food group out of its reports (Australia's sugar exports), partners' reports replace
+that group over the window (`fill_underreported`, partner lists only).
 
 The EU27 bloc gets only trade with non-members: what the EU as a whole buys from and sells to the
 rest of the world.
@@ -135,6 +137,48 @@ def yearly(df: pd.DataFrame) -> pd.DataFrame:
                  mirror[["reporter", "flow", "year"]].drop_duplicates().shape[0])
     return pd.concat([rep.assign(source="reported"), mirror.assign(source="mirror")],
                      ignore_index=True)
+
+
+UNDER_FACTOR = 3.0  # partners report more than this times what we would otherwise use ...
+UNDER_MIN_T = 20_000  # ... and at least this many tonnes a year ...
+UNDER_MAX_BALANCE = 1.5  # ... and no more than this times the country's FBS flow (if it has one)
+
+
+def fill_underreported(both: pd.DataFrame, years: tuple[int, int],
+                       groups: pd.DataFrame | None = None) -> pd.DataFrame:
+    """Food groups a country leaves out of its own reports (Australia's sugar exports): over the
+    window, when partners report more than UNDER_FACTOR times the flows `yearly` keeps for a
+    country × group × flow, at least UNDER_MIN_T a year, and no more than UNDER_MAX_BALANCE times
+    the country's FBS flow (`groups`: ssr_groups on the tonnes basis; no limit without a
+    balance), their reports of the opposite flow replace them (source "mirror"). The balance
+    limit keeps trading hubs (UAE, Switzerland) on their own reports. For the partner lists
+    only: the EU-bloc shares keep the per-year rule (methodology, "Trade partners",
+    "Under-reported food groups")."""
+    both = both[both["year"].between(*years)]
+    keys = ["reporter", "group", "flow"]
+    rep = both[both["source"] == "reported"]
+    mirror = rep.rename(columns={"reporter": "partner", "partner": "reporter"})
+    mirror = mirror.assign(flow=mirror["flow"].map(MIRROR), source="mirror")
+    used = both.groupby(keys)["value"].sum()
+    theirs = mirror.groupby(keys)["value"].sum()
+    n_years = years[1] - years[0] + 1
+    j = pd.concat([used.rename("used"), theirs.rename("theirs")], axis=1).fillna(0.0)
+    if groups is not None:
+        g = groups[groups["basis"] == "tonnes"].melt(id_vars=["iso3", "group"], value_vars=["imports", "exports"],
+                                                     var_name="flow", value_name="balance_kt")
+        bal = g.rename(columns={"iso3": "reporter"}).set_index(keys)["balance_kt"]
+        j = j.join(bal, how="left")
+    else:
+        j["balance_kt"] = float("nan")
+    fits = j["balance_kt"].isna() | (j["theirs"] / n_years / 1000 <= UNDER_MAX_BALANCE * j["balance_kt"])
+    swap = j[(j["theirs"] > UNDER_FACTOR * j["used"]) & (j["theirs"] >= UNDER_MIN_T * n_years) & fits].index
+    if not len(swap):
+        return both
+    log.info("trade: partners' reports replace %d under-reported country-group-flows (%s)", len(swap),
+             ", ".join(f"{r} {g} {f}" for r, g, f in swap[:8]))
+    hit = both.set_index(keys).index.isin(swap)
+    take = mirror.set_index(keys).index.isin(swap)
+    return pd.concat([both[~hit], mirror[take]], ignore_index=True)
 
 
 def _source_label(s: pd.Series) -> str:
@@ -278,8 +322,8 @@ def run() -> None:
         return
     config.require_fresh(src, trade_inputs())
     years = fbs_window()
-    p = add_eu_bloc(average(pd.read_parquet(src), years))
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
+    p = add_eu_bloc(average(fill_underreported(pd.read_parquet(src), years, groups), years))
     groups = groups[groups["basis"] == "tonnes"][["iso3", "group", "production", "imports"]]
     out = pd.concat([p, trace_origins(p, groups)], ignore_index=True)
     out = out.assign(years=f"{years[0]}-{years[1]}")

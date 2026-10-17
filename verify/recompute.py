@@ -853,9 +853,31 @@ def usda_flags(D, res, usda, use_rule="either"):
 # --------------------------------------------------------------------------------------------
 # Trade partners + Kastner tracing
 # --------------------------------------------------------------------------------------------
+def fill_underreported(bil, res, n):
+    """Methodology, "Trade partners", "Under-reported food groups": per country x group x flow over
+    the window, partners' reports replace the flows above when they are > 3x those, >= 20 kt a
+    year, and <= 1.5x the country's FBS flow (no limit without a balance)."""
+    opp = {"imports": "exports", "exports": "imports"}
+    rep = bil[bil["src"] == "reported"]
+    theirs = rep.rename(columns={"c": "partner", "partner": "c"})
+    theirs = theirs.assign(flow=theirs["flow"].map(opp), src="mirror")
+    used = bil.groupby(["c", "group", "flow"])["t"].sum()
+    swap = set()
+    for (c, g, flow), th in theirs.groupby(["c", "group", "flow"])["t"].sum().items():
+        if th <= 3 * used.get((c, g, flow), 0.0) or th < 20_000 * n:
+            continue
+        b = res.get(c, {}).get("groups", {}).get(g, {}).get("comp", {}).get("M" if flow == "imports" else "X")
+        if b is not None and not isnan(b) and th / n / 1000 > 1.5 * b:
+            continue
+        swap.add((c, g, flow))
+    keep = [k not in swap for k in zip(bil["c"], bil["group"], bil["flow"])]
+    take = [k in swap for k in zip(theirs["c"], theirs["group"], theirs["flow"])]
+    return pd.concat([bil[keep], theirs[take]], ignore_index=True)
+
+
 def build_trade(D, res, min_origin_t=0.0):
     WIN, n = D.WIN, len(D.WIN)
-    bil = bilateral(D.tm, WIN)
+    bil = fill_underreported(bilateral(D.tm, WIN), res, n)
     out = defaultdict(lambda: defaultdict(dict))  # out[c][group][flow] = {partner: t}
     for (c, flow, g, p), v in (bil.groupby(["c", "flow", "group", "partner"])["t"].sum() / n).items():
         out[c][g].setdefault(flow, {})[p] = v

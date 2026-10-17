@@ -58,3 +58,25 @@ def test_unusual_years():
     assert checks.unusual_years({2015: 10.0, 2016: 2.0, 2017: 12.0}) == []  # below 5%
     assert checks.unusual_years({2015: 60.0, 2016: None, 2017: 200.0, 2018: 50.0}) == []  # gap
     assert checks.unusual_years({2015: 60.0, 2016: 15.0, 2017: 70.0}) == [2016]  # dip
+
+
+def _yearly(rows):
+    return pd.DataFrame(rows, columns=["reporter", "partner", "group", "flow", "year", "value", "source"])
+
+
+def test_underreported_group_takes_partners_figures():
+    from pipeline import trade
+
+    years = (2021, 2023)
+    # AUS reports 10 kt of sugar exports a year; its buyers report 300 kt bought from it.
+    rows = [("AUS", "IDN", "sugar", "exports", y, 10_000, "reported") for y in range(2021, 2024)]
+    rows += [("IDN", "AUS", "sugar", "imports", y, 300_000, "reported") for y in range(2021, 2024)]
+    groups = pd.DataFrame([("AUS", "sugar", 0.0, 320.0)], columns=["iso3", "group", "imports", "exports"]).assign(basis="tonnes")
+    out = trade.fill_underreported(_yearly(rows), years, groups)
+    au = out[(out["reporter"] == "AUS") & (out["flow"] == "exports")]
+    assert set(au["source"]) == {"mirror"} and au["value"].sum() == 900_000
+    # A hub: partners book far more as coming from it than its balance allows -> own figures stay.
+    hub = pd.DataFrame([("AUS", "sugar", 0.0, 20.0)], columns=["iso3", "group", "imports", "exports"]).assign(basis="tonnes")
+    out = trade.fill_underreported(_yearly(rows), years, hub)
+    au = out[(out["reporter"] == "AUS") & (out["flow"] == "exports")]
+    assert set(au["source"]) == {"reported"}

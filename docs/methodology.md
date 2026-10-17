@@ -281,6 +281,19 @@ other than groundnuts are left out). FAO's trade data has no fish.
   `trade.json` `meta.mirror` and the UI says so. Gaps are filled per country, flow and year, not
   per food group: FAO publishes no zero rows, so a country that reports some food trade but none
   of one group may mean "none", and partners' figures are not put in its place.
+- **Under-reported food groups.** Some countries keep single products out of their own reports
+  (Australia 2021–2023: 110 kt of sugar exports in its own figures, 3,315 kt in its buyers'). For
+  the partner lists only, per country, flow and food group over the window: when partners report
+  more than 3 times the figures above would use, and at least 20 kt a year, and their total is no
+  more than 1.5 times the country's FBS flow for that group (`components_kt` as published, or
+  `withheld.components_kt`; no limit for a country without a food balance), the partners' reports
+  of the opposite flow replace them for that group (`source = mirror`, and the country is listed
+  in `meta.mirror`). The last condition keeps trading hubs out: partners book cargo as coming from
+  the United Arab Emirates or Switzerland that the balance shows never was theirs, and such a
+  swap would only make the flow implausible (section "Trade records against the food balance"). The figures above compare that window total including the per-year mirror
+  gaps already filled. The EU bloc is built from its members after this step. The extra-EU
+  shares that the EU-bloc balance uses (section "National vs EU-bloc view") keep the per-year
+  rule only, so no balance figure changes.
 - **Derived totals are not mapped.** Item 30 "Rice; paddy (rice milled equivalent)" is FAO's sum
   of the other rice items converted to milled weight (checked row by row in the 2022 data);
   mapping it counted rice twice (EU27 cereal imports 1.9 Mt/year too high). `tests/test_trade.py`

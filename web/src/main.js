@@ -1910,7 +1910,7 @@ function viewTrade() {
       ${grown ? "" : fbsTotal != null
         ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from FAO's trade records, which count tonnes as shipped (a tonne of juice counts like a tonne of fruit).</li>`
         : `<li>Counted in tonnes as shipped: a tonne of juice or cheese counts the same as a tonne of fruit or milk.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
-      ${mirror ? `<li>${nameOf(id)} did not report all of its trade, so for some years we use what other countries say they sold to it or bought from it.</li>` : ""}
+      ${mirror ? `<li>${nameOf(id)} did not report all of its trade, so where its own figures are missing or far too low we use what other countries say they sold to it or bought from it.</li>` : ""}
       <li>Fish is not included in FAO's trade figures.</li>
     </ul></details>`;
 }
