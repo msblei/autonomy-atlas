@@ -24,7 +24,7 @@
 
 /* Figures that line up in columns use equal-width digits; running text keeps the normal ones. */
 .sum-row strong, .partners .pct, .rank strong, td:last-child, .foodlist .when, .eurow strong,
-.sum, .big, #country-list small, .scale em, #legend .ticks { font-variant-numeric: tabular-nums; }
+.sum, .big, #country-list small { font-variant-numeric: tabular-nums; }
 
 /* Only the panel scrolls; the page itself never does. */
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ground); overscroll-behavior: none; }
@@ -333,12 +333,12 @@ td small { color: var(--ink-soft); font-size: 12px; }
 #legend {
   position: absolute; z-index: 1; bottom: 14px;
   left: calc(12px + var(--panel-w) + 20px); right: calc(12px + var(--rail-w) + 20px);
-  margin: 0 auto; max-width: 470px; box-sizing: border-box;
-  padding: 7px 12px 6px; background: var(--paper); border: 1px solid var(--edge-strong); border-radius: 11px;
+  margin: 0 auto; max-width: 400px; box-sizing: border-box;
+  padding: 6px 12px 5px; background: var(--paper); border: 1px solid var(--edge-strong); border-radius: 11px;
 }
-#legend .title { font-size: 13px; color: var(--ink); text-align: center; margin: 0 0 5px; }
+#legend .title { font-size: 13px; line-height: 1.3; color: var(--ink); text-align: center; margin: 0 0 4px; }
+#legend .bloc { color: var(--ink-soft); cursor: help; }
 #legend .title b { font-weight: 700; }
-#legend .note2 { margin: 4px 0 0; font: 11px var(--sans); color: var(--ink-soft); text-align: center; }
 #legend .grad { height: 8px; border-radius: 3px; }
 #legend .ticks { display: flex; justify-content: space-between; font: 11px var(--sans); color: var(--ink-soft); margin-top: 3px; }
 
@@ -346,10 +346,10 @@ td small { color: var(--ink-soft); font-size: 12px; }
 .scale { display: flex; gap: 2px; align-items: flex-start; }
 .scale > span { flex: 1 1 0; min-width: 0; display: flex; flex-direction: column; align-items: center; gap: 3px; }
 .scale i { display: block; width: 100%; height: 8px; border-radius: 2px; }
-.scale em { font: normal 11px/1.2 var(--sans); color: var(--ink-soft); text-align: center; }
+.scale em { font: normal 11px/1.2 var(--sans); color: var(--ink-soft); text-align: center; white-space: nowrap; }
 .scale .gap { flex: 0 0 8px; }
-.scale .nodata, .scale .home { flex: 0 0 auto; max-width: 84px; }
-.scale .home i, .scale .nodata i { width: 30px; }
+.scale .nodata, .scale .home { flex: 0 0 auto; }
+.scale .home i, .scale .nodata i { width: 28px; }
 i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3px 4px); }
 
 /* tooltip */
@@ -407,10 +407,6 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #foods .sep { width: 1px; height: auto; margin: 6px 3px; flex: none; }
   #legend { top: 52px; bottom: auto; left: 6px; right: 6px; max-width: none; padding: 6px 10px 5px; }
   #legend .title { font-size: 12.5px; margin-bottom: 4px; line-height: 1.3; }
-  #legend .note2 { display: none; }
-  .scale em { font-size: 10.5px; white-space: nowrap; }
-  .scale > span.mid em { display: none; }
-  .scale > span:first-child { align-items: flex-start; }
-  .scale > span.last { align-items: flex-end; }
+  .scale em { font-size: 10.5px; }
   .maplibregl-ctrl-bottom-right { display: none; }
 }

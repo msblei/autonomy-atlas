@@ -78,8 +78,8 @@ const SHORT = {
   vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, tea", wine_beer: "Wine, beer",
 };
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
-// The map key in a few words per colour (SEASONS, in the same order).
-const SEASON_SHORT = ["under 6 months", "6 to 9", "9 to 11", "11 to 12", "a full year", "more than enough"];
+// The map key as a ruler in months, one short label per colour (SEASONS, in the same order).
+const SEASON_SHORT = ["0–6", "6–9", "9–11", "11–12", "12", "12+"];
 
 // ------------------------------------------------------------------------------------------------
 // map
@@ -848,13 +848,13 @@ function paintMap() {
 
 // A row of colour boxes with a few words under each, plus "no figures".
 function scaleRow(items) {
-  return `<div class="scale">${items.map((s, i) => `<span class="${i === items.length - 1 ? "last" : ""}${s.mid ? " mid" : ""}">
+  return `<div class="scale">${items.map((s, i) => `<span class="${i === items.length - 1 ? "last" : ""}">
       <i style="background:${s.color}"></i><em>${s.label}</em></span>`).join("")}
     <span class="gap"></span><span class="nodata"><i class="hatch"></i><em>no data</em></span></div>`;
 }
 
 function seasonScale() {
-  return scaleRow(SEASONS.map((s, i) => ({ color: s.color, label: SEASON_SHORT[i], mid: i > 0 && i < 5 })));
+  return scaleRow(SEASONS.map((s, i) => ({ color: s.color, label: SEASON_SHORT[i] })));
 }
 
 // The key sits right under the food buttons: what the map shows, then what the colours mean.
@@ -865,17 +865,16 @@ function renderLegend() {
     el.innerHTML = `<p class="title">${title}</p>${body}`;
     return;
   }
-  const bloc = state.bloc
-    ? `<p class="note2">EU shown as one. Zoom in for its members.</p>` : "";
+  // Zoomed out, the EU is one shape; the title says so in three words.
+  const bloc = state.bloc ? ` <span class="bloc" title="Zoom in to see each member">(EU as one)</span>` : "";
   if (state.level === "table") {
     const { colors, ticks } = SCALES[tableIndicator()] ?? SCALES.ssr;
-    el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}</p>
+    el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}${bloc}</p>
       <div class="grad" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
-      <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>${bloc}`;
+      <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>`;
     return;
   }
-  const title = `How long <b>its own ${food()}</b> would last`;
-  el.innerHTML = `<p class="title">${title}</p>${seasonScale()}${bloc}`;
+  el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months${bloc}</p>${seasonScale()}`;
 }
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
@@ -1672,11 +1671,11 @@ function flowCard(id, group = state.group) {
 
 // Map shades for a partner's share of the selected country's trade, in percent.
 const TRADE_STEPS = [
-  { min: 20, color: "#1f4a6e", label: "a fifth or more" },
-  { min: 10, color: "#3d6f96", label: "10 to 20%" },
-  { min: 5, color: "#6f9cc0", label: "5 to 10%" },
-  { min: 2, color: "#a9c6de", label: "2 to 5%" },
-  { min: 0, color: "#d8e5f0", label: "less than 2%" },
+  { min: 20, color: "#1f4a6e", label: "20%+" },
+  { min: 10, color: "#3d6f96", label: "10–20%" },
+  { min: 5, color: "#6f9cc0", label: "5–10%" },
+  { min: 2, color: "#a9c6de", label: "2–5%" },
+  { min: 0, color: "#d8e5f0", label: "<2%" },
 ];
 const HOME = "#e8b84a";
 // Transit hubs: food "bought from" these countries often only arrived there by ship.
@@ -1828,8 +1827,8 @@ function tradeLegend() {
   const steps = [...TRADE_STEPS].reverse().map((s) => ({ color: s.color, label: s.label }));
   const body = `<div class="scale">
       <span class="home"><i style="background:${HOME}"></i><em>${nameOf(id)}</em></span><span class="gap"></span>
-      ${steps.map((s, i) => `<span class="${i === steps.length - 1 ? "last" : ""}${i > 0 && i < steps.length - 1 ? " mid" : ""}"><i style="background:${s.color}"></i><em>${s.label}</em></span>`).join("")}
-      <span class="gap"></span><span class="nodata"><i style="background:${NO_DATA}"></i><em>little or none</em></span></div>`;
+      ${steps.map((s, i) => `<span class="${i === steps.length - 1 ? "last" : ""}"><i style="background:${s.color}"></i><em>${s.label}</em></span>`).join("")}
+      <span class="gap"></span><span class="nodata"><i style="background:${NO_DATA}"></i><em>none</em></span></div>`;
   return [title, body];
 }
 
