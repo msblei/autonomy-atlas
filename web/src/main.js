@@ -1197,6 +1197,7 @@ function perPerson(id) {
 function viewUsed() {
   const id = state.iso3;
   return `
+    <span class="foodbadge">${foodIcon(state.group)}</span>
     <p class="kicker">${nameOf(id)} · ${groupInfo().label}</p>
     <h2>What it is used for</h2>
     ${flowCard(id)}
@@ -1612,9 +1613,12 @@ function flowCard(id, group = state.group) {
       ]),
       { key: "used", cls: "used", sign: "=", label: "Uses", value: D, bar: [0, pct(D)], href: go("used") },
     ];
+    const notes = [];
     if (!noTrade && Math.abs(store) >= Math.max(1, 0.005 * (P + M))) {
-      note = `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage`;
+      notes.push(`${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage`);
     }
+    if (!noTrade && group === "fish") notes.push("Trading partners: no data from FAO for fish");
+    note = notes.join("<br>");
   } else {
     if (group === "fish") return "";
     if (!state.trade) { loadTrade(); return ""; } // drawn again once the trade figures are in
@@ -1707,7 +1711,8 @@ function whoOf(id) {
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
-  const head = `<p class="kicker">${nameOf(id)} · ${g.label}</p>
+  const head = `<span class="foodbadge">${foodIcon(state.group)}</span>
+    <p class="kicker">${nameOf(id)} · ${g.label}</p>
     <h2>${state.flow === "imports" ? `Where ${whoOf(id)} buys ${food()}` : `Where ${whoOf(id)} sells ${food()}`}</h2>
     ${flowCard(id)}`;
   if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading…</p>`; }
