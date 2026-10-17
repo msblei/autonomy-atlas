@@ -104,7 +104,8 @@ svg { flex: none; }
   font-size: 13px; color: var(--muted); line-height: 1.45;
 }
 #foot .tools { display: flex; gap: 18px; margin-bottom: 4px; }
-#foot .tools a { font-weight: 600; text-decoration: none; }
+#foot .tools a { font-weight: 600; text-decoration: none; color: var(--accent); }
+#foot .tools a[aria-current] { color: var(--ink); }
 #foot .tools a:hover { text-decoration: underline; }
 #foot a { color: var(--muted); }
 
@@ -125,13 +126,14 @@ h3 {
   margin: 4px 0 2px !important; font-size: 13px; font-weight: 650; letter-spacing: .08em;
   text-transform: uppercase; color: var(--accent);
 }
-.lede { font-size: 17px; color: #36403b; }
+.lede { font-size: 18px; color: #36403b; margin-bottom: 22px !important; }
 .q { font-size: 17px; color: #36403b; margin-bottom: 2px !important; }
 .answer { font-size: 30px; line-height: 1.15; font-weight: 600; margin: 0 0 14px !important; letter-spacing: -.01em; }
 .answer a { color: inherit; text-decoration: none; background-image: linear-gradient(var(--accent-soft), var(--accent-soft)); background-size: 100% .32em; background-position: 0 88%; background-repeat: no-repeat; }
 .answer a:hover { color: var(--accent); }
 .small { font-size: 14px; color: var(--muted); }
 .hint { color: var(--muted); }
+.lead-none { font-family: var(--display); font-size: 22px; font-weight: 600; color: var(--muted); }
 .aside {
   font-size: 15px; background: var(--accent-soft); border-radius: 12px; padding: 12px 14px;
   border-left: 3px solid var(--accent);
@@ -141,17 +143,6 @@ h3 {
 /* ------------------------------------------------------------------------------------------------
    welcome */
 
-.howto { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 14px 16px; margin: 18px 0; }
-.howto p { font-size: 15px; }
-.howto p { margin: 0 !important; }
-.howto .dot { display: inline-block; width: 11px; height: 11px; border-radius: 3px; margin-right: 2px; vertical-align: -1px; }
-.howsteps { list-style: none; counter-reset: step; margin: 18px 0 0; padding: 0; display: flex; flex-direction: column; gap: 12px; }
-.howsteps li { counter-increment: step; display: grid; grid-template-columns: 30px 1fr; gap: 10px; align-items: start; font-size: 15px; color: #36403b; }
-.howsteps li::before {
-  content: counter(step); display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%;
-  background: var(--sand); color: var(--accent); font-weight: 700; font-size: 13px;
-}
-.howsteps b { color: var(--ink); }
 .primary {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   width: 100%; box-sizing: border-box; min-height: 56px; margin: 6px 0 10px; padding: 0 18px 0 20px;
@@ -161,7 +152,7 @@ h3 {
 }
 .primary:hover { background: var(--accent-ink); }
 .primary svg { width: 20px; height: 20px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 4px; }
 .chips button {
   font: inherit; font-size: 15px; min-height: 40px; padding: 0 16px; border: 1px solid var(--edge); border-radius: 20px;
   background: #fff; color: var(--ink); cursor: pointer;
@@ -171,7 +162,7 @@ h3 {
 /* ------------------------------------------------------------------------------------------------
    "dig deeper": every next step is a question the reader might ask */
 
-.explore { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.explore { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
 .explore a {
   display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px;
   padding: 13px 14px 13px 16px; background: #fff; border: 1px solid var(--line); border-radius: 14px;
@@ -186,6 +177,23 @@ h3 {
 }
 .explore a:hover svg { transform: translateX(2px); }
 
+/* EU members: the EU as a whole, one row */
+.eurow {
+  display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 10px 12px;
+  background: #fff; border: 1px solid var(--line); border-radius: 12px; color: var(--ink); text-decoration: none; font-size: 15px;
+}
+.eurow:hover { border-color: var(--accent); }
+.eurow i { width: 12px; height: 12px; border-radius: 3px; flex: none; }
+.eurow span { flex: 1; }
+.eurow strong { font-weight: 600; }
+.eurow svg { width: 16px; height: 16px; fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* notes folded away under the figures */
+details.notes { margin-top: 18px; font-size: 14px; color: var(--muted); }
+details.notes summary { cursor: pointer; font-weight: 600; color: var(--muted); padding: 4px 0; }
+details.notes summary:hover { color: var(--ink); }
+details.notes ul { margin-top: 8px; }
+
 /* segmented toggles */
 .seg { display: grid; grid-auto-flow: column; grid-auto-columns: 1fr; background: var(--sand); border-radius: 12px; padding: 4px; margin: 4px 0 14px; gap: 4px; }
 .seg button {
@@ -194,7 +202,7 @@ h3 {
 }
 .seg button:hover { color: var(--ink); }
 .seg button[aria-pressed="true"] { background: #fff; color: var(--ink); font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
-.seg.sub { margin-top: -6px; }
+.seg.sub { margin-top: 12px; }
 .seg.sub button { min-height: 34px; font-size: 14px; }
 .linkish { font: inherit; font-weight: 600; color: var(--accent); background: none; border: 0; padding: 4px 0 0; cursor: pointer; display: block; }
 .linkish:hover { text-decoration: underline; }
@@ -202,11 +210,20 @@ h3 {
 /* ------------------------------------------------------------------------------------------------
    balance card: produced, bought, sold, used */
 
-.sumcard { background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 6px; margin: 0 0 6px; }
-.sum-row { display: block; padding: 7px 10px 9px; }
+.sumcard { display: block; background: #fff; border: 1px solid var(--line); border-radius: 14px; padding: 6px; margin: 18px 0 6px; }
+.sum-row {
+  display: block; padding: 7px 10px 9px; border-radius: 9px; color: var(--ink); text-decoration: none;
+  border-left: 3px solid transparent;
+}
+a.sum-row:hover { background: var(--sand); }
+.sum-row[aria-current] { background: var(--accent-soft); border-left-color: var(--accent); }
+.sum-row strong { display: inline-flex; align-items: center; gap: 4px; }
+.sum-row strong svg { width: 14px; height: 14px; fill: none; stroke: var(--faint); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+.sum-row:hover strong svg { stroke: var(--accent); }
+.sum-row[aria-current] strong svg { visibility: hidden; }
 .sum-row .wf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 15px; }
 .sum-row .wf-track { display: block; height: 8px; margin-top: 5px; }
-.sumcard .used { border-top: 1px dashed var(--edge); border-radius: 0 0 9px 9px; margin-top: 2px; }
+.sumcard .used { margin-top: 3px; border-top: 1px solid var(--line); border-top-left-radius: 0; border-top-right-radius: 0; }
 .sum-note { margin: 2px 12px 6px !important; font-size: 13px; color: var(--muted); }
 
 .wf-head b { display: inline-block; width: 16px; color: var(--faint); font-weight: 600; }
@@ -351,7 +368,6 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 .tip strong { display: block; font-family: var(--display); font-size: 17px; font-weight: 600; margin-bottom: 2px; }
 .tip .v { display: flex; align-items: center; gap: 7px; }
 .tip .v i { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.tip .cta { display: block; margin-top: 4px; font-size: 12px; color: var(--faint); }
 
 .maplibregl-ctrl-group { border-radius: 12px !important; box-shadow: var(--shadow) !important; overflow: hidden; }
 .maplibregl-ctrl-attrib { font-size: 11px; }

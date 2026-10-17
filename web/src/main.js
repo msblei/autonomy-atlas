@@ -102,7 +102,6 @@ const map = new maplibregl.Map({
   attributionControl: false,
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
-map.addControl(new maplibregl.AttributionControl({ compact: true, customAttribution: "Borders © EuroGeographics / GISCO" }), "bottom-right");
 
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "tip", offset: 14 });
 
@@ -349,12 +348,43 @@ function filterLabels() {
   });
 }
 
-// The reader's country, guessed from the browser languages (de-DE -> Germany, de -> Germany).
-// An English-language browser in Berlin says en-US, so a language whose country is on another
-// continent than the time zone is skipped.
+// Time zones to countries, for suggesting where to start. The device's time zone says where the
+// reader is, without asking anyone else (no IP lookup); a zone not listed falls back to the
+// browser's languages.
+const TZ = Object.fromEntries(`
+  Amsterdam NLD Andorra AND Athens GRC Belgrade SRB Berlin DEU Bratislava SVK Brussels BEL
+  Bucharest ROU Budapest HUN Busingen DEU Chisinau MDA Copenhagen DNK Dublin IRL Helsinki FIN
+  Istanbul TUR Kaliningrad RUS Kiev UKR Kyiv UKR Lisbon PRT Ljubljana SVN London GBR Luxembourg LUX
+  Madrid ESP Malta MLT Mariehamn FIN Minsk BLR Monaco MCO Moscow RUS Nicosia CYP Oslo NOR Paris FRA
+  Podgorica MNE Prague CZE Riga LVA Rome ITA Samara RUS San_Marino SMR Sarajevo BIH Simferopol UKR
+  Skopje MKD Sofia BGR Stockholm SWE Tallinn EST Tirane ALB Uzhgorod UKR Vaduz LIE Vienna AUT
+  Vilnius LTU Volgograd RUS Warsaw POL Zagreb HRV Zaporozhye UKR Zurich CHE Reykjavik ISL
+  Canary ESP Madeira PRT Azores PRT Faroe FRO
+  New_York USA Chicago USA Denver USA Los_Angeles USA Phoenix USA Anchorage USA Detroit USA
+  Indianapolis USA Honolulu USA Toronto CAN Vancouver CAN Edmonton CAN Winnipeg CAN Halifax CAN
+  St_Johns CAN Regina CAN Montreal CAN Mexico_City MEX Monterrey MEX Tijuana MEX Cancun MEX
+  Sao_Paulo BRA Manaus BRA Fortaleza BRA Recife BRA Bahia BRA Belem BRA Buenos_Aires ARG
+  Santiago CHL Bogota COL Lima PER Caracas VEN La_Paz BOL Asuncion PRY Montevideo URY
+  Guayaquil ECU Havana CUB Panama PAN Costa_Rica CRI Guatemala GTM
+  Tokyo JPN Seoul KOR Shanghai CHN Taipei TWN Kolkata IND Calcutta IND Karachi PAK Dhaka BGD
+  Jakarta IDN Manila PHL Bangkok THA Ho_Chi_Minh VNM Saigon VNM Kuala_Lumpur MYS Singapore SGP
+  Dubai ARE Riyadh SAU Tehran IRN Baghdad IRQ Jerusalem ISR Tel_Aviv ISR Amman JOR Beirut LBN
+  Kabul AFG Kathmandu NPL Colombo LKA Tashkent UZB Almaty KAZ Tbilisi GEO Yerevan ARM Baku AZE
+  Yangon MMR Qatar QAT Kuwait KWT
+  Cairo EGY Lagos NGA Johannesburg ZAF Nairobi KEN Casablanca MAR Algiers DZA Tunis TUN Accra GHA
+  Addis_Ababa ETH Dar_es_Salaam TZA Kampala UGA Khartoum SDN Kinshasa COD Luanda AGO Abidjan CIV
+  Dakar SEN Harare ZWE Lusaka ZMB Maputo MOZ Tripoli LBY
+  Sydney AUS Melbourne AUS Brisbane AUS Perth AUS Adelaide AUS Hobart AUS Darwin AUS Auckland NZL`
+  .trim().split(/\s+/).reduce((a, w, i, all) => (i % 2 ? a : [...a, [w, all[i + 1]]]), []));
+
+// The reader's country: from the time zone (Europe/Berlin -> Germany), else from the browser
+// languages (de-DE -> Germany). An English-language browser in Berlin says en-US, so a language
+// whose country is on another continent than the time zone is skipped.
 function readersCountry() {
   const zone = Intl.DateTimeFormat().resolvedOptions().timeZone ?? "";
   const continent = zone.split("/")[0];
+  const byZone = TZ[zone.split("/").pop()];
+  if (byZone && country(byZone)) return byZone;
   for (const lang of navigator.languages ?? [navigator.language]) {
     try {
       const iso3 = state.iso3By2[new Intl.Locale(lang).maximize().region];
@@ -675,19 +705,18 @@ const CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7
 function tooltip(iso3) {
   if (state.level === "trade") return tradeTooltip(iso3);
   const id = entity(iso3);
-  const cta = id === state.iso3 ? "" : `<span class="cta">Click for the details</span>`;
-  if (!country(id)) return `<strong>${nameOf(iso3)}</strong>No figures from FAO.`;
+  if (!country(id)) return `<strong>${nameOf(iso3)}</strong><span class="v"><i class="hatch"></i>No data from FAO</span>`;
   const v = mapValue(id);
   const contradicts = state.group === "all"
     ? country(id)?.indicators?.all?.protein?.withheld : withheld(id);
   if (v == null) {
     return `<strong>${nameOf(id)}</strong><span class="v"><i class="hatch"></i>${contradicts
-      ? "FAO's figures contradict themselves" : "No figures for this food"}</span>${cta}`;
+      ? "No reliable data from FAO" : "No data from FAO"}</span>`;
   }
-  if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}${cta}`;
+  if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}`;
   const what = state.group === "all" ? "Own food lasts" : `Own ${food()} lasts`;
   return `<strong>${nameOf(id)}</strong>
-    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>${cta}`;
+    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -779,7 +808,7 @@ function paintMap() {
 function scaleRow(items) {
   return `<div class="scale">${items.map((s, i) => `<span class="${i === items.length - 1 ? "last" : ""}${s.mid ? " mid" : ""}">
       <i style="background:${s.color}"></i><em>${s.label}</em></span>`).join("")}
-    <span class="gap"></span><span class="nodata"><i class="hatch"></i><em>no figures</em></span></div>`;
+    <span class="gap"></span><span class="nodata"><i class="hatch"></i><em>no data</em></span></div>`;
 }
 
 function seasonScale() {
@@ -795,7 +824,7 @@ function renderLegend() {
     return;
   }
   const bloc = state.bloc
-    ? `<p class="note2">Zoomed out, the EU is coloured as one country. Zoom in to see each member.</p>` : "";
+    ? `<p class="note2">EU shown as one. Zoom in for its members.</p>` : "";
   if (state.level === "table") {
     const { colors, ticks } = SCALES[tableIndicator()] ?? SCALES.ssr;
     el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}</p>
@@ -803,9 +832,7 @@ function renderLegend() {
       <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>${bloc}`;
     return;
   }
-  const title = state.group === "all"
-    ? "If each country ate only <b>its own food</b>, the protein would last"
-    : `If each country had only <b>its own ${food()}</b>, it would last`;
+  const title = `How long <b>its own ${food()}</b> would last`;
   el.innerHTML = `<p class="title">${title}</p>${seasonScale()}${bloc}`;
 }
 
@@ -861,9 +888,11 @@ function renderCrumbs() {
 function renderFoot() {
   const m = state.data.meta;
   const el = document.getElementById("foot");
-  const tools = state.iso3 && country(state.iso3) && !["sources", "table"].includes(state.level)
-    ? `<div class="tools"><a href="${link({ level: "table" })}">All the numbers, for experts</a></div>`
-    : !state.iso3 && state.level !== "about" ? `<div class="tools"><a href="#about">How do we know?</a></div>` : "";
+  const here = (level) => (state.level === level ? ` aria-current="page"` : "");
+  const tools = state.iso3 && country(state.iso3)
+    ? `<div class="tools"><a href="${link({ level: "sources" })}"${here("sources")}>How do we know?</a>
+       <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
+    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
   if (state.level === "trade") {
     const t = state.data.meta.sources.fao_tm;
     el.innerHTML = `${tools}Trade figures: <a href="${t.url}" target="_blank"
@@ -893,98 +922,43 @@ function wire(el) {
 
 function viewIntro() {
   const own = readersCountry();
-  const dot = (i) => `<i class="dot" style="background:${SEASONS[i].color}"></i>`;
   return `
     <h1 class="hero">Could your country feed itself?</h1>
-    <p class="lede">Imagine a country had to live only on the food grown, raised and fished within
-      its own borders, buying nothing from abroad. How long would that food last its people?</p>
-    <div class="howto">
-      <p>The map answers in months of the year. ${dot(5)}${dot(4)} Green countries would have enough
-        for the whole year. ${dot(2)}${dot(1)}${dot(0)} Yellow, orange and red ones would run out sooner.</p>
-    </div>
+    <p class="lede">How long its own food would last, if it bought nothing from abroad.</p>
     ${own ? `<button type="button" class="primary" data-go="#${own}">
       <span>Start with ${nameOf(own)}</span>${CHEVRON}</button>` : ""}
-    <ol class="howsteps">
-      <li><span><b>Tap a country</b> on the map, or find it by name above.</span></li>
-      <li><span><b>Choose a food</b> in the menu on the map: the colours change to show that food.</span></li>
-      <li><span><b>Dig deeper</b>: which foods run out first, and where a country buys its food.</span></li>
-    </ol>
-    <h3>Or start with</h3>
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
       .concat(country(EU) ? [EU] : [])
-      .map((id) => `<button type="button" data-go="#${id}">${id === EU ? "The EU as a whole" : nameOf(id)}</button>`)
+      .map((id) => `<button type="button" data-go="#${id}">${id === EU ? "European Union" : nameOf(id)}</button>`)
       .join("")}</div>`;
 }
 
-// "Dig deeper": every next step is a question, with a hint of the answer under it.
+// Links to the next page, as cards: a title and a hint of what is behind it.
 function explore(items) {
   const rows = items.filter(Boolean);
   if (!rows.length) return "";
-  return `<h3>Dig deeper</h3><ul class="explore">${rows.map((r) => `
+  return `<ul class="explore">${rows.map((r) => `
     <li><a href="${r.href}"><span class="t">${r.t}</span>${r.s ? `<span class="s">${r.s}</span>` : ""}${CHEVRON}</a></li>`)
     .join("")}</ul>`;
-}
-
-// Trade totals as hints on the cards: "8.3 million t a year".
-function tradeHint(id, group, flow) {
-  if (!state.trade) { loadTrade(); return "…"; }
-  const comp = group === "all" ? null : country(id)?.indicators?.[group]?.components_kt;
-  const kt = comp?.[flow] ?? (tradeFor(id, group, flow)?.[0] ?? null);
-  if (kt == null) return null;
-  const v = comp?.[flow] != null ? kt : kt / 1000;
-  return `${shortTonnes(v)} a year`;
-}
-
-function tradeCards(id, group = state.group) {
-  if (group === "fish") return [];
-  const what = group === "all" ? "food" : `its ${food(group)}`;
-  const out = id === EU ? " outside the EU" : " abroad";
-  const card = (flow) => {
-    const hint = tradeHint(id, group, flow);
-    if (hint === null) return null;
-    return {
-      href: hashFor({ iso3: id, group, level: "trade", flow }),
-      t: flow === "imports" ? `Where does ${whoOf(id)} buy ${what}?` : `Where does ${whoOf(id)} sell ${what}?`,
-      s: `${flow === "imports" ? "Bought" : "Sold"}${out}: ${hint}`,
-    };
-  };
-  return [card("imports"), card("exports")];
-}
-
-function howCard() {
-  return { href: link({ level: "sources" }), t: "How do we know?", s: "Where the figures come from, and the sum" };
 }
 
 // No food balance (Japan, Singapore): say so, but trade records may still show who it buys from.
 function viewNoData() {
   const id = state.iso3;
-  const cards = state.trade?.countries[id] ? tradeCards(id, "all") : (loadTrade(), []);
   return `
     <h2>${nameOf(id)}</h2>
-    <p>The UN Food and Agriculture Organization publishes no food balance for this country or
-      territory, so we cannot say how long its own food would last.</p>
-    ${explore(cards)}`;
+    <p class="lead-none">No food balance from FAO.</p>
+    ${state.trade?.countries[id] ? flowCard(id, "all") : (loadTrade(), "")}`;
 }
 
+// For EU members: the EU as a whole, one row to compare and click.
 function euLine(iso3, group = state.group) {
   if (!isMember(iso3)) return "";
   const v = pctFor(EU, group);
   if (v == null) return "";
-  const what = v < 0.5 ? `would produce practically no ${food(group)} either` : `would have enough ${forHowLong(v)}`;
-  return `<p class="aside">All 27 EU countries together ${what}.
-    <a href="${hashFor({ iso3: EU, group, level: group === "all" ? "country" : "food" })}">See the EU ›</a></p>`;
-}
-
-// Level 0: one date.
-// Second line: the total can hide that some foods would be missing.
-function menuLine(id, v) {
-  const m = menuFor(id);
-  const few = shortest(id);
-  if (m == null || few.length === 0) return "";
-  const like = few.join(" and ");
-  return v >= 99.5
-    ? `<p class="small">Protein is what people need most. But meals would change: ${like} would run out much sooner.</p>`
-    : `<p class="small">Protein is what people need most. Some foods would run out much sooner, like ${like}.</p>`;
+  return `<a class="eurow" href="${hashFor({ iso3: EU, group, level: group === "all" ? "country" : "food" })}">
+    <i style="background:${season(v).color}"></i><span>European Union</span>
+    <strong>${lasts(v, { short: true })}</strong>${CHEVRON}</a>`;
 }
 
 function viewCountry() {
@@ -993,32 +967,26 @@ function viewCountry() {
   const who = id === EU ? "the 27 EU countries" : nameOf(id);
   const wAll = country(id)?.indicators?.all?.protein?.withheld;
   const few = shortest(id);
-  const n = state.data.groups.length - 1;
-  const cards = [
-    { href: link({ level: "foods" }), t: "Which foods would run out first?",
-      s: few.length ? `Soonest: ${few.join(" and ")}` : `All ${n} kinds of food, one by one` },
-    ...tradeCards(id, "all"),
-    howCard(),
-  ];
-  const kicker = `${id === EU ? `<p class="kicker">27 countries together</p>` : ""}<h2>${nameOf(id)}</h2>`;
+  const foods = explore([{ href: link({ level: "foods" }), t: "Food by food",
+    s: few.length ? `Runs out first: ${few.join(" and ")}` : "" }]);
+  const title = `${id === EU ? `<p class="kicker">27 countries together</p>` : ""}<h2>${nameOf(id)}</h2>`;
   if (v == null && wAll) {
-    return `${kicker}
-      <p>For some foods, FAO's figures for ${nameOf(id)} contradict themselves, and the total changes a
-        lot depending on how they are read, so we show no figure.
-        ${robustWords(wAll.range, id, "protein")}</p>
-      ${explore(cards)}`;
+    return `${title}
+      <p class="lead-none">No reliable data from FAO.</p>
+      ${robustWords(wAll.range, id, "protein") ? `<p>${robustWords(wAll.range, id, "protein")}</p>` : ""}
+      <details class="notes"><summary>Why?</summary><p>For some foods, FAO's figures for ${nameOf(id)}
+        contradict themselves, and the total changes a lot depending on how they are read.</p></details>
+      ${flowCard(id)}${foods}`;
   }
-  if (v == null) {
-    return `${kicker}<p>There are not enough figures for ${nameOf(id)} to work this out.</p>${explore(cards)}`;
-  }
+  if (v == null) return `${title}<p class="lead-none">Not enough data from FAO.</p>${flowCard(id)}${foods}`;
   return `
-    ${kicker}
+    ${title}
     <p class="q">If ${who} ate only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough protein …</p>
     <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
     ${strip(v)}
-    ${menuLine(id, v)}
     ${euLine(id, "all")}
-    ${explore(cards)}`;
+    ${flowCard(id)}
+    ${foods}`;
 }
 
 // Level 1: the same date for every food, plus how the country compares.
@@ -1041,7 +1009,6 @@ function viewFoods() {
         ${strip(v, { small: true })}
         <span class="when">${lasts(v, { short: true })}</span>
       </a></li>`).join("")}</ul>
-    <p class="small">Tap a food to see more about it.</p>
     ${compareAll(id)}`;
 }
 
@@ -1087,29 +1054,23 @@ function viewFood() {
   const who = id === EU ? "the EU" : nameOf(id);
   const w = withheld(id);
   const head = w
-    ? `<p>${whyWithheld(id)} So we show no figure for it here, and leave ${who} out of every
-        comparison for ${food()}.</p>
-       ${robustWords(w.range, id, food()) ? `<p>${robustWords(w.range, id, food())}</p>` : ""}`
+    ? `<p class="lead-none">No reliable data from FAO.</p>
+       ${robustWords(w.range, id, food()) ? `<p>${robustWords(w.range, id, food())}</p>` : ""}
+       <details class="notes"><summary>Why?</summary><p>${whyWithheld(id)} So we show no figure for
+         it here, and leave ${who} out of every comparison for ${food()}.</p></details>`
     : v == null
-    ? `<p>There are no figures for ${food()} in ${who}.</p>`
+    ? `<p class="lead-none">No data from FAO.</p>`
     : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be ${v < 0.5 ? "…" : "enough …"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
-  const cards = [
-    ...(w ? [] : tradeCards(id)),
-    !w && perCapita(id)?.supply != null
-      ? { href: link({ level: "used" }), t: `What is the ${food()} used for?`, s: "Eaten, fed to animals, made into other foods" } : null,
-    howCard(),
-  ];
   return `
     <p class="kicker">${nameOf(id)}</p>
     <h2>${g.label}</h2>
     ${head}
-    ${g.plain ? `<p class="aside">${g.plain}</p>` : ""}
-    ${w ? "" : secondOpinion(id)}
+    ${g.plain ? `<p class="small">${g.plain}</p>` : ""}
     ${euLine(id)}
-    ${w ? "" : balanceCard(id)}
-    ${explore(cards)}
+    ${w ? "" : secondOpinion(id)}
+    ${flowCard(id)}
     ${w ? "" : trend(id)}
     ${compareFood(id)}`;
 }
@@ -1130,7 +1091,7 @@ function trend(id) {
   const [fi, fv] = pts[0];
   const [li, lv] = pts[pts.length - 1];
   return `
-    <h3>Was it always like this?</h3>
+    <h3>Year by year</h3>
     <div class="spark">
       <svg viewBox="0 0 ${W} ${H + 14}" width="100%" height="${H + 14}" role="img"
         aria-label="${yrs[fi]}: ${lasts(fv)}; ${yrs[li]}: ${lasts(lv)}">
@@ -1144,8 +1105,7 @@ function trend(id) {
         <text x="${x(li) + 6}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true })}</text>
       </svg>
     </div>
-    <p class="small">One year at a time; the dashed line is the whole year. Droughts and good
-      harvests can move it by weeks; the figure above is the ${state.data.meta.years.replace("-", "–")} average.</p>`;
+    <p class="small">Dashed: a full year. Above: the ${state.data.meta.years.replace("-", "–")} average.</p>`;
 }
 
 function perPerson(id) {
@@ -1200,8 +1160,7 @@ function viewUsed() {
   return `
     <p class="kicker">${nameOf(id)} · ${groupInfo().label}</p>
     <h2>What it is used for</h2>
-    <p>What ${whoOf(id)} uses is everything that stays in the country: eaten, fed to animals, made into other
-      foods, kept as seed or lost after harvest.</p>
+    ${flowCard(id)}
     ${perPerson(id)}`;
 }
 
@@ -1218,7 +1177,7 @@ function compareFood(id) {
   const signed = (v) => `${v > 0 ? "+" : "−"}${kg(Math.abs(v))}`;
   return `
     <h3>Who has ${food()} to spare?</h3>
-    <p class="small">Produced minus used, per person per year.</p>
+    <p class="small">Produced minus used, per person a year</p>
     <div class="cols">
       <div><p class="small">Most to spare</p>${rankList(rows.slice(0, 5), signed)}</div>
       <div><p class="small">Most missing</p>${rankList(rows.slice(-5).reverse(), signed)}</div>
@@ -1245,8 +1204,7 @@ function viewSources() {
     ${state.group === "all" ? "" : secondOpinion(id)}
     ${jrc ? checkJrc(id) : checkYourself(id)}
     ${caveats(id, g)}
-    ${mapSource()}
-    ${explore([{ href: link({ level: "table" }), t: "Show all the numbers", s: "Self-sufficiency and import ratios, in tonnes and calories" }])}`;
+    ${mapSource()}`;
 }
 
 function viewAbout() {
@@ -1583,39 +1541,63 @@ function expertDetail(id) {
 }
 
 // ------------------------------------------------------------------------------------------------
-// balance card: produced, bought, sold, used. Bars form a waterfall (each starts where the sum so
-// far ends), from the food balance, so produced + bought − sold (± storage) = used.
+// The flow card: produced, bought, sold, used in a year. It is also the menu of a food's pages:
+// each row opens the page about it, and the row of the page on screen is marked. With a food
+// balance the bars form a waterfall (each starts where the sum so far ends), so produced + bought
+// − sold (± storage) = used. Without one in tonnes ("all food", or no FAO balance as for Japan)
+// it shows bought and sold only, from the trade records by weight as shipped.
 
-function balanceCard(id) {
-  const c = country(id)?.indicators?.[state.group]?.components_kt;
-  // A withheld balance (FAO's figures contradict themselves) gets no card.
-  if (withheld(id) || !c || !(c.supply > 0)) return "";
-  // For the EU, imports and exports are its trade with the rest of the world (compute.py), so the
-  // rows add up like any country's. Fish has no trade records: then only produced and used.
-  const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, D = c.supply;
-  const noTrade = c.imports == null && c.exports == null;
-  const store = D - (P + M - X); // > 0: taken out of storage, < 0: put into storage
-  const showStore = !noTrade && Math.abs(store) >= Math.max(1, 0.005 * (P + M));
-  const top = Math.max(P + M, D, P + M - X + Math.max(store, 0)) || 1;
-  const pct = (x) => (Math.max(0, x) / top) * 100;
+function flowCard(id, group = state.group) {
+  // A withheld balance (FAO's figures contradict themselves) gets no card: trade records by
+  // weight as shipped would sit next to FAO's balance figures and disagree with them.
+  if (withheld(id, group)) return "";
+  const c = country(id)?.indicators?.[group]?.components_kt;
+  const go = (level, flow) => hashFor({ iso3: id, group, level, flow });
   const out = id === EU ? " outside the EU" : " abroad";
-  const rows = [
-    { cls: "prod", label: "Produces", value: P, bar: [0, pct(P)] },
-    ...(noTrade ? [] : [
-      { cls: "in", sign: "+", label: `Buys${out}`, value: M, bar: [pct(P), pct(M)] },
-      { cls: "out", sign: "−", label: `Sells${out}`, value: X, bar: [pct(P + M - X), pct(X)] },
-    ]),
-    { cls: "used", sign: "=", label: "Uses", value: D, bar: [0, pct(D)] },
-  ];
-  const note = showStore ? `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage` : "";
+  let rows, note = "";
+  if (group !== "all" && c && c.supply > 0) {
+    // For the EU, imports and exports are its trade with the rest of the world (compute.py), so
+    // the rows add up like any country's. Fish has no trade records: then only produced and used.
+    const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, D = c.supply;
+    const noTrade = c.imports == null && c.exports == null;
+    const store = D - (P + M - X); // > 0: taken out of storage, < 0: put into storage
+    const top = Math.max(P + M, D, P + M - X + Math.max(store, 0)) || 1;
+    const pct = (x) => (Math.max(0, x) / top) * 100;
+    // No trade records for fish (FAO's trade matrix leaves it out): nothing to open behind its rows.
+    const tradeGo = (flow) => (group === "fish" ? null : go("trade", flow));
+    rows = [
+      { key: "food", cls: "prod", label: "Produces", value: P, bar: [0, pct(P)], href: go("food") },
+      ...(noTrade ? [] : [
+        { key: "imports", cls: "in", sign: "+", label: `Buys${out}`, value: M, bar: [pct(P), pct(M)], href: tradeGo("imports") },
+        { key: "exports", cls: "out", sign: "−", label: `Sells${out}`, value: X, bar: [pct(P + M - X), pct(X)], href: tradeGo("exports") },
+      ]),
+      { key: "used", cls: "used", sign: "=", label: "Uses", value: D, bar: [0, pct(D)], href: go("used") },
+    ];
+    if (!noTrade && Math.abs(store) >= Math.max(1, 0.005 * (P + M))) {
+      note = `${shortTonnes(Math.abs(store))} ${store > 0 ? "taken out of" : "put into"} storage`;
+    }
+  } else {
+    if (group === "fish") return "";
+    if (!state.trade) { loadTrade(); return ""; } // drawn again once the trade figures are in
+    const M = tradeFor(id, group, "imports")?.[0], X = tradeFor(id, group, "exports")?.[0];
+    if (M == null && X == null) return "";
+    const top = Math.max(M ?? 0, X ?? 0) || 1;
+    rows = [
+      { key: "imports", cls: "in", label: `Buys${out}`, value: (M ?? 0) / 1000, bar: [0, ((M ?? 0) / top) * 100], href: go("trade", "imports") },
+      { key: "exports", cls: "out", label: `Sells${out}`, value: (X ?? 0) / 1000, bar: [0, ((X ?? 0) / top) * 100], href: go("trade", "exports") },
+    ];
+  }
+  const here = state.level === "trade" ? state.flow : state.level === "used" ? "used" : state.level === "food" ? "food" : null;
   return `
-    <h3>A year of ${food()} in ${whoOf(id)}</h3>
-    <div class="sumcard wf" role="img" aria-label="${rows.map((r) => `${r.label}: ${shortTonnes(r.value)}`).join(", ")}">${rows.map((r) => `
-      <div class="sum-row ${r.cls}">
-        <span class="wf-head"><span><b>${r.sign ?? ""}</b>${r.label}</span><strong>${shortTonnes(r.value)}</strong></span>
+    <nav class="sumcard wf" aria-label="Produced, bought, sold, used: a year in tonnes">${rows.map((r) => {
+      const tag = r.href ? "a" : "div";
+      return `
+      <${tag} class="sum-row ${r.cls}"${r.href ? ` href="${r.href}"` : ""}${r.key === here ? ` aria-current="page"` : ""}>
+        <span class="wf-head"><span><b>${r.sign ?? ""}</b>${r.label}</span><strong>${shortTonnes(r.value)}${r.href ? CHEVRON : ""}</strong></span>
         <span class="wf-track"><span style="left:${r.bar[0]}%;width:${r.bar[1]}%"></span></span>
-      </div>`).join("")}
-      ${note ? `<p class="sum-note">${note}</p>` : ""}</div>`;
+      </${tag}>`;
+    }).join("")}
+      ${note ? `<p class="sum-note">${note}</p>` : ""}</nav>`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1686,22 +1668,13 @@ function whoOf(id) {
 function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
-  const out = id === EU ? "outside the EU" : "abroad";
-  const flows = `
-    <div class="seg" role="group" aria-label="Bought or sold">
-      <button type="button" data-go="${link({ flow: "imports" })}" aria-pressed="${state.flow === "imports"}">Bought ${out}</button>
-      <button type="button" data-go="${link({ flow: "exports" })}" aria-pressed="${state.flow === "exports"}">Sold ${out}</button>
-    </div>`;
   const head = `<p class="kicker">${nameOf(id)} · ${g.label}</p>
-    <h2>${state.flow === "imports" ? `Where ${whoOf(id)} buys ${food()}` : `Where ${whoOf(id)} sells ${food()}`}</h2>${flows}`;
-  if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading trade figures…</p>`; }
-  if (state.group === "fish") {
-    return `${head}<p>FAO's trade figures do not include fish and seafood, so we cannot show
-      where it comes from.</p>`;
-  }
+    <h2>${state.flow === "imports" ? `Where ${whoOf(id)} buys ${food()}` : `Where ${whoOf(id)} sells ${food()}`}</h2>
+    ${flowCard(id)}`;
+  if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading…</p>`; }
+  if (state.group === "fish") return `${head}<p class="hint">No trade data for fish from FAO.</p>`;
   const imports = state.flow === "imports";
   const grown = imports && state.grown;
-  const who = whoOf(id);
   const t = tradeFor(id);
   const rows = shares(id);
   const toggle = imports ? `
@@ -1711,14 +1684,12 @@ function viewTrade() {
     </div>` : "";
   if (!t || !t[0] || !rows.length) {
     // No trade record is not the same as no trade: say what we have, not what we infer.
-    return `${head}${toggle}<p>FAO's trade records list no ${food()} ${imports ? "bought" : "sold"}
-      abroad by ${who} for ${state.trade.meta.years.replace("-", "–")}.</p>`;
+    return `${head}${toggle}<p class="hint">No ${imports ? "purchases" : "sales"} in FAO's trade records.</p>`;
   }
   // Totals from the food balance where there is one, so they match the other pages; the trade
   // records give the split by country.
   const comp = country(id)?.indicators?.[state.group]?.components_kt;
   const fbsTotal = state.group !== "all" ? comp?.[imports ? "imports" : "exports"] : null;
-  const total = fbsTotal ?? t[0] / 1000;
   const top = rows.slice(0, 8);
   const rest = Math.max(0, 100 - top.reduce((a, r) => a + r.share, 0));
   const max = top[0].share;
@@ -1726,14 +1697,9 @@ function viewTrade() {
   const fromEu = isMember(id) ? rows.filter((r) => members.includes(r.id)).reduce((a, r) => a + r.share, 0) : null;
   const hubs = grown ? [] : top.slice(0, 5).filter((r) => ["NLD", "BEL"].includes(r.id) && r.id !== id);
   const mirror = state.trade.meta.mirror.includes(id);
-  const Who = cap(who);
   return `
     ${head}
     ${toggle}
-    <p>${grown
-      ? `Where the ${food()} ${who} buys abroad was grown, following it back through the countries that sold it on:`
-      : `${Who} ${imports ? "buys" : "sells"} about <strong>${tonnes(total)}</strong> of ${food()}
-        ${imports ? "from" : "to"} other countries a year. Most of it ${imports ? "comes from" : "goes to"}:`}</p>
     <ol class="partners">${top.map((r) => `
       <li><a href="${hashFor({ iso3: r.id, group: state.group, level: "trade", flow: state.flow })}">
         <span class="name">${nameOf(r.id)}</span>
@@ -1742,15 +1708,11 @@ function viewTrade() {
       </a></li>`).join("")}
       ${rest >= 1 ? `<li class="rest"><span class="name">Other countries</span><span></span><span class="pct">${Math.round(rest)}%</span></li>` : ""}
     </ol>
-    <p class="small">On the map: the darker the blue, the bigger the share. Lines show the ${Math.min(ARCS, top.length)} biggest.
-      Tap a country to see its own trade.</p>
-    ${fromEu != null && fromEu >= 1 ? `<p>About <strong>${Math.round(fromEu)}%</strong> of it ${grown ? "was grown in" : imports ? "comes from" : "goes to"} other EU countries.</p>` : ""}
-    ${id === EU ? `<p class="aside">Only trade with countries outside the EU counts here: what the EU as a whole buys and sells.</p>` : ""}
-    ${hubs.length && imports ? `<p class="aside">${cap(namesList(hubs.map((r) => r.id)))} ${hubs.length > 1 ? "are" : "is"} often only
-      where food arrives by ship: much of it was grown further away and passes through the port of
-      ${hubs.map((r) => PORTS[r.id]).join(" or ")}.
-      <button type="button" class="linkish" data-grown="1">See where it was grown ›</button></p>` : ""}
-    <h3>Good to know</h3>
+    ${fromEu != null && fromEu >= 1 ? `<p class="small">${grown ? "Grown in" : imports ? "From" : "To"} other EU countries: <strong>${Math.round(fromEu)}%</strong></p>` : ""}
+    ${hubs.length && imports ? `<p class="aside">Much of what comes from ${namesList(hubs.map((r) => r.id))} only passes
+      through the port of ${hubs.map((r) => PORTS[r.id]).join(" or ")}.
+      <button type="button" class="linkish" data-grown="1">Where was it grown? ›</button></p>` : ""}
+    <details class="notes"><summary>About these figures</summary>
     <ul class="caveats">
       ${grown ? `<li>Traced back by assuming that every country sells on an even mix of what it grows and what it buys. It is an estimate, not a shipping record.</li>
         <li>Shares are of the food as grown: processed goods such as flour or juice are counted back to the grain or fruit, as in FAO's food balances.</li>` : ""}
@@ -1759,11 +1721,7 @@ function viewTrade() {
         : `<li>Counted in tonnes as shipped: a tonne of juice or cheese counts the same as a tonne of fruit or milk.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
       ${mirror ? `<li>${nameOf(id)} did not report all of its trade, so for some years we use what other countries say they sold to it or bought from it.</li>` : ""}
       <li>Fish is not included in FAO's trade figures.</li>
-    </ul>`;
-}
-
-function cap(s) {
-  return s.charAt(0).toUpperCase() + s.slice(1);
+    </ul></details>`;
 }
 
 // "2.4 million tonnes" / "350 thousand tonnes" for the balance card and the cards' hints.
@@ -1793,8 +1751,8 @@ function tradeLegend() {
   const title = tradeFlow() === "grown"
     ? `Where the ${food()} ${whoOf(id)} buys was <b>grown</b>`
     : state.flow === "imports"
-      ? `Where ${whoOf(id)} <b>buys</b> its ${food()}: share of what it buys abroad`
-      : `Where ${whoOf(id)} <b>sells</b> its ${food()}: share of what it sells abroad`;
+      ? `Where ${whoOf(id)} <b>buys</b> its ${food()}`
+      : `Where ${whoOf(id)} <b>sells</b> its ${food()}`;
   const steps = [...TRADE_STEPS].reverse().map((s) => ({ color: s.color, label: s.label }));
   const body = `<div class="scale">
       <span class="home"><i style="background:${HOME}"></i><em>${nameOf(id)}</em></span><span class="gap"></span>
