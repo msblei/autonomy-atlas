@@ -968,8 +968,8 @@ function upTarget() {
 
 // The card's four rows, always in this order, for every food: a year's balance in tonnes, so that
 // produced + bought − sold (± storage) = used can be checked by eye; the bars form a waterfall (each
-// starts where the sum so far ends). A row without a figure keeps its place and says "n/a" (does
-// not apply) or "no data" (FAO has none), with the reason on hover, so the card never changes shape.
+// starts where the sum so far ends). A row without a figure keeps its place and says why in a word
+// ("per food", "no data", "no reliable data"), with the reason on hover, so the card never changes shape.
 // The first row is also the way back to the overview, so it can always be opened.
 const CARD = [
   { key: "food", cls: "prod" },
@@ -1012,12 +1012,15 @@ function cardRows(id, group = state.group) {
     if (M == null) rows.imports.why = rows.exports.why = "No trade data from FAO";
     return rows;
   }
-  // No balance in tonnes. All food: tonnes of different foods do not add up, so produced and used
-  // do not apply; no FAO balance (Japan): FAO has none. Bought and sold come from the trade
-  // records, by weight as shipped.
+  // No balance in tonnes: all food (below), or no FAO balance (Japan). Bought and sold come from the
+  // trade records, by weight as shipped.
+  // All food: what is produced and used is given per food, not added up, because the sum would
+  // count food twice (soybeans and the oil pressed from them, grain and the beer brewed from it).
+  // Trade can be added up: every shipment is counted once.
   if (group === "all") {
     for (const k of ["food", "used"]) {
-      Object.assign(rows[k], { empty: "n/a", why: "Does not apply to all food together: tonnes of lettuce and of cheese do not add up. Choose a food to see its figures." });
+      Object.assign(rows[k], { empty: "per food", why: "Not added up across foods: that would count food twice, "
+        + "such as soybeans and the oil pressed from them. Each food has its own figure in the list below." });
     }
   }
   if (!state.trade) { loadTrade(); rows.imports.why = rows.exports.why = "Loading"; return rows; }
