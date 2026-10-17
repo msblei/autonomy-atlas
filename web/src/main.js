@@ -848,7 +848,11 @@ function renderPeek() {
     const rows = cardRows(id);
     const key = state.level === "trade" ? state.flow : state.level === "used" ? "used" : "food";
     const r = rows[key];
-    line = `<b>${nameOf(id)}</b> ${groupInfo().label}${r.value != null ? `: ${r.label.toLowerCase()} ${r.value}` : ""}`;
+    const v = country(id) ? pctFor(id) : null;
+    // On the overview the line says the answer; on a question, that row of the card.
+    const said = key === "food" ? (v == null ? "" : `: own food lasts ${lasts(v, { short: true })}`)
+      : r.value != null ? `: ${r.label.toLowerCase()} ${r.value}` : "";
+    line = `<b>${nameOf(id)}</b> ${groupInfo().label}${said}`;
   }
   document.getElementById("peek").innerHTML = `<span>${line}</span>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>`;
@@ -953,10 +957,13 @@ function upTarget() {
   return ["#", "Back to the world map"];
 }
 
-// The card's four rows, always in this order, for every food. A row without a figure keeps its
-// place, shows a dash and says why on hover, so the card never changes shape.
+// The card's four rows, always in this order, for every food: a year's balance in tonnes, so that
+// produced + bought − sold (± storage) = used can be checked by eye; the bars form a waterfall (each
+// starts where the sum so far ends). A row without a figure keeps its place and says "n/a" (does
+// not apply) or "no data" (FAO has none), with the reason on hover, so the card never changes shape.
+// The first row is also the way back to the overview, so it can always be opened.
 const CARD = [
-  { key: "food", cls: "lasts" },
+  { key: "food", cls: "prod" },
   { key: "imports", cls: "in" },
   { key: "exports", cls: "out" },
   { key: "used", cls: "used" },
@@ -966,45 +973,50 @@ function cardRows(id, group = state.group) {
   const out = id === EU ? " outside the EU" : " abroad";
   const overview = hashFor({ iso3: id, group, level: group === "all" ? "country" : "food" });
   const go = (level, flow) => hashFor({ iso3: id, group, level, flow });
-  const v = country(id) ? pctFor(id, group) : null;
   const w = group === "all" ? country(id)?.indicators?.all?.protein?.withheld : withheld(id, group);
+  const row = (label, sign, href) => ({ label, sign, href, value: null, bar: [0, 0], empty: "no data", why: "No data from FAO" });
   const rows = {
-    food: { label: "Own food lasts", href: overview, value: v == null ? null : lasts(v, { short: true }),
-      bar: v == null ? 0 : Math.min(v, 100), color: v == null ? null : season(v).color,
-      why: w ? "No reliable data from FAO" : "No data from FAO" },
-    imports: { label: `Bought${out}`, href: go("trade", "imports"), value: null, bar: 0 },
-    exports: { label: `Sold${out}`, href: go("trade", "exports"), value: null, bar: 0 },
-    used: { label: "Used at home", href: go("used"), value: null, bar: 0 },
+    food: { ...row("Produced", "", overview), always: true },
+    imports: row(`Bought${out}`, "+", go("trade", "imports")),
+    exports: row(`Sold${out}`, "−", go("trade", "exports")),
+    used: row("Used at home", "=", go("used")),
   };
   // A withheld balance: FAO's own figures contradict themselves, and trade records next to them
   // would disagree with them too, so none is shown.
   if (w) {
-    for (const k of ["imports", "exports", "used"]) rows[k].why = "No reliable data from FAO";
-    if (country(id)) rows.food.value = "no reliable data";
+    for (const r of Object.values(rows)) Object.assign(r, { empty: "no reliable data", why: "No reliable data from FAO" });
     return rows;
   }
   const c = country(id)?.indicators?.[group]?.components_kt;
   if (group !== "all" && c && c.supply > 0) {
     // The food balance, so the rows match every other page. For the EU, imports and exports are
     // its trade with the rest of the world (compute.py).
-    const M = c.imports, X = c.exports, D = c.supply;
-    const top = Math.max(M ?? 0, X ?? 0, D) || 1;
-    if (M != null) Object.assign(rows.imports, { value: shortTonnes(M), bar: (M / top) * 100 });
-    if (X != null) Object.assign(rows.exports, { value: shortTonnes(X), bar: (X / top) * 100 });
-    Object.assign(rows.used, { value: shortTonnes(D), bar: (D / top) * 100 });
+    const P = c.production ?? 0, M = c.imports, X = c.exports, D = c.supply;
+    const store = D - (P + (M ?? 0) - (X ?? 0)); // > 0: taken out of storage, < 0: put into storage
+    const top = Math.max(P + (M ?? 0), D, P + (M ?? 0) - (X ?? 0) + Math.max(store, 0)) || 1;
+    const pct = (x) => (Math.max(0, x) / top) * 100;
+    Object.assign(rows.food, { value: shortTonnes(P), bar: [0, pct(P)] });
+    if (M != null) Object.assign(rows.imports, { value: shortTonnes(M), bar: [pct(P), pct(M)] });
+    if (X != null) Object.assign(rows.exports, { value: shortTonnes(X), bar: [pct(P + (M ?? 0) - X), pct(X)] });
+    Object.assign(rows.used, { value: shortTonnes(D), bar: [0, pct(D)] });
     if (M == null) rows.imports.why = rows.exports.why = "No trade data from FAO";
     return rows;
   }
-  // No balance in tonnes (all food, or no FAO balance as for Japan): bought and sold from the trade
+  // No balance in tonnes. All food: tonnes of different foods do not add up, so produced and used
+  // do not apply; no FAO balance (Japan): FAO has none. Bought and sold come from the trade
   // records, by weight as shipped.
-  rows.used.why = group === "all" ? "Only per food: tonnes of different foods do not add up" : "No food balance from FAO";
+  if (group === "all") {
+    for (const k of ["food", "used"]) {
+      Object.assign(rows[k], { empty: "n/a", why: "Does not apply to all food together: tonnes of lettuce and of cheese do not add up. Choose a food to see its figures." });
+    }
+  }
   if (!state.trade) { loadTrade(); rows.imports.why = rows.exports.why = "Loading"; return rows; }
   const M = tradeFor(id, group, "imports")?.[0], X = tradeFor(id, group, "exports")?.[0];
   const top = Math.max(M ?? 0, X ?? 0) || 1;
-  if (M != null) Object.assign(rows.imports, { value: shortTonnes(M / 1000), bar: (M / top) * 100 });
-  if (X != null) Object.assign(rows.exports, { value: shortTonnes(X / 1000), bar: (X / top) * 100 });
-  rows.imports.why ??= "No trade data from FAO";
-  rows.exports.why ??= "No trade data from FAO";
+  if (M != null) Object.assign(rows.imports, { value: shortTonnes(M / 1000), bar: [0, (M / top) * 100] });
+  if (X != null) Object.assign(rows.exports, { value: shortTonnes(X / 1000), bar: [0, (X / top) * 100] });
+  if (M == null) rows.imports.why = "No trade data from FAO";
+  if (X == null) rows.exports.why = "No trade data from FAO";
   return rows;
 }
 
@@ -1013,7 +1025,7 @@ function buildCard() {
   // The marker is the highlight of the open row; it slides from row to row.
   document.getElementById("card").innerHTML = `<span class="marker" aria-hidden="true"></span>` + CARD.map((r) => `
     <a class="sum-row ${r.cls}" data-row="${r.key}">
-      <span class="wf-head"><span class="label"></span><strong><span class="value"></span>${CHEVRON}</strong></span>
+      <span class="wf-head"><span class="label"><b class="sign"></b><span></span></span><strong><span class="value"></span>${CHEVRON}</strong></span>
       <span class="wf-track"><span></span></span>
     </a>`).join("");
 }
@@ -1037,14 +1049,19 @@ function renderFrame() {
     : ["food", "country"].includes(state.level) ? "food" : null;
   for (const a of document.querySelectorAll("#card .sum-row")) {
     const r = rows[a.dataset.row];
-    const on = r.value != null;
-    a.querySelector(".label").textContent = r.label;
-    a.querySelector(".value").textContent = on ? r.value : "–";
+    const has = r.value != null;
+    const on = has || r.always; // the first row always opens the overview
+    a.querySelector(".sign").textContent = r.sign;
+    a.querySelector(".label > span").textContent = r.label;
+    const value = a.querySelector(".value");
+    value.textContent = has ? r.value : r.empty;
+    value.classList.toggle("na", !has);
     const bar = a.querySelector(".wf-track > span");
-    bar.style.width = `${on ? r.bar : 0}%`;
-    if (a.dataset.row === "food") bar.style.background = r.color ?? "";
-    if (on) { a.href = r.href; a.removeAttribute("aria-disabled"); a.removeAttribute("title"); }
-    else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); a.title = r.why ?? ""; }
+    bar.style.left = `${has ? r.bar[0] : 0}%`;
+    bar.style.width = `${has ? r.bar[1] : 0}%`;
+    if (has) a.removeAttribute("title"); else a.title = r.why;
+    if (on) { a.href = r.href; a.removeAttribute("aria-disabled"); }
+    else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); }
     if (a.dataset.row === here && on) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
@@ -1228,10 +1245,9 @@ function viewFood() {
     : `<p class="q">${cap(food())} produced ${id === EU ? "in the EU" : `in ${who}`} alone${v < 0.5 ? ":" : " would last …"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
-  const P = country(id)?.indicators?.[state.group]?.components_kt?.production;
   return `
     ${head}
-    ${!w && P != null ? `<p class="small">Produced ${id === EU ? "in the EU" : `in ${who}`}: <strong>${shortTonnes(P)}</strong> a year.</p>` : ""}
+    ${w ? "" : storageNote(id)}
     ${g.plain ? `<p class="small">${g.plain}</p>` : ""}
     ${euLine(id)}
     ${w ? "" : secondOpinion(id)}
@@ -1299,9 +1315,9 @@ function perPerson(id) {
     return `
     <h3>Per person, per year</h3>
     <div class="row"><span>Produces</span><strong>${kg(pc.production)}</strong></div>
-    <div class="track">${bar(pc.production, max, "var(--accent)")}</div>
+    <div class="track">${bar(pc.production, max, "var(--produced)")}</div>
     <div class="row"><span>Uses</span><strong>${kg(pc.supply)}</strong></div>
-    <div class="track">${bar(pc.supply, max, "var(--muted)")}</div>
+    <div class="track">${bar(pc.supply, max, "var(--ink-soft)")}</div>
     <p class="small">FAO's breakdown of uses for ${food()} (eaten, fed to animals, …) does not
       add up to this total: a large part is left unexplained. So we do not show it.</p>`;
   }
@@ -1324,7 +1340,7 @@ function perPerson(id) {
   return `
     <h3>Per person, per year</h3>
     <div class="row"><span>Produces</span><strong>${kg(pc.production)}</strong></div>
-    <div class="track">${bar(pc.production, max, "var(--accent)")}</div>
+    <div class="track">${bar(pc.production, max, "var(--produced)")}</div>
     <div class="row"><span>Uses</span><strong>${kg(pc.supply)}</strong></div>
     <div class="track">${uses.map((u) => bar(u.v, max, u.color)).join("")}</div>
     <ul class="uses">${uses

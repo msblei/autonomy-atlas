@@ -11,6 +11,7 @@
   --ink-faint: #6f675a;
   --edge: #e3ded4;
   --edge-strong: #cfc7b8;
+  --produced: #2f6f4e; /* produced at home, in charts */
   --blue: #2f5f86; /* bought abroad, in charts */
   --sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --panel-w: 392px;
@@ -227,9 +228,11 @@ a.sum-row[href]:hover strong svg { stroke: var(--ink); }
 .sum-row[aria-current] .wf-track { background: var(--edge); }
 .wf-track > span {
   position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
-  transition: width .3s ease, background-color .3s ease;
+  transition: width .3s ease, left .3s ease;
 }
-.sum-row.lasts .wf-track > span { background: var(--ink-faint); }
+.sum-row.prod .wf-track > span { background: var(--produced); }
+.sum-row .sign { display: inline-block; width: 14px; color: var(--ink-faint); font-weight: 400; }
+.sum-row .na { font-weight: 400; color: var(--ink-faint); }
 .sum-row.in .wf-track > span { background: var(--blue); }
 .sum-row.out .wf-track > span { background: repeating-linear-gradient(-45deg, #c9a27a 0 4px, #e6cfb5 4px 8px); }
 .sum-row.used .wf-track > span { background: #c9822f; }
