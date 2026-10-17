@@ -36,7 +36,20 @@
       </header>
 
       <button id="peek" type="button" aria-label="Show details"></button>
-      <nav id="crumbs" aria-label="Where you are"></nav>
+      <!-- The frame: where you are (place, food) and the four questions about it. Built once and
+           updated in place, so it never moves; only the detail below it changes. -->
+      <section id="frame" hidden>
+        <div id="where">
+          <a id="up" class="back" href="#" aria-label="Back">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg>
+          </a>
+          <div>
+            <p id="place"></p>
+            <p id="foodline"></p>
+          </div>
+        </div>
+        <nav id="card" class="sumcard" aria-label="About this food"></nav>
+      </section>
       <section id="view" aria-live="polite"></section>
       <footer id="foot"></footer>
     </aside>

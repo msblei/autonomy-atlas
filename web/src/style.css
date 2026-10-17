@@ -83,24 +83,32 @@ svg { flex: none; }
 #country-list li small { color: var(--ink-faint); font: 13px var(--sans); }
 #country-list .none { color: var(--ink-soft); cursor: default; }
 
-/* where you are */
-#crumbs:empty { display: none; }
-#crumbs {
-  display: flex; align-items: center; gap: 10px; padding: 10px 20px 0; font-size: 14px; color: var(--ink-soft);
-}
-#crumbs .back {
-  flex: none; display: inline-grid; place-items: center; width: 32px; height: 32px;
+/* the frame: where you are, and the four questions about it. It never changes shape. */
+#frame { padding: 12px 20px 0; border-bottom: 1px solid var(--edge); }
+#frame[hidden] { display: none; }
+#where { display: flex; align-items: center; gap: 12px; min-height: 50px; }
+#where > div { min-width: 0; }
+.back {
+  flex: none; display: inline-grid; place-items: center; width: 34px; height: 34px;
   border: 1px solid var(--edge-strong); border-radius: 8px; color: var(--ink); background: var(--card);
+  transition: border-color .16s;
 }
-#crumbs .back:hover { border-color: var(--ink); }
-#crumbs .back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
-#crumbs ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 0; }
-#crumbs li + li::before { content: "/"; margin: 0 7px; color: var(--edge-strong); }
-#crumbs a { color: var(--ink-soft); text-decoration: none; }
-#crumbs a:hover { color: var(--ink); text-decoration: underline; }
-#crumbs li[aria-current] { color: var(--ink); }
+.back:hover { border-color: var(--ink); }
+.back svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
+#place {
+  margin: 0; font-size: 22px; line-height: 1.2; font-weight: 700; letter-spacing: -.01em;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+}
+#foodline {
+  margin: 1px 0 0; display: flex; align-items: center; gap: 6px; font-size: 15px; color: var(--ink-soft);
+  white-space: nowrap; overflow: hidden;
+}
+#foodline span { overflow: hidden; text-overflow: ellipsis; }
+#card { margin: 10px 0 14px; }
 
-#view { flex: 1 1 auto; overflow: auto; padding: 14px 20px 22px; }
+#view { flex: 1 1 auto; overflow: auto; padding: 16px 20px 22px; }
+.detail.enter { animation: enter .16s ease-out; }
+@keyframes enter { from { opacity: 0; transform: translateY(4px); } }
 #view p { margin: 0 0 12px; }
 
 #foot {
@@ -121,12 +129,6 @@ svg { flex: none; }
 .hero { font-size: 32px; line-height: 1.12; font-weight: 700; letter-spacing: -.01em; margin: 6px 0 10px; }
 h2 { font-size: 28px; line-height: 1.15; font-weight: 700; letter-spacing: -.01em; margin: 0 0 10px; }
 h3 { font-size: 15px; line-height: 1.4; font-weight: 700; color: var(--ink); margin: 26px 0 8px; }
-.kicker { margin: 2px 0 2px !important; font: 400 14px/1.4 var(--sans); color: var(--ink-soft); }
-.foodbadge {
-  display: grid; place-items: center; width: 44px; height: 44px; margin: 6px 0 8px;
-  border-radius: 11px; background: var(--sunken); color: var(--ink);
-}
-.foodbadge .ficon { width: 26px; height: 26px; stroke-width: 1.5; }
 .lede { font-size: 18px; color: var(--ink-soft); margin-bottom: 22px !important; }
 .q { font-size: 17px; color: var(--ink-soft); margin-bottom: 0 !important; }
 .answer { font-size: 28px; line-height: 1.18; font-weight: 700; margin: 0 0 14px !important; letter-spacing: -.01em; }
@@ -159,23 +161,6 @@ details.aside[open] summary { margin-bottom: 6px; }
 }
 .chips button:hover { border-color: var(--ink); }
 
-/* ------------------------------------------------------------------------------------------------
-   links to the next page, as cards */
-
-.explore { list-style: none; margin: 10px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
-.explore a {
-  display: grid; grid-template-columns: 1fr auto; align-items: center; gap: 2px 12px;
-  padding: 12px 12px 12px 14px; background: var(--card); border: 1px solid var(--edge); border-radius: 11px;
-  color: var(--ink); text-decoration: none; transition: border-color .16s;
-}
-.explore a:hover { border-color: var(--ink); }
-.explore .t { font-weight: 700; font-size: 16px; line-height: 1.3; }
-.explore .s { grid-column: 1; font-size: 14px; color: var(--ink-soft); }
-.explore svg {
-  grid-column: 2; grid-row: 1 / span 2; width: 18px; height: 18px;
-  fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
-}
-
 /* EU members: the EU as a whole, one row */
 .eurow {
   display: flex; align-items: center; gap: 10px; margin: 0 0 6px; padding: 9px 12px;
@@ -207,31 +192,33 @@ details.notes ul, details.notes p { margin-top: 8px; }
 /* ------------------------------------------------------------------------------------------------
    flow card: produced, bought, sold, used; also the menu of a food's pages */
 
-.sumcard { display: block; background: var(--card); border: 1px solid var(--edge); border-radius: 11px; padding: 4px; margin: 16px 0 6px; }
+.sumcard { display: block; background: var(--card); border: 1px solid var(--edge); border-radius: 11px; padding: 4px; }
 .sum-row {
-  display: block; padding: 7px 10px 9px; border-radius: 8px; color: var(--ink); text-decoration: none;
-  box-shadow: inset 2px 0 0 transparent;
+  display: block; box-sizing: border-box; height: 46px; padding: 6px 10px 0; border-radius: 8px;
+  color: var(--ink); text-decoration: none; box-shadow: inset 2px 0 0 transparent;
+  transition: background-color .16s, box-shadow .16s;
 }
-a.sum-row:hover { background: var(--sunken); }
+.sum-row + .sum-row { margin-top: 2px; }
+a.sum-row[href]:hover { background: var(--sunken); }
 .sum-row[aria-current] { background: var(--sunken); box-shadow: inset 2px 0 0 var(--ink); }
-.sum-row strong { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; }
-.sum-row strong svg { width: 14px; height: 14px; fill: none; stroke: var(--ink-faint); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
-a.sum-row:hover strong svg { stroke: var(--ink); }
-.sum-row[aria-current] strong svg { visibility: hidden; }
+.sum-row[aria-disabled] { color: var(--ink-faint); cursor: default; }
 .sum-row .wf-head { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; font-size: 15px; }
-.sum-row .wf-track { display: block; height: 8px; margin-top: 5px; }
-.sumcard .used { margin-top: 3px; border-top: 1px solid var(--edge); border-top-left-radius: 0; border-top-right-radius: 0; }
-.sum-note { margin: 2px 10px 6px !important; font-size: 13px; color: var(--ink-soft); }
-
-.wf-head b { display: inline-block; width: 16px; color: var(--ink-faint); font-weight: 400; }
-.wf-head strong { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.wf-track { position: relative; height: 12px; background: var(--sunken); border-radius: 3px; margin-top: 3px; }
-.wf-track span { position: absolute; top: 0; bottom: 0; border-radius: 3px; min-width: 2px; }
-.wf .prod .wf-track span { background: #2f6f4e; }
-.wf .in .wf-track span { background: var(--blue); }
-.wf .out .wf-track span { background: repeating-linear-gradient(-45deg, #c9a27a 0 4px, #e6cfb5 4px 8px); }
-.wf .used .wf-track span { background: #c9822f; }
-.wf .used .wf-head > span { font-weight: 700; }
+.sum-row .label { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.sum-row strong { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; white-space: nowrap; }
+.sum-row strong svg { width: 14px; height: 14px; fill: none; stroke: var(--ink-faint); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
+a.sum-row[href]:hover strong svg { stroke: var(--ink); }
+.sum-row[aria-current] strong svg, .sum-row[aria-disabled] strong svg { visibility: hidden; }
+.sum-row[aria-disabled] strong { font-weight: 400; }
+.wf-track { position: relative; display: block; height: 6px; background: var(--sunken); border-radius: 3px; margin-top: 5px; overflow: hidden; }
+.sum-row[aria-current] .wf-track { background: var(--edge); }
+.wf-track > span {
+  position: absolute; left: 0; top: 0; bottom: 0; border-radius: 3px;
+  transition: width .3s ease, background-color .3s ease;
+}
+.sum-row.lasts .wf-track > span { background: var(--ink-faint); }
+.sum-row.in .wf-track > span { background: var(--blue); }
+.sum-row.out .wf-track > span { background: repeating-linear-gradient(-45deg, #c9a27a 0 4px, #e6cfb5 4px 8px); }
+.sum-row.used .wf-track > span { background: #c9822f; }
 
 /* ------------------------------------------------------------------------------------------------
    lists and charts */
@@ -365,7 +352,7 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 .maplibregl-ctrl-group button { background-color: var(--paper) !important; }
 
 @media (prefers-reduced-motion: reduce) {
-  * { transition: none !important; }
+  * { transition: none !important; animation: none !important; }
 }
 
 /* ------------------------------------------------------------------------------------------------
@@ -376,13 +363,17 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #panel { left: 6px; right: 6px; top: auto; bottom: 6px; width: auto; max-height: 50%; border-radius: 12px; }
   #panel { transition: transform .16s ease; }
   #panel.dragging { transition: none; }
-  #grab, .head, #crumbs, #peek { touch-action: none; }
-  #view { overscroll-behavior: contain; }
+  /* The sheet scrolls as one (a fixed frame would fill it); the handle and search stay on top. */
+  #panel { overflow: auto; overscroll-behavior: contain; }
+  #view { overflow: visible; flex: none; }
+  #grab { position: sticky; top: 0; z-index: 3; background: var(--paper); }
+  .head { position: sticky; top: 22px; z-index: 3; background: var(--paper); }
+  #grab, .head, #peek { touch-action: none; }
   #grab { display: block; width: 100%; height: 22px; padding: 0; border: 0; background: none; cursor: pointer; }
   #grab span { display: block; width: 36px; height: 4px; margin: 0 auto; border-radius: 2px; background: var(--edge-strong); }
   #grab:hover span, #grab:focus-visible span { background: var(--ink-faint); }
   .head { padding: 0 14px 10px; gap: 10px; }
-  #panel.folded #crumbs, #panel.folded #view, #panel.folded #foot { display: none; }
+  #panel.folded #frame, #panel.folded #view, #panel.folded #foot { display: none; }
   #panel.folded .head { border-bottom: 0; padding-bottom: 6px; }
   #panel.folded #peek {
     display: flex; align-items: center; justify-content: space-between; gap: 12px;
@@ -392,13 +383,12 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #peek b { font-size: 17px; font-weight: 700; }
   #peek svg { width: 18px; height: 18px; fill: none; stroke: var(--ink); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   .brand { display: none; }
-  #crumbs { padding: 8px 14px 0; }
+  #frame { padding: 8px 14px 0; }
+  #place { font-size: 20px; }
   #view { padding: 12px 14px 18px; }
   #foot { font-size: 12px; padding: 8px 14px 10px; }
   .hero { font-size: 27px; }
   h2, .answer { font-size: 24px; }
-  .foodbadge { width: 34px; height: 34px; border-radius: 8px; margin: 2px 0 6px; }
-  .foodbadge .ficon { width: 21px; height: 21px; }
   #foodrail { top: 6px; left: 6px; right: 6px; width: auto; padding: 3px; overflow: hidden; }
   #foods { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
   #foods::-webkit-scrollbar { display: none; }
