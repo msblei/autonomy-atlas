@@ -1010,7 +1010,8 @@ function viewCountry() {
   const few = shortest(id);
   const foods = explore([{ href: link({ level: "foods" }), t: "Food by food",
     s: few.length ? `Runs out first: ${few.join(" and ")}` : "" }]);
-  const title = `<h2>${nameOf(id)}</h2>`;
+  // The same top as a food's page (icon, small line, title), with the plate for all food.
+  const title = `<span class="foodbadge">${foodIcon("all")}</span><p class="kicker">All food</p><h2>${nameOf(id)}</h2>`;
   if (v == null && wAll) {
     return `${title}
       <p class="lead-none">No reliable data from FAO.</p>
