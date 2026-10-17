@@ -222,6 +222,9 @@ const dataReady = Promise.all([geoReady, loadJSON("data/ssr.json")]).then(([geo,
   buildCountryPicker();
   window.addEventListener("hashchange", () => route());
   route();
+  // The trade figures are only needed for "bought" and "sold": fetch them when the page is idle,
+  // so those rarely have to wait.
+  (window.requestIdleCallback ?? ((f) => setTimeout(f, 1500)))(() => loadTrade());
   return geo;
 }).catch((e) => {
   document.getElementById("view").innerHTML =
@@ -724,22 +727,54 @@ function tooltip(iso3) {
 // rendering
 
 // The panel is a frame (place, food, the four-row card) that is updated in place, and a detail
-// below it that is replaced. Only a new detail fades in; data arriving or a toggle redraws it still.
+// below it that is replaced. A new detail takes over from the old one: the old fades out, the new
+// fades in, moving the way the highlight moved in the card (down the card: up from below; up the
+// card: down from above; another food: in place). Data arriving or a toggle redraws it still.
 let shownDetail = "";
+let shownRow = -1;
+let swapTimer = null;
+const DETAIL_ORDER = ["food", "imports", "exports", "used", "sources", "table"];
+
+function detailRow() {
+  if (state.level === "trade") return DETAIL_ORDER.indexOf(state.flow);
+  if (["food", "country"].includes(state.level)) return 0;
+  return DETAIL_ORDER.indexOf(state.level);
+}
+
 function render({ newPlace = false } = {}) {
   paintMap();
   renderLegend();
   renderControls();
   renderFrame();
+  renderFoot();
+  renderPeek();
+  const key = `${state.iso3}/${state.group}/${state.level}/${state.flow}`;
+  const fresh = key !== shownDetail;
+  const row = detailRow();
+  const dir = !fresh || row < 0 || shownRow < 0 || row === shownRow ? 0 : Math.sign(row - shownRow);
+  shownDetail = key;
+  shownRow = row;
+  clearTimeout(swapTimer);
+  const el = document.getElementById("view");
+  const old = el.querySelector(".detail");
+  const calm = matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (!fresh || !old || calm || newPlace) { showDetail({ fresh, dir, newPlace }); return; }
+  old.style.setProperty("--out", `${dir * -6}px`);
+  old.classList.remove("enter");
+  old.classList.add("leave");
+  swapTimer = setTimeout(() => showDetail({ fresh, dir, newPlace }), 110);
+}
+
+function showDetail({ fresh, dir, newPlace }) {
   const views = { intro: viewIntro, about: viewAbout, country: viewCountry,
     food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable };
   const el = document.getElementById("view");
   const noData = state.iso3 && !country(state.iso3) && state.level !== "about"
     && !(state.level === "trade" && state.trade?.countries[state.iso3]);
-  const key = `${state.iso3}/${state.group}/${state.level}/${state.flow}`;
-  const fresh = key !== shownDetail;
-  shownDetail = key;
-  el.innerHTML = `<div class="detail${fresh ? " enter" : ""}">${noData ? viewNoData() : views[state.level]()}</div>`;
+  // What replaces a "Loading…" line fades in too, instead of popping up.
+  if (el.querySelector(".detail [data-loading]") && !matchMedia("(prefers-reduced-motion: reduce)").matches) fresh = true;
+  // data-hash: which address this detail shows (the browser tests wait for it).
+  el.innerHTML = `<div class="detail${fresh ? " enter" : ""}" data-hash="${location.hash}" style="--in:${dir * 8 || 4}px">${noData ? viewNoData() : views[state.level]()}</div>`;
   if (fresh) {
     // Desktop: the frame stands still and the detail scrolls on its own, so it starts at its top.
     // Phones: the whole sheet scrolls; keep the card in view instead of jumping to the top,
@@ -750,8 +785,6 @@ function render({ newPlace = false } = {}) {
     else if (panel.scrollTop > frame.offsetTop) panel.scrollTop = frame.offsetTop;
   }
   wire(el);
-  renderFoot();
-  renderPeek();
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1764,7 +1797,7 @@ function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
   const head = "";
-  if (!state.trade) { loadTrade(); return `<p class="hint">Loading…</p>`; }
+  if (!state.trade) { loadTrade(); return `<p class="hint" data-loading>Loading…</p>`; }
   if (state.group === "fish") return `<p class="lead-none">No trading partners from FAO for fish.</p>`;
   const imports = state.flow === "imports";
   const grown = imports && state.grown;

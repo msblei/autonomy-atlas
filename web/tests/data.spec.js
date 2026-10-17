@@ -17,7 +17,11 @@ const SAMPLE = [...FIXED, ...Array.from({ length: 20 }, () => others[Math.floor(
 const view = (page) => page.locator("#view");
 async function open(page, hash) {
   await page.goto(`./#${hash}`);
-  await page.waitForFunction(() => document.querySelector("#view")?.textContent.trim().length > 0);
+  // The detail is handed over with a short fade: wait for the one that belongs to this address.
+  await page.waitForFunction((h) => {
+    const d = document.querySelector("#view .detail");
+    return d?.dataset.hash === h && !d.classList.contains("leave") && d.textContent.trim().length > 0;
+  }, `#${hash}`);
 }
 
 test("headline per country is the protein figure, worded by calendar.js", async ({ page }) => {

@@ -8,7 +8,10 @@ export default defineConfig({
   workers: 2,
   reporter: [["list"]],
   // The installed Google Chrome (own temporary profile); no browser download needed.
-  use: { baseURL: `http://localhost:${PORT}/`, viewport: { width: 1280, height: 900 }, channel: "chrome" },
+  // Reduced motion: the panel hands details over instantly, so the data tests need not wait out the
+  // fades (the animation itself is checked by hand).
+  use: { baseURL: `http://localhost:${PORT}/`, viewport: { width: 1280, height: 900 }, channel: "chrome",
+    contextOptions: { reducedMotion: "reduce" } },
   webServer: {
     command: `node_modules/.bin/vite --port ${PORT} --strictPort`,
     url: `http://localhost:${PORT}/`,
