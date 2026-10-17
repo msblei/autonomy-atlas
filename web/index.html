@@ -18,6 +18,10 @@
     <div id="legend" aria-label="Map key"></div>
 
     <aside id="panel">
+      <!-- Phones only: fold the sheet down to a one-line summary to see the map, and back up. -->
+      <button id="grab" type="button" aria-expanded="true" aria-controls="view" aria-label="Hide details">
+        <span></span>
+      </button>
       <header class="head">
         <a class="brand" href="#">
           <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10" /><path d="M12 2c3 3.2 4.5 6.5 4.5 10S15 18.8 12 22M12 2C9 5.2 7.5 8.5 7.5 12S9 18.8 12 22M2.5 9h19M2.5 15h19" /></svg>
@@ -32,6 +36,7 @@
         </div>
       </header>
 
+      <button id="peek" type="button" aria-label="Show details"></button>
       <nav id="crumbs" aria-label="Where you are"></nav>
       <section id="view" aria-live="polite"></section>
       <footer id="foot"></footer>

@@ -707,6 +707,40 @@ function render() {
   el.scrollTop = 0;
   wire(el);
   renderFoot();
+  renderPeek();
+}
+
+// ------------------------------------------------------------------------------------------------
+// phones: the panel is a sheet. Its handle folds it down to the search box and one line about the
+// place on screen, so the map can be seen; the handle or that line unfold it again.
+
+const panel = document.getElementById("panel");
+const grab = document.getElementById("grab");
+
+function setFolded(folded) {
+  panel.classList.toggle("folded", folded);
+  grab.setAttribute("aria-expanded", String(!folded));
+  grab.setAttribute("aria-label", folded ? "Show details" : "Hide details");
+  // The visible map grew or shrank: frame the place again.
+  if (state.level === "trade") fitTrade();
+  else if (state.iso3) flyTo(state.iso3);
+  else showWorld();
+}
+grab.onclick = () => setFolded(!panel.classList.contains("folded"));
+document.getElementById("peek").onclick = () => setFolded(false);
+
+function renderPeek() {
+  const id = state.iso3;
+  let line = "Could your country feed itself?";
+  if (id && state.level === "trade") {
+    line = `<b>${nameOf(id)}</b> · where it ${state.flow === "imports" ? "buys" : "sells"} ${food()}`;
+  } else if (id) {
+    const v = country(id) ? pctFor(id) : null;
+    const what = state.group === "all" ? "own food" : `own ${food()}`;
+    line = `<b>${nameOf(id)}</b>${v == null ? "" : ` · ${what} lasts ${lasts(v, { short: true })}`}`;
+  }
+  document.getElementById("peek").innerHTML = `<span>${line}</span>
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>`;
 }
 
 function paintMap() {

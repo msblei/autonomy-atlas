@@ -108,6 +108,9 @@ svg { flex: none; }
 #foot .tools a:hover { text-decoration: underline; }
 #foot a { color: var(--muted); }
 
+/* the sheet's handle and its folded summary exist on phones only */
+#grab, #peek { display: none; }
+
 /* ------------------------------------------------------------------------------------------------
    typography of the views */
 
@@ -359,8 +362,19 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 @media (max-width: 760px) {
   :root { --panel-w: 100%; }
   #panel { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 56%; border-radius: 18px; }
-  #panel::before { content: ""; display: block; width: 40px; height: 4px; border-radius: 2px; background: var(--edge); margin: 8px auto 0; }
-  .head { padding: 10px 16px 12px; gap: 10px; }
+  #grab { display: block; width: 100%; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
+  #grab span { display: block; width: 40px; height: 5px; margin: 0 auto; border-radius: 3px; background: var(--edge); }
+  #grab:hover span, #grab:focus-visible span { background: var(--faint); }
+  .head { padding: 0 16px 12px; gap: 10px; }
+  #panel.folded #crumbs, #panel.folded #view, #panel.folded #foot { display: none; }
+  #panel.folded .head { border-bottom: 0; padding-bottom: 6px; }
+  #panel.folded #peek {
+    display: flex; align-items: center; justify-content: space-between; gap: 12px;
+    margin: 0 8px 8px; padding: 10px 12px; border: 0; border-radius: 12px; background: var(--sand);
+    font: inherit; font-size: 15px; color: var(--ink); text-align: left; cursor: pointer;
+  }
+  #peek b { font-family: var(--display); font-size: 18px; font-weight: 600; }
+  #peek svg { width: 18px; height: 18px; fill: none; stroke: var(--accent); stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round; }
   .brand { display: none; }
   #crumbs { padding: 8px 16px 0; }
   #view { padding: 12px 16px 18px; }
