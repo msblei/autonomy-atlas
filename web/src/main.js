@@ -1,7 +1,6 @@
 import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
-import "@fontsource-variable/fraunces/opsz.css";
-import "@fontsource-variable/inter";
+import "@fontsource-variable/atkinson-hyperlegible-next";
 import { foodIcon } from "./icons.js";
 import { SEASONS, forHowLong, lastDay, lasts, months, season, strip } from "./calendar.js";
 
@@ -94,7 +93,7 @@ const map = new maplibregl.Map({
     version: 8,
     glyphs: "https://demotiles.maplibre.org/font/{fontstack}/{range}.pbf",
     sources: {},
-    layers: [{ id: "ocean", type: "background", paint: { "background-color": "#d9e3e5" } }],
+    layers: [{ id: "ocean", type: "background", paint: { "background-color": "#d6dfe0" } }],
   },
   center: [15, 30],
   zoom: 1.5,
@@ -243,7 +242,7 @@ map.on("load", async () => {
   });
   map.addLayer({
     id: "atlas-line", type: "line", source: "countries",
-    paint: { "line-color": "#fbf9f4", "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.4, 5, 1.2] },
+    paint: { "line-color": "#f8f6f1", "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.4, 5, 1.2] },
   });
   map.addSource("arcs", { type: "geojson", data: emptyFC(), lineMetrics: true });
   map.addLayer({
@@ -332,7 +331,7 @@ function addLabels() {
         "symbol-sort-key": ["-", ["get", "area"]],
         "text-padding": 4,
       },
-      paint: { "text-color": "#26302b", "text-halo-color": "rgba(251,249,244,.85)", "text-halo-width": 1.4 },
+      paint: { "text-color": "#23201b", "text-halo-color": "rgba(248,246,241,.85)", "text-halo-width": 1.4 },
     });
   });
 }
@@ -634,10 +633,15 @@ function secondOpinion(id, group = state.group) {
     return `for ${itemName(x.item)}, USDA's figures give ${Math.round(x.usda)}% of what is used, FAO's
       ${Math.round(x.fao)}%${flips ? ` (by USDA's, ${who} would produce ${x.usda >= 100 ? "more" : "less"} than it uses)` : ""}`;
   });
-  return `<p class="aside">Another source disagrees: ${lines.join("; ")}. The two compile their figures
-    separately and do not always count the same things; we cannot tell which is right, and show FAO's,
-    which covers every food.
-    <a href="${s.url}" target="_blank" rel="noopener">USDA ${s.title}</a>.</p>`;
+  return `<details class="aside"><summary>Another source disagrees</summary>${cap(lines.join("; "))}.
+    The two compile their figures separately and do not always count the same things; we cannot tell
+    which is right, and show FAO's, which covers every food.
+    <a href="${s.url}" target="_blank" rel="noopener">USDA ${s.title}</a>.</details>`;
+}
+
+// "Fruit in Germany", above the titles of a food's deeper pages.
+function kickerFor(id, group = state.group) {
+  return `${group === "all" ? "All food" : groupInfo(group).label} in ${whoOf(id)}`;
 }
 
 function isMember(iso3) {
@@ -799,11 +803,11 @@ function renderPeek() {
   const id = state.iso3;
   let line = "Could your country feed itself?";
   if (id && state.level === "trade") {
-    line = `<b>${nameOf(id)}</b> · where it ${state.flow === "imports" ? "buys" : "sells"} ${food()}`;
+    line = `<b>${nameOf(id)}</b>: where it ${state.flow === "imports" ? "buys" : "sells"} ${food()}`;
   } else if (id) {
     const v = country(id) ? pctFor(id) : null;
     const what = state.group === "all" ? "own food" : `own ${food()}`;
-    line = `<b>${nameOf(id)}</b>${v == null ? "" : ` · ${what} lasts ${lasts(v, { short: true })}`}`;
+    line = `<b>${nameOf(id)}</b>${v == null ? "" : `: ${what} lasts ${lasts(v, { short: true })}`}`;
   }
   document.getElementById("peek").innerHTML = `<span>${line}</span>
     <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m5 15 7-7 7 7" /></svg>`;
@@ -1006,7 +1010,7 @@ function viewCountry() {
   const few = shortest(id);
   const foods = explore([{ href: link({ level: "foods" }), t: "Food by food",
     s: few.length ? `Runs out first: ${few.join(" and ")}` : "" }]);
-  const title = `${id === EU ? `<p class="kicker">27 countries together</p>` : ""}<h2>${nameOf(id)}</h2>`;
+  const title = `<h2>${nameOf(id)}</h2>`;
   if (v == null && wAll) {
     return `${title}
       <p class="lead-none">No reliable data from FAO.</p>
@@ -1018,7 +1022,7 @@ function viewCountry() {
   if (v == null) return `${title}<p class="lead-none">Not enough data from FAO.</p>${flowCard(id)}${foods}`;
   return `
     ${title}
-    <p class="q">If ${who} ate only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough protein …</p>
+    <p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough protein …</p>
     <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
     ${strip(v)}
     ${euLine(id, "all")}
@@ -1039,7 +1043,7 @@ function viewFoods() {
   return `
     <p class="kicker">${nameOf(id)}</p>
     <h2>Food by food</h2>
-    <p class="q">If ${who} used only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough …</p>
+    <p class="q">Each food, produced ${id === EU ? "in the EU" : `in ${who}`} alone, would last:</p>
     <ul class="foodlist">${rows.map(({ g, v }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
         ${foodIcon(g.key)}
@@ -1098,7 +1102,7 @@ function viewFood() {
          it here, and leave ${who} out of every comparison for ${food()}.</p></details>`
     : v == null
     ? `<p class="lead-none">No data from FAO.</p>`
-    : `<p class="q">If ${who} used only ${food()} produced ${id === EU ? "in the EU" : `in ${who}`}, there would be ${v < 0.5 ? "…" : "enough …"}</p>
+    : `<p class="q">${cap(food())} produced ${id === EU ? "in the EU" : `in ${who}`} alone${v < 0.5 ? ":" : " would last …"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `
@@ -1114,37 +1118,55 @@ function viewFood() {
     ${compareFood(id)}`;
 }
 
-// "Was it always like this?": single years since 2010, labelled with the same short dates.
+// Year by year since the first FBS year. The scale follows the data (at least a tenth of a year
+// high, so noise never looks like a trend); the dashed "full year" line is drawn only when the
+// values come near it, otherwise a flat line at the bottom would say nothing.
 function trend(id) {
   const values = country(id)?.trend?.[state.group] ?? [];
   const yrs = state.data.meta.trend_years;
   const pts = values.map((v, i) => [i, v]).filter(([, v]) => v != null);
   if (pts.length < 2 || pts.every(([, v]) => v < 1)) return ""; // a flat line at zero says nothing
   const vals = pts.map(([, v]) => v);
-  const lo = Math.max(0, Math.min(100, ...vals) - 10);
-  const hi = Math.max(100, ...vals) + 10;
-  const W = 300, H = 70, P = 8, PX = 58;
-  const x = (i) => PX + (i / (yrs.length - 1)) * (W - 2 * PX);
-  const y = (v) => H - P - ((v - lo) / (hi - lo)) * (H - 2 * P);
+  // Every year reads the same ("1 week"): a sentence says it better than a flat line.
+  if (new Set(vals.map((v) => lasts(v, { short: true }))).size === 1) {
+    return `<h3>Year by year</h3>
+      <p>Every year from ${yrs[pts[0][0]]} to ${yrs[pts[pts.length - 1][0]]}: ${lasts(vals[0])}.</p>`;
+  }
+  const showRef = Math.max(...vals) >= 60;
+  let lo = Math.min(...vals), hi = Math.max(...vals, showRef ? 100 : -Infinity);
+  const span = Math.max(hi - lo, 10);
+  const mid = (hi + lo) / 2;
+  lo = Math.max(0, mid - span * 0.65);
+  hi = lo + span * 1.3;
+  const W = 320, H = 86, PT = 8, PB = 18, PL = 4, PR = 96;
+  const x = (i) => PL + (i / (yrs.length - 1)) * (W - PL - PR);
+  const y = (v) => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
   const path = pts.map(([i, v], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
+  const area = `${path}L${x(pts[pts.length - 1][0]).toFixed(1)},${H - PB}L${x(pts[0][0]).toFixed(1)},${H - PB}Z`;
   const [fi, fv] = pts[0];
   const [li, lv] = pts[pts.length - 1];
+  const lowest = pts.reduce((m, p) => (p[1] < m[1] ? p : m));
+  const highest = pts.reduce((m, p) => (p[1] > m[1] ? p : m));
+  // Lowest and highest year, unless they read the same as the latest (a flat line).
+  const said = lasts(lv, { short: true });
+  const extremes = [lowest, highest].filter(([i, v]) => i !== li && lasts(v, { short: true }) !== said);
   return `
     <h3>Year by year</h3>
     <div class="spark">
-      <svg viewBox="0 0 ${W} ${H + 14}" width="100%" height="${H + 14}" role="img"
-        aria-label="${yrs[fi]}: ${lasts(fv)}; ${yrs[li]}: ${lasts(lv)}">
-        <line x1="${PX}" x2="${W - PX}" y1="${y(100)}" y2="${y(100)}" class="ref" />
+      <svg viewBox="0 0 ${W} ${H}" width="100%" role="img"
+        aria-label="${pts.map(([i, v]) => `${yrs[i]}: ${lasts(v, { short: true })}`).join(", ")}">
+        <path d="${area}" class="area" />
+        ${showRef ? `<line x1="${PL}" x2="${W - PR}" y1="${y(100)}" y2="${y(100)}" class="ref" />
+          ${Math.abs(y(lv) - y(100)) > 12 ? `<text x="${W - PR + 6}" y="${y(100) + 4}" class="refl">full year</text>` : ""}` : ""}
         <path d="${path}" class="line" />
-        <circle cx="${x(fi)}" cy="${y(fv)}" r="3" class="dot" />
-        <circle cx="${x(li)}" cy="${y(lv)}" r="3" class="dot" />
-        <text x="${x(fi)}" y="${H + 12}" class="yr" text-anchor="middle">${yrs[fi]}</text>
-        <text x="${x(li)}" y="${H + 12}" class="yr" text-anchor="middle">${yrs[li]}</text>
-        <text x="${x(fi) - 6}" y="${y(fv) + 4}" class="val" text-anchor="end">${lasts(fv, { short: true })}</text>
-        <text x="${x(li) + 6}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true })}</text>
+        ${pts.map(([i, v]) => `<circle cx="${x(i)}" cy="${y(v)}" r="2" class="yeardot"><title>${yrs[i]}: ${lasts(v, { short: true })}</title></circle>`).join("")}
+        <circle cx="${x(li)}" cy="${y(lv)}" r="3.2" class="dot" />
+        ${extremes.map(([i, v]) => `<text x="${x(i)}" y="${y(v) + (v === highest[1] ? -6 : 13)}" class="tick" text-anchor="middle">${lasts(v, { short: true })}</text>`).join("")}
+        <text x="${x(fi) + 2}" y="${H - 3}" class="yr">${yrs[fi]}</text>
+        <text x="${x(li)}" y="${H - 3}" class="yr" text-anchor="end">${yrs[li]}</text>
+        <text x="${x(li) + 8}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true })}</text>
       </svg>
-    </div>
-    <p class="small">Dashed: a full year. Above: the ${state.data.meta.years.replace("-", "–")} average.</p>`;
+    </div>`;
 }
 
 function perPerson(id) {
@@ -1177,7 +1199,7 @@ function perPerson(id) {
   const where = id === EU ? "in the EU" : `in ${nameOf(id)}`;
   const trade = id === EU
     ? `<p class="small">Trade between EU countries is not counted here, only what the EU as a whole produces and uses.</p>`
-    : `<p class="small">Buys abroad: <strong>${kg(pc.imports)}</strong> · Sells abroad: <strong>${kg(pc.exports)}</strong> per person.</p>`;
+    : `<p class="small">Per person, it buys <strong>${kg(pc.imports)}</strong> abroad and sells <strong>${kg(pc.exports)}</strong>.</p>`;
   return `
     <h3>Per person, per year</h3>
     <div class="row"><span>Produces</span><strong>${kg(pc.production)}</strong></div>
@@ -1198,7 +1220,7 @@ function viewUsed() {
   const id = state.iso3;
   return `
     <span class="foodbadge">${foodIcon(state.group)}</span>
-    <p class="kicker">${nameOf(id)} · ${groupInfo().label}</p>
+    <p class="kicker">${kickerFor(id)}</p>
     <h2>What it is used for</h2>
     ${flowCard(id)}
     ${perPerson(id)}`;
@@ -1236,7 +1258,7 @@ function viewSources() {
   const v = pctFor(id);
   const jrc = fromJrc(id);
   return `
-    <p class="kicker">${nameOf(id)} · ${g.label}</p>
+    <p class="kicker">${kickerFor(id)}</p>
     <h2>How do we know?</h2>
     ${jrc ? aboutJrc(id) : aboutFao()}
     ${jrcItems(id)}
@@ -1496,7 +1518,7 @@ function mapSource() {
     <h3>The map</h3>
     <p class="small">Borders: <a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.
-      Label font: MapLibre demo tiles. Typefaces: Fraunces and Inter (SIL Open Font License).</p>`;
+      Label font: MapLibre demo tiles. Typeface: Atkinson Hyperlegible Next, Braille Institute (SIL Open Font License).</p>`;
 }
 
 // Level 4: everything, in the vocabulary of the methodology (SSR, IDR, tonnes, kcal).
@@ -1506,7 +1528,7 @@ function viewTable() {
   const g = groupInfo();
   const isAll = state.group === "all";
   return `
-    <p class="kicker">${nameOf(id)} · ${g.label}</p>
+    <p class="kicker">${kickerFor(id)}</p>
     <h2>All the numbers</h2>
     <div class="controls">
       <label>Indicator
@@ -1712,7 +1734,7 @@ function viewTrade() {
   const id = state.iso3;
   const g = groupInfo();
   const head = `<span class="foodbadge">${foodIcon(state.group)}</span>
-    <p class="kicker">${nameOf(id)} · ${g.label}</p>
+    <p class="kicker">${kickerFor(id)}</p>
     <h2>${state.flow === "imports" ? `Where ${whoOf(id)} buys ${food()}` : `Where ${whoOf(id)} sells ${food()}`}</h2>
     ${flowCard(id)}`;
   if (!state.trade) { loadTrade(); return `${head}<p class="hint">Loading…</p>`; }
@@ -1769,6 +1791,10 @@ function viewTrade() {
 }
 
 // "2.4 million tonnes" / "350 thousand tonnes" for the balance card and the cards' hints.
+function cap(s) {
+  return s.charAt(0).toUpperCase() + s.slice(1);
+}
+
 function shortTonnes(kt) {
   const a = Math.abs(kt);
   // From 100 thousand t on in millions, so the rows of one sum share a unit (2.4 − 1.8 = 0.6).
