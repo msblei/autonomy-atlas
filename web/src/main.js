@@ -1102,6 +1102,7 @@ function viewFood() {
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `
+    <span class="foodbadge">${foodIcon(g.key)}</span>
     <p class="kicker">${nameOf(id)}</p>
     <h2>${g.label}</h2>
     ${head}

@@ -126,6 +126,11 @@ h3 {
   margin: 4px 0 2px !important; font-size: 13px; font-weight: 650; letter-spacing: .08em;
   text-transform: uppercase; color: var(--accent);
 }
+.foodbadge {
+  display: grid; place-items: center; width: 48px; height: 48px; margin: 6px 0 10px;
+  border-radius: 14px; background: var(--accent-soft); color: var(--accent);
+}
+.foodbadge .ficon { width: 28px; height: 28px; stroke-width: 1.5; }
 .lede { font-size: 18px; color: #36403b; margin-bottom: 22px !important; }
 .q { font-size: 17px; color: #36403b; margin-bottom: 2px !important; }
 .answer { font-size: 30px; line-height: 1.15; font-weight: 600; margin: 0 0 14px !important; letter-spacing: -.01em; }
@@ -404,6 +409,8 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #view { padding: 12px 16px 18px; }
   #foot { padding: 10px 16px 12px; }
   .hero { font-size: 28px; }
+  .foodbadge { width: 36px; height: 36px; border-radius: 11px; margin: 2px 0 8px; }
+  .foodbadge .ficon { width: 22px; height: 22px; }
   h2, .answer { font-size: 26px; }
   #foodrail { top: 8px; left: 8px; right: 8px; width: auto; padding: 5px; border-radius: 14px; overflow: hidden; }
   #foodrail-title { display: none; }
