@@ -2,6 +2,7 @@ import maplibregl from "maplibre-gl";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@fontsource-variable/fraunces/opsz.css";
 import "@fontsource-variable/inter";
+import { foodIcon } from "./icons.js";
 import { SEASONS, forHowLong, lastDay, lasts, months, season, strip } from "./calendar.js";
 
 // ------------------------------------------------------------------------------------------------
@@ -879,7 +880,7 @@ function renderControls() {
   foods.innerHTML = state.data.groups.map((g, i) => `
     ${i === 1 ? `<span class="sep" aria-hidden="true"></span>` : ""}
     <button type="button" data-food="${g.key}" title="${g.label}" class="${g.key === "all" ? "all" : ""}"
-      aria-pressed="${g.key === state.group}">${SHORT[g.key] ?? g.label}</button>`).join("");
+      aria-pressed="${g.key === state.group}">${foodIcon(g.key)}<span>${SHORT[g.key] ?? g.label}</span></button>`).join("");
   for (const b of foods.querySelectorAll("[data-food]")) b.onclick = () => chooseFood(b.dataset.food);
   foods.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }

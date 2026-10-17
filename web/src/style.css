@@ -313,7 +313,7 @@ td small { color: var(--muted); font-size: 12px; }
    food menu (right) and map key (bottom): what the map shows, and how to read it */
 
 #foodrail {
-  position: absolute; z-index: 1; top: 16px; right: 16px; width: 168px;
+  position: absolute; z-index: 1; top: 16px; right: 16px; width: 176px;
   max-height: calc(100% - 32px); overflow: auto; box-sizing: border-box;
   padding: 12px 8px 8px; background: rgba(251, 249, 244, .94); backdrop-filter: blur(8px);
   border-radius: 18px; box-shadow: var(--shadow);
@@ -327,15 +327,17 @@ td small { color: var(--muted); font-size: 12px; }
   border: 0; border-radius: 10px; background: transparent; color: #3c4641; white-space: nowrap;
   display: flex; align-items: center; gap: 8px;
 }
-#foods button::before { content: ""; width: 6px; height: 6px; border-radius: 50%; background: transparent; flex: none; }
+.ficon { width: 19px; height: 19px; flex: none; fill: none; stroke: currentColor; stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+#foods .ficon { color: var(--faint); }
+#foods button:hover .ficon { color: var(--accent); }
+#foods button[aria-pressed="true"] .ficon { color: #fff; }
 #foods button:hover { background: var(--sand); color: var(--ink); }
 #foods button[aria-pressed="true"] { background: var(--ink); color: #fff; font-weight: 600; }
-#foods button[aria-pressed="true"]::before { background: #fff; }
 #foods .sep { height: 1px; margin: 3px 10px; background: var(--line); }
 
 #legend {
   position: absolute; z-index: 1; bottom: 22px;
-  left: calc(16px + var(--panel-w) + 24px); right: calc(16px + 168px + 24px);
+  left: calc(16px + var(--panel-w) + 24px); right: calc(16px + 176px + 24px);
   margin: 0 auto; max-width: 600px; box-sizing: border-box;
   padding: 10px 16px 9px; background: rgba(251, 249, 244, .94); backdrop-filter: blur(8px);
   border-radius: 16px; box-shadow: var(--shadow); font-size: 13px;
@@ -406,7 +408,8 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #foods { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
   #foods::-webkit-scrollbar { display: none; }
   #foods button { font-size: 14px; flex: none; }
-  #foods button::before { display: none; }
+  #foods button { gap: 6px; padding: 0 11px 0 9px; }
+  #foods .ficon { width: 17px; height: 17px; }
   #foods .sep { width: 1px; height: auto; margin: 6px 4px; flex: none; }
   #panel { max-height: 50%; }
   #legend { top: 60px; bottom: auto; left: 8px; right: 8px; padding: 7px 10px 6px; border-radius: 12px; }
