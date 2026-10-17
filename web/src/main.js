@@ -865,16 +865,14 @@ function renderLegend() {
     el.innerHTML = `<p class="title">${title}</p>${body}`;
     return;
   }
-  // Zoomed out, the EU is one shape; the title says so in three words.
-  const bloc = state.bloc ? ` <span class="bloc" title="Zoom in to see each member">(EU as one)</span>` : "";
   if (state.level === "table") {
     const { colors, ticks } = SCALES[tableIndicator()] ?? SCALES.ssr;
-    el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}${bloc}</p>
+    el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}</p>
       <div class="grad" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
       <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>`;
     return;
   }
-  el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months${bloc}</p>${seasonScale()}`;
+  el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months</p>${seasonScale()}`;
 }
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country

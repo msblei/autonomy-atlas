@@ -337,7 +337,6 @@ td small { color: var(--ink-soft); font-size: 12px; }
   padding: 6px 12px 5px; background: var(--paper); border: 1px solid var(--edge-strong); border-radius: 11px;
 }
 #legend .title { font-size: 13px; line-height: 1.3; color: var(--ink); text-align: center; margin: 0 0 4px; }
-#legend .bloc { color: var(--ink-soft); cursor: help; }
 #legend .title b { font-weight: 700; }
 #legend .grad { height: 8px; border-radius: 3px; }
 #legend .ticks { display: flex; justify-content: space-between; font: 11px var(--sans); color: var(--ink-soft); margin-top: 3px; }
