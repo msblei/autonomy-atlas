@@ -23,7 +23,7 @@
 }
 
 /* Only the panel scrolls; the page itself never does. */
-html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ocean); }
+html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ocean); overscroll-behavior: none; }
 
 #map { position: absolute; inset: 0; }
 a { color: var(--accent); }
@@ -378,6 +378,10 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 @media (max-width: 760px) {
   :root { --panel-w: 100%; }
   #panel { left: 8px; right: 8px; top: auto; bottom: 8px; width: auto; max-height: 56%; border-radius: 18px; }
+  #panel { transition: transform .2s ease; }
+  #panel.dragging { transition: none; }
+  #grab, .head, #crumbs, #peek { touch-action: none; }
+  #view { overscroll-behavior: contain; }
   #grab { display: block; width: 100%; height: 24px; padding: 0; border: 0; background: none; cursor: pointer; }
   #grab span { display: block; width: 40px; height: 5px; margin: 0 auto; border-radius: 3px; background: var(--edge); }
   #grab:hover span, #grab:focus-visible span { background: var(--faint); }

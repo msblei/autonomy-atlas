@@ -758,6 +758,42 @@ function setFolded(folded) {
 grab.onclick = () => setFolded(!panel.classList.contains("folded"));
 document.getElementById("peek").onclick = () => setFolded(false);
 
+// Swipes: down folds the sheet, up unfolds it. On the handle, the search bar, the breadcrumbs and
+// the folded line from anywhere; on the content only when it is scrolled to the top, so that a
+// swipe there still scrolls. While folding, the sheet follows the finger a little.
+function swipeToFold(el, { fromTop = false } = {}) {
+  let y0 = null, x0 = 0, dy = 0;
+  const reset = () => { y0 = null; panel.classList.remove("dragging"); panel.style.transform = ""; };
+  el.addEventListener("touchstart", (e) => {
+    if (!matchMedia("(max-width: 760px)").matches || e.touches.length > 1) return;
+    if (fromTop && el.scrollTop > 0) return;
+    y0 = e.touches[0].clientY; x0 = e.touches[0].clientX; dy = 0;
+  }, { passive: true });
+  el.addEventListener("touchmove", (e) => {
+    if (y0 == null) return;
+    dy = e.touches[0].clientY - y0;
+    const dx = e.touches[0].clientX - x0;
+    // Sideways (the food menu) or, on the content, upwards (scrolling): not a fold.
+    if (Math.abs(dx) > Math.abs(dy) || (fromTop && dy < 0)) { reset(); return; }
+    if (dy > 0 && !panel.classList.contains("folded")) {
+      panel.classList.add("dragging");
+      panel.style.transform = `translateY(${Math.min(dy, 240) * 0.6}px)`;
+    }
+  }, { passive: true });
+  el.addEventListener("touchend", () => {
+    if (y0 == null) return;
+    const folded = panel.classList.contains("folded");
+    reset();
+    if (dy > 50 && !folded) setFolded(true);
+    else if (dy < -40 && folded) setFolded(false);
+  });
+  el.addEventListener("touchcancel", reset);
+}
+for (const el of [grab, document.querySelector(".head"), document.getElementById("crumbs"), document.getElementById("peek")]) {
+  swipeToFold(el);
+}
+swipeToFold(document.getElementById("view"), { fromTop: true });
+
 function renderPeek() {
   const id = state.iso3;
   let line = "Could your country feed itself?";
