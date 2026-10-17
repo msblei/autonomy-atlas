@@ -1042,6 +1042,7 @@ function viewFoods() {
     <p class="q">If ${who} used only food produced ${id === EU ? "in the EU" : `in ${who}`}, there would be enough …</p>
     <ul class="foodlist">${rows.map(({ g, v }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
+        ${foodIcon(g.key)}
         <span class="name">${g.label}</span>
         ${strip(v, { small: true })}
         <span class="when">${lasts(v, { short: true })}</span>
