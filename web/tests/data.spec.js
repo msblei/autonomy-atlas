@@ -87,3 +87,32 @@ test("rankings never list a withheld figure and agree with the data", async ({ p
     }
   }
 });
+
+test("withheld trade flows are never shown, and say so", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  const withheld = trade.meta.withheld;
+  expect(withheld.length).toBeGreaterThan(0);
+  for (const [iso3, group, flow] of withheld) {
+    if (!C[iso3]) continue; // trade-only places have no page of their own
+    await open(page, `${iso3}/${group}/${flow === "imports" ? "trade" : "sells"}`);
+    await expect(view(page)).toContainText("No reliable trading partners from FAO");
+    await expect(view(page).locator("ol.partners")).toHaveCount(0);
+    if (group === "all") {
+      const row = page.locator(`#card [data-row="${flow}"] .value`);
+      await expect(row).toHaveText("no reliable data");
+    }
+  }
+});
+
+test("unusual years are drawn apart in the year-by-year chart", async ({ page }) => {
+  const marked = Object.entries(C).flatMap(([iso3, c]) =>
+    Object.entries(c.trend_unusual ?? {}).map(([g, ys]) => [iso3, g, ys]));
+  expect(marked.length).toBeGreaterThan(0);
+  for (const [iso3, g, ys] of marked) {
+    if (g === "all" || C[iso3].indicators?.[g]?.withheld) continue;
+    await open(page, `${iso3}/${g}`);
+    const odd = view(page).locator(".spark .odd");
+    if (await view(page).locator(".spark").count()) await expect(odd).toHaveCount(ys.length);
+    for (const y of ys) await expect(view(page)).toContainText(String(y));
+  }
+});

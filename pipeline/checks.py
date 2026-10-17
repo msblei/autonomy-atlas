@@ -99,3 +99,73 @@ def parts_sensitivity(items: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
     out["depends"] = (diff > np.maximum(PARTS_PP, PARTS_REL * out["ssr_adj"])) | (
         out["ssr_pub"].isna() != out["ssr_adj"].isna())
     return out
+
+
+# ------------------------------------------------------------------------------------------------
+# Trade records against the food balance (docs/methodology.md, same section). Trade records count
+# product weight, the balance primary equivalent, so each food group has its own typical ratio
+# between them (dairy about a fifth: a tonne of cheese is about eight of milk). A country far
+# from it is worth a look; one whose records are far above it and above the balance itself
+# describes transit or misreporting, not its own trade, and is withheld.
+
+TRADE_BAND = 3.0  # warn beyond 3x either side of the group's typical ratio
+TRADE_OVER_BALANCE = 1.5  # withhold only if, above the band, the records exceed the balance by half
+TRADE_MIN_KT = 20.0  # compare a pair only if either side reaches this
+
+
+def trade_verdicts(partners: pd.DataFrame, groups: pd.DataFrame, eu_bloc: str = "EU27") -> pd.DataFrame:
+    """One row per compared country × group × flow (imports, exports; group "all" for all food):
+    iso3, group, flow, trade_kt, balance_kt, ratio, typical, verdict ("" | "warn" | "withhold").
+
+    `partners`: trade_partners rows (iso3, group, flow, partner, tonnes); `groups`: ssr_groups rows
+    on the tonnes basis (iso3, group, imports, exports in kt, as published or listed as withheld).
+    """
+    t = partners[partners["flow"].isin(["imports", "exports"]) & (partners["iso3"] != eu_bloc)]
+    g = groups[(groups["basis"] == "tonnes") & (groups["iso3"] != eu_bloc) & (groups["group"] != "fish")]
+    rows = []
+    for flow in ("imports", "exports"):
+        tf = t[t["flow"] == flow]
+        trade = tf.groupby(["iso3", "group"])["tonnes"].sum() / 1000
+        bal = g.set_index(["iso3", "group"])[flow]
+        pairs = [pd.concat([trade.rename("trade_kt"), bal.rename("balance_kt")], axis=1, join="inner")]
+        trade_all = tf.groupby("iso3")["tonnes"].sum() / 1000
+        bal_all = g.groupby("iso3")[flow].sum(min_count=1)
+        a = pd.concat([trade_all.rename("trade_kt"), bal_all.rename("balance_kt")], axis=1, join="inner")
+        a.index = pd.MultiIndex.from_arrays([a.index, ["all"] * len(a)], names=["iso3", "group"])
+        pairs.append(a)
+        j = pd.concat(pairs).dropna()
+        j = j[(j["balance_kt"] > 0) & ((j["balance_kt"] > TRADE_MIN_KT) | (j["trade_kt"] > TRADE_MIN_KT))]
+        j = j.assign(ratio=j["trade_kt"] / j["balance_kt"], flow=flow)
+        j["typical"] = j.groupby(level="group")["ratio"].transform("median")
+        high, low = j["ratio"] > TRADE_BAND * j["typical"], j["ratio"] < j["typical"] / TRADE_BAND
+        # "" = nothing to say (pandas would turn None into NaN)
+        j["verdict"] = np.where(high & (j["ratio"] > TRADE_OVER_BALANCE), "withhold",
+                                np.where(high | low, "warn", ""))
+        rows.append(j.reset_index())
+    out = pd.concat(rows, ignore_index=True)
+    return out[["iso3", "group", "flow", "trade_kt", "balance_kt", "ratio", "typical", "verdict"]]
+
+
+# ------------------------------------------------------------------------------------------------
+# Unusual years in a trend (docs/methodology.md, "Trends"): a single year more than 3x, or less
+# than a third of, both neighbours (all three at least 5%) is far more likely an error in FAO's
+# figures than a harvest. Kept in the series, marked for the chart.
+
+TREND_JUMP = 3.0
+TREND_MIN = 5.0
+
+
+def unusual_years(by_year: dict) -> list[int]:
+    """Years of {year: value} (None/NaN = missing) that stand out from both neighbours."""
+    def val(y):
+        v = by_year.get(y)
+        return None if v is None or (isinstance(v, float) and np.isnan(v)) else v
+
+    out = []
+    for y in sorted(by_year):
+        a, b, c = val(y - 1), val(y), val(y + 1)
+        if a is None or b is None or c is None or min(a, b, c) < TREND_MIN:
+            continue
+        if b > TREND_JUMP * max(a, c) or b * TREND_JUMP < min(a, c):
+            out.append(int(y))
+    return out

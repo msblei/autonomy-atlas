@@ -39,11 +39,9 @@ REL_TOL = 0.005  # 0.5%, for identities between processed (unrounded) figures
 KCAL_RANGE = (1400, 4200)  # kcal/person/day: below or above is not a national average
 PROTEIN_RANGE = (25, 160)  # g/person/day
 SSR_REVIEW = 1000  # % above which a figure is real but extreme enough to look at
-TREND_JUMP = 3.0  # a single year differing from its neighbours by this factor
 NEG_ITEMS_SHARE = 0.05  # items with negative supply above this share of a group's |supply|
 JRC_TOL_PP = 2.0  # percentage points between our JRC-based SSR and the JRC's own
 FAO_EU27_TOL = 0.005  # our EU27 production vs FAO's own EU27 row
-TRADE_FBS_RATIO = (1 / 3, 3.0)  # trade-matrix total vs FBS imports, product vs primary weight
 
 
 @dataclass
@@ -157,18 +155,14 @@ def check_ranges(groups: pd.DataFrame, items: pd.DataFrame, overall: pd.DataFram
 
 
 def check_trends(trends: pd.DataFrame) -> list[Finding]:
+    """Unusual years (checks.unusual_years): kept in the series, marked in ssr.json for the chart."""
     out = []
     for (iso3, group), s in trends.sort_values("year").groupby(["iso3", "group"]):
-        v = s.set_index("year")["ssr"].dropna()
-        if len(v) < 3:
-            continue
-        for y in v.index[1:-1]:
-            a, b, c = v.get(y - 1), v[y], v.get(y + 1)
-            if a is None or c is None or min(a, b, c) < 5:
-                continue
-            if (b > TREND_JUMP * max(a, c)) or (b * TREND_JUMP < min(a, c)):
-                out.append(Finding("trend_spike", WARN,
-                                   f"{y}: {b:.0f}% between {a:.0f}% and {c:.0f}%", iso3, group, _f(b)))
+        v = {int(y): x for y, x in zip(s["year"], s["ssr"], strict=False)}
+        for y in checks.unusual_years(v):
+            out.append(Finding("trend_spike", WARN,
+                               f"{y}: {v[y]:.0f}% between {v[y - 1]:.0f}% and {v[y + 1]:.0f}% "
+                               "(marked as unusual in the chart)", iso3, group, _f(v[y])))
     return out
 
 
@@ -263,17 +257,18 @@ def check_trade(partners: pd.DataFrame, groups: pd.DataFrame) -> list[Finding]:
     for _, r in neg.iterrows():
         out.append(Finding("trade_negative", BLOCK, f"{r['flow']} {r['tonnes']:.0f} t from "
                            f"{r['partner']}", r["iso3"], r["group"], _f(r["tonnes"])))
-    # Trade matrix (product weight) vs FBS imports (primary equivalent): they differ by design,
-    # but by more than 3x something is off in one of them.
-    tm = p[p["flow"] == "imports"].groupby(["iso3", "group"])["tonnes"].sum() / 1000
-    t = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])["imports"]
-    j = pd.concat([tm.rename("tm"), t.rename("fbs")], axis=1).dropna()
-    j = j[(j["fbs"] > 20) | (j["tm"] > 20)]
-    ratio = j["tm"] / j["fbs"].where(j["fbs"] > 0)
-    for (iso3, group), r in j[(ratio < TRADE_FBS_RATIO[0]) | (ratio > TRADE_FBS_RATIO[1])].iterrows():
-        out.append(Finding("trade_vs_fbs", WARN,
-                           f"trade records {r['tm']:.0f} kt bought abroad, food balance "
-                           f"{r['fbs']:.0f} kt", iso3, group, _f(r["tm"])))
+    # Trade records (product weight) vs the balance (primary equivalent), against each food group's
+    # typical ratio (checks.trade_verdicts): far off is a warning; far above it and above the
+    # balance itself is withheld in the export.
+    for r in checks.trade_verdicts(p, groups).itertuples():
+        if not r.verdict:
+            continue
+        what = "bought abroad" if r.flow == "imports" else "sold abroad"
+        detail = (f"trade records {r.trade_kt:.0f} kt {what}, food balance {r.balance_kt:.0f} kt "
+                  f"(ratio {r.ratio:.2f}, typical for {r.group} {r.typical:.2f})")
+        out.append(Finding("trade_withheld" if r.verdict == "withhold" else "trade_vs_fbs",
+                           WITHHOLD if r.verdict == "withhold" else WARN,
+                           detail, r.iso3, r.group, _f(r.ratio)))
     return out
 
 
@@ -361,7 +356,16 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
             if len(series) != n_years:
                 out.append(Finding("trend_length", BLOCK, f"{len(series)} points for {n_years} years",
                                    iso3, group))
+        for group, ys in c.get("trend_unusual", {}).items():
+            if group not in c.get("trend", {}) or not set(ys) <= set(ssr["meta"]["trend_years"]):
+                out.append(Finding("trend_unusual_unknown", BLOCK, f"unusual years {ys}", iso3, group))
     if trade:
+        # Withheld flows (checks.trade_verdicts) must not be published; imports take "grown" along.
+        for iso3, group, flow, *_ in trade["meta"].get("withheld", []):
+            for f in (["imports", "grown"] if flow == "imports" else [flow]):
+                if f in trade["countries"].get(iso3, {}).get(group, {}):
+                    out.append(Finding("trade_withheld_leak", BLOCK, f"{f} withheld but published",
+                                       iso3, group))
         for iso3, gs in trade["countries"].items():
             for group, flows in gs.items():
                 for flow, (total, parts) in flows.items():

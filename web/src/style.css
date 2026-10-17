@@ -284,6 +284,7 @@ a.sum-row[href]:hover strong svg { stroke: var(--ink); }
 .spark .line { fill: none; stroke: var(--ink); stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
 .spark .dot { fill: var(--ink); }
 .spark .yeardot { fill: var(--paper); stroke: var(--ink); stroke-width: 1.2; }
+.spark .odd { fill: var(--paper); stroke: var(--ink-faint); stroke-width: 1.4; stroke-dasharray: 2 1.5; }
 .spark .ref { stroke: var(--ink-faint); stroke-dasharray: 3 3; }
 .spark .refl, .spark .yr, .spark .tick { font: 11px var(--sans); fill: var(--ink-soft); }
 .spark .val { font: 12px var(--sans); fill: var(--ink); }

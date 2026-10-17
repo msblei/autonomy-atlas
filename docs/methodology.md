@@ -298,6 +298,38 @@ other than groundnuts are left out). FAO's trade data has no fish.
 - **Export file:** `trade.json` keeps, per country × group × flow, the total and every partner with
   at least 0.5% (at most 24), plus "all food" = all groups added up by weight.
 
+### Trade records against the food balance
+
+Trade records (product weight) and the FBS import or export total (primary equivalent) are not
+the same number, but for one food group they stand in a typical ratio: a tonne of cheese is about
+eight tonnes of milk, so dairy trade records are typically about a fifth of the balance; for
+pulses or wine they are about equal. A country far from its group's typical ratio has trade
+records that do not describe its balance (transit cargo, misreported or mirrored flows).
+
+For each flow (imports, exports), each food group except fish, and each country with a food
+balance (not the EU27 bloc):
+
+- `T` = the trade-records total in kt (window mean, the total published in `trade.json`);
+  `B` = the FBS flow in kt as published (`components_kt`, with the JRC's figures where they replace
+  FAO's; for a withheld balance, FAO's figure as listed in `withheld.components_kt`).
+  A pair is compared when `B > 0` and `B > 20` or `T > 20`.
+- `r = T / B`; the group's typical ratio `m` is the median of `r` over all compared countries of
+  that group and flow.
+- **Warning** (`trade_vs_fbs`) when `r > 3m` or `r < m / 3`.
+- **Withheld** (`trade_withheld`) when `r > 3m` **and** `r > 1.5`: the trade records are far above
+  what is usual for the food **and** larger than the balance itself by more than half, which
+  processing cannot explain (processed food weighs less than what it is made from). Saint Lucia
+  2021–2023: 449 kt of sugar in the trade records for a balance of 14 kt.
+- **All food** uses the same rule with `T` = the all-food trade total and `B` = the sum of the
+  groups' FBS flows (fish excluded, as trade has none), with its own median.
+
+A withheld flow is not published: `imports` withholds that country's `imports` and `grown` entries
+for the group, `exports` its `exports` entry. `trade.json` `meta.withheld` lists each as
+`[iso3, group, flow, T, B]` (kt, rounded to whole kt), and the UI says so where the partners would
+be. The balance figures themselves (bought and sold in the FBS) are unaffected; for all food,
+whose bought and sold totals come from the trade records, those totals are withheld with it.
+Other countries' flows with the withheld country as partner are their own records and stay.
+
 ## Where imports were grown (re-export tracing)
 
 The trade view's "Grown in" switch follows imports back through transit and processing hubs
@@ -328,6 +360,14 @@ Vietnam. Countries that grow most of what they sell (the US, Brazil) look the sa
 `ssr_trends.parquet` holds single-year values (tonnes SSR per group, protein coverage for "all")
 for 2010 onwards. Single years are volatile (droughts: DE cereals 2018 = 91%); the headline
 figures stay 3-year averages.
+
+**Unusual years.** A year whose value is more than 3 times, or less than a third of, both the year
+before and the year after (all three values present and at least 5%) is far more likely an error
+in FAO's figures than a real harvest: Türkiye's coffee, cocoa and tea 2017 is 292% between 63%
+and 58%. Such years stay in the series but are listed per country and group in `ssr.json`
+`countries[iso3].trend_unusual` (`{group: [year, …]}`); the chart draws them apart (hollow, not on
+the line, not used for its scale or labels) and names them. The same rule raises the
+`trend_spike` warning.
 
 ## Scenario "without trade" (considered, not built)
 
@@ -394,7 +434,7 @@ both figures, and note when the two fall on different sides of 100%. 2021–2023
 | Raw shape | `manifest.check_fbs_shape`, `harmonise._check_areas` | renamed elements, unexpected units (all quantities `1000 t`), unknown flags, duplicate rows, an FAO area neither mapped nor a known aggregate |
 | Stale outputs | `config.require_fresh` | an interim or processed file older than a mapping or input it was built from |
 | Consistency verdicts | `pipeline/checks.py` (section "Withheld") | balances that contradict themselves; withheld everywhere, explained in the UI |
-| Invariants | `pipeline/validate.py` → `validation.json` | identity P + M − X − ΔS = D on rows we build; group = sum of items; EU27 production = members' sum and = FAO's own EU27 row item by item (within FAO's rounding); extra-EU trade ≤ members' total; our JRC-based ratio = the JRC's own for tomatoes, olive oil, wine; exported ratio = exported components; withheld figures carry nothing usable; trade partners ≤ total; no self-trade. Warnings for review: very high SSRs, one-year trend spikes, trade records vs FBS imports more than 3× apart, JRC dairy vs the JRC's own ratio, negative-supply items in groups |
+| Invariants | `pipeline/validate.py` → `validation.json` | identity P + M − X − ΔS = D on rows we build; group = sum of items; EU27 production = members' sum and = FAO's own EU27 row item by item (within FAO's rounding); extra-EU trade ≤ members' total; our JRC-based ratio = the JRC's own for tomatoes, olive oil, wine; exported ratio = exported components; withheld figures carry nothing usable; trade partners ≤ total; no self-trade. Warnings for review: very high SSRs, unusual years in trends, trade records more than 3× from their food group's typical ratio to the balance (section "Trade records against the food balance"; far above it and above the balance: withheld), JRC dairy vs the JRC's own ratio, negative-supply items in groups |
 | FAOSTAT live sample | `tests/golden/`, `tests/test_golden.py` | 1,695 three-year totals (20 countries × 23 items × P/M/X/D, population, kcal, protein) read from FAOSTAT's website in a browser; harmonised data and window averages must equal them. A wrong M49 → ISO3 line fails it (tested: Brazil/USA swapped, 187 values off) |
 | Known facts | `tests/test_real_data.py` | France poultry < 100% and EU > 100%, EU soybeans 10–30%, NL a cereal hub, JRC replacements in place, Jordan eggs and Ukraine oils withheld, Iceland fish not |
 | Independent recomputation | `verify/recompute.py` | written from this document alone, without reading `pipeline/`; recomputes every published number (≈250,000) from the raw files and must agree on all of them. Its first run found three pipeline bugs (EU27 per-person population, window averaging, EU27 fish kcal IDR) |

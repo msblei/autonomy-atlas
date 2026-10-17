@@ -115,6 +115,13 @@ def run() -> None:
                 withheld.append({"iso3": iso3, "name": c.get("name"), "group": group,
                                  "reason": "uses breakdown only", "low": None, "high": None})
     wdf = pd.DataFrame(withheld, columns=["iso3", "name", "group", "reason", "low", "high"])
+    # Trade flows whose records are far above the food balance (checks.trade_verdicts).
+    tpath = W / "trade.json"
+    tw = json.loads(tpath.read_text(encoding="utf-8"))["meta"].get("withheld", []) if tpath.exists() else []
+    names = {k: c.get("name") for k, c in ssr["countries"].items()}
+    tdf = pd.DataFrame([{"iso3": i, "name": names.get(i, i), "group": g, "flow": f,
+                         "trade_records_kt": t, "food_balance_kt": b} for i, g, f, t, b in tw],
+                       columns=["iso3", "name", "group", "flow", "trade_records_kt", "food_balance_kt"])
 
     rel = _latest_release()
     chg = changes(rel["ssr"], ssr) if rel else pd.DataFrame()
@@ -139,6 +146,9 @@ def run() -> None:
            "(`atlas release-snapshot` after publishing).</p>"),
         f"<h2>Withheld ({len(wdf)})</h2><p>Not shown on the site; the site explains why.</p>"
         + _table(wdf),
+        f"<h2>Withheld trade flows ({len(tdf)})</h2><p>Trade records far above the food balance "
+        "(methodology, \"Trade records against the food balance\"): the split by country is not "
+        "shown, and for all food the bought or sold total neither.</p>" + _table(tdf),
     ]
     for check, sub in warn.groupby("check"):
         sections.append(f"<h2>Warning: {html.escape(check)} ({len(sub)})</h2>"
@@ -151,7 +161,8 @@ table{{border-collapse:collapse;width:100%;margin:8px 0 24px}}th,td{{border-bott
 th{{background:#f4f4f2;position:sticky;top:0}}.ok{{color:#1e6b45}}.bad{{color:#b84a2a;font-weight:600}}.none{{color:#777}}
 </style>{''.join(sections)}</html>"""
     REPORT.write_text(page, encoding="utf-8")
-    log.info("wrote %s (%d withheld, %d warnings, %d changes)", REPORT, len(wdf), len(warn), len(chg))
+    log.info("wrote %s (%d withheld, %d trade flows withheld, %d warnings, %d changes)", REPORT,
+             len(wdf), len(tdf), len(warn), len(chg))
 
 
 def snapshot() -> None:

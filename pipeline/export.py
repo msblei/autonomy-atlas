@@ -2,10 +2,11 @@
 
 Outputs (web/public/data/):
     countries.geojson   country polygons in scope, properties {iso3, iso2, name}
-    ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend}}}
+    ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend,
+                        trend_unusual?}}}
     items.json          {iso3: {group: [{item, ssr, supply_kt}]}}  (expert view, loaded lazily)
-    trade.json          {meta, names, countries{iso3: {group: {imports|exports: [total_t,
-                        [[partner, t], ...]]}}}}  (trade view, loaded lazily)
+    trade.json          {meta{…, withheld}, names, countries{iso3: {group: {imports|exports|grown:
+                        [total_t, [[partner, t], ...]]}}}}  (trade view, loaded lazily)
 """
 
 from __future__ import annotations
@@ -170,13 +171,18 @@ def _compact(x):
     return x
 
 
-def _trend_series(trends: pd.DataFrame, years: list[int]) -> dict:
-    """{iso3: {group: [ssr per year, aligned to `years`]}}."""
+def _trend_series(trends: pd.DataFrame, years: list[int]) -> tuple[dict, dict]:
+    """{iso3: {group: [ssr per year, aligned to `years`]}}, and {iso3: {group: [unusual years]}}
+    (checks.unusual_years: a year far from both neighbours, marked for the chart)."""
     out: dict = {}
+    unusual: dict = {}
     for (iso3, group), sub in trends.groupby(["iso3", "group"]):
         by_year = dict(zip(sub["year"], sub["ssr"], strict=False))
         out.setdefault(iso3, {})[group] = [_round(by_year.get(y)) for y in years]
-    return out
+        odd = checks.unusual_years({int(y): by_year.get(y) for y in years})
+        if odd:
+            unusual.setdefault(iso3, {})[group] = odd
+    return out, unusual
 
 
 def _averages(groups: pd.DataFrame, overall: pd.DataFrame, national: list[str]) -> dict:
@@ -223,7 +229,7 @@ def export_ssr() -> None:
     window = tuple(int(y) for y in years[-1].split("-")) if years else None
     jrc_pub = jrc.published_ssr(window) if window else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
-    series = _trend_series(trends, trend_years)
+    series, unusual = _trend_series(trends, trend_years)
     out: dict = {
         "meta": {
             "generated": datetime.now(UTC).isoformat(timespec="seconds"),
@@ -267,6 +273,8 @@ def export_ssr() -> None:
         entry.update({"view": "eu_bloc" if iso3 == EU_BLOC else "national",
                       "europe": bool(iso3 == EU_BLOC or countries.loc[iso3, "europe"]),
                       "indicators": {}, "trend": series.get(iso3, {})})
+        if iso3 in unusual:
+            entry["trend_unusual"] = unusual[iso3]
         o = overall[overall["iso3"] == iso3]
         if len(o):
             r = o.iloc[0]
@@ -427,10 +435,19 @@ def export_trade() -> None:
     config.require_fresh(src, [config.INTERIM / "trade_yearly.parquet",
                                config.PROCESSED / "ssr_groups.parquet"])
     t = pd.read_parquet(src)
+    # Trade records far above the food balance describe transit or misreporting, not the country's
+    # own trade: those flows are withheld (checks.trade_verdicts; methodology, "Trade records
+    # against the food balance"). Withheld imports take the "grown" tracing with them.
+    v = checks.trade_verdicts(t, pd.read_parquet(config.PROCESSED / "ssr_groups.parquet"))
+    v = v[v["verdict"] == "withhold"].sort_values(["iso3", "group", "flow"])
+    hidden = {(r.iso3, r.group, f) for r in v.itertuples()
+              for f in (["imports", "grown"] if r.flow == "imports" else ["exports"])}
     # "All food": every group added up, in tonnes as traded.
     t = pd.concat([t, t.assign(group="all")], ignore_index=True)
     countries: dict = {}
     for (iso3, group, flow), sub in t.groupby(["iso3", "group", "flow"]):
+        if (iso3, group, flow) in hidden:
+            continue
         countries.setdefault(iso3, {}).setdefault(group, {})[flow] = _trade_entry(sub)
     mirrored = sorted(t.loc[t["source"].isin(["mirror", "mixed"]), "iso3"].unique())
     out = {
@@ -445,6 +462,9 @@ def export_trade() -> None:
             },
             # Countries for which some flows come from partners' reports.
             "mirror": mirrored,
+            # Flows not published: [iso3, group, flow, trade records kt, food balance kt].
+            "withheld": [[r.iso3, r.group, r.flow, round(r.trade_kt), round(r.balance_kt)]
+                         for r in v.itertuples()],
         },
         "names": dict(zip(*load_trade_only()[["iso3", "name"]].T.values, strict=True)),
         "countries": countries,

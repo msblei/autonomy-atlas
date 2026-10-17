@@ -1027,6 +1027,11 @@ function cardRows(id, group = state.group) {
   if (X != null) Object.assign(rows.exports, { value: shortTonnes(X / 1000), bar: [0, (X / top) * 100] });
   if (M == null) rows.imports.why = "No trade data from FAO";
   if (X == null) rows.exports.why = "No trade data from FAO";
+  for (const k of ["imports", "exports"]) {
+    if (tradeWithheld(id, group, k)) {
+      Object.assign(rows[k], { empty: "no reliable data", why: "FAO's trade records are far above its food balance" });
+    }
+  }
   return rows;
 }
 
@@ -1273,13 +1278,21 @@ function viewFood() {
 function trend(id) {
   const values = country(id)?.trend?.[state.group] ?? [];
   const yrs = state.data.meta.trend_years;
-  const pts = values.map((v, i) => [i, v]).filter(([, v]) => v != null);
+  // Unusual years (far from both neighbours, ssr.json trend_unusual) are drawn apart: hollow, off
+  // the line, and not used for the scale or the labels; one line below says which and why.
+  const odd = new Set(country(id)?.trend_unusual?.[state.group] ?? []);
+  const all = values.map((v, i) => [i, v]).filter(([, v]) => v != null);
+  const pts = all.filter(([i]) => !odd.has(yrs[i]));
+  const odds = all.filter(([i]) => odd.has(yrs[i]));
   if (pts.length < 2 || pts.every(([, v]) => v < 1)) return ""; // a flat line at zero says nothing
   const vals = pts.map(([, v]) => v);
+  const oddLine = odds.length ? `<p class="small">${odds.map(([i, v]) => `${yrs[i]} (${lasts(v, { short: true })})`).join(" and ")}
+    ${odds.length > 1 ? "are" : "is"} far from the years around ${odds.length > 1 ? "them" : "it"}: most likely an
+    error in FAO's figures, so ${odds.length > 1 ? "they are" : "it is"} drawn apart.</p>` : "";
   // Every year reads the same ("1 week"): a sentence says it better than a flat line.
   if (new Set(vals.map((v) => lasts(v, { short: true }))).size === 1) {
     return `<h3>Year by year</h3>
-      <p>Every year from ${yrs[pts[0][0]]} to ${yrs[pts[pts.length - 1][0]]}: ${lasts(vals[0])}.</p>`;
+      <p>Every year from ${yrs[pts[0][0]]} to ${yrs[pts[pts.length - 1][0]]}: ${lasts(vals[0])}.</p>${oddLine}`;
   }
   const showRef = Math.max(...vals) >= 60;
   let lo = Math.min(...vals), hi = Math.max(...vals, showRef ? 100 : -Infinity);
@@ -1290,9 +1303,10 @@ function trend(id) {
   const W = 320, H = 86, PT = 8, PB = 18, PL = 4, PR = 96;
   const x = (i) => PL + (i / (yrs.length - 1)) * (W - PL - PR);
   const y = (v) => PT + (1 - (v - lo) / (hi - lo)) * (H - PT - PB);
+  const yIn = (v) => Math.min(H - PB, Math.max(PT, y(v))); // off-scale points sit on the edge
   const path = pts.map(([i, v], k) => `${k ? "L" : "M"}${x(i).toFixed(1)},${y(v).toFixed(1)}`).join("");
   const area = `${path}L${x(pts[pts.length - 1][0]).toFixed(1)},${H - PB}L${x(pts[0][0]).toFixed(1)},${H - PB}Z`;
-  const [fi, fv] = pts[0];
+  const [fi] = pts[0];
   const [li, lv] = pts[pts.length - 1];
   const lowest = pts.reduce((m, p) => (p[1] < m[1] ? p : m));
   const highest = pts.reduce((m, p) => (p[1] > m[1] ? p : m));
@@ -1303,19 +1317,22 @@ function trend(id) {
     <h3>Year by year</h3>
     <div class="spark">
       <svg viewBox="0 0 ${W} ${H}" width="100%" role="img"
-        aria-label="${pts.map(([i, v]) => `${yrs[i]}: ${lasts(v, { short: true })}`).join(", ")}">
+        aria-label="${all.map(([i, v]) => `${yrs[i]}: ${lasts(v, { short: true })}${odd.has(yrs[i]) ? " (unusual)" : ""}`).join(", ")}">
         <path d="${area}" class="area" />
         ${showRef ? `<line x1="${PL}" x2="${W - PR}" y1="${y(100)}" y2="${y(100)}" class="ref" />
-          ${Math.abs(y(lv) - y(100)) > 12 ? `<text x="${W - PR + 6}" y="${y(100) + 4}" class="refl">full year</text>` : ""}` : ""}
+          ${Math.abs(y(lv) - y(100)) > 12 && !extremes.some(([i, v]) => x(i) > W - PR - 60 && Math.abs(y(v) - 6 - y(100)) < 12)
+            ? `<text x="${W - PR + 6}" y="${y(100) + 4}" class="refl">full year</text>` : ""}` : ""}
         <path d="${path}" class="line" />
         ${pts.map(([i, v]) => `<circle cx="${x(i)}" cy="${y(v)}" r="2" class="yeardot"><title>${yrs[i]}: ${lasts(v, { short: true })}</title></circle>`).join("")}
+        ${odds.map(([i, v]) => `<circle cx="${x(i)}" cy="${yIn(v)}" r="3.2" class="odd"><title>${yrs[i]}: ${lasts(v, { short: true })}, unusual</title></circle>`).join("")}
         <circle cx="${x(li)}" cy="${y(lv)}" r="3.2" class="dot" />
         ${extremes.map(([i, v]) => `<text x="${x(i)}" y="${y(v) + (v === highest[1] ? -6 : 13)}" class="tick" text-anchor="middle">${lasts(v, { short: true })}</text>`).join("")}
         <text x="${x(fi) + 2}" y="${H - 3}" class="yr">${yrs[fi]}</text>
         <text x="${x(li)}" y="${H - 3}" class="yr" text-anchor="end">${yrs[li]}</text>
         <text x="${x(li) + 8}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true })}</text>
       </svg>
-    </div>`;
+    </div>
+    ${oddLine}`;
 }
 
 function perPerson(id) {
@@ -1793,6 +1810,15 @@ function tradeFlow() {
   return state.flow === "imports" && state.grown ? "grown" : state.flow;
 }
 
+// A flow withheld because its trade records are far above the food balance (trade.json
+// meta.withheld; methodology, "Trade records against the food balance"): {trade, balance} in kt.
+// Withheld imports take the "grown" tracing with them.
+function tradeWithheld(id, group = state.group, flow = tradeFlow()) {
+  const f = flow === "grown" ? "imports" : flow;
+  const w = state.trade?.meta.withheld?.find((r) => r[0] === id && r[1] === group && r[2] === f);
+  return w ? { trade: w[3], balance: w[4] } : null;
+}
+
 function tradeFor(id, group = state.group, flow = tradeFlow()) {
   return state.trade?.countries[id]?.[group]?.[flow] ?? null;
 }
@@ -1827,6 +1853,14 @@ function viewTrade() {
   const head = "";
   if (!state.trade) { loadTrade(); return `<p class="hint" data-loading>Loading…</p>`; }
   if (state.group === "fish") return `<p class="lead-none">No trading partners from FAO for fish.</p>`;
+  const wh = tradeWithheld(id);
+  if (wh) {
+    return `<p class="lead-none">No reliable trading partners from FAO.</p>
+      <details class="notes"><summary>Why?</summary><p>FAO's trade records list ${tonnes(wh.trade)}
+        ${state.flow === "imports" ? "bought" : "sold"} abroad a year, its food balance ${tonnes(wh.balance)}.
+        Records this far above the balance usually count cargo passing through or shipments booked to
+        the wrong country, so the split by country is not shown.</p></details>`;
+  }
   const imports = state.flow === "imports";
   const grown = imports && state.grown;
   const t = tradeFor(id);

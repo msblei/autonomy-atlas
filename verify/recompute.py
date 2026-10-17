@@ -923,6 +923,52 @@ def build_trade(D, res, min_origin_t=0.0):
     return out, mirror, grown
 
 
+# --------------------------------------------------------------------------------------------
+# Methodology, "Trade records against the food balance": flows withheld from trade.json
+# --------------------------------------------------------------------------------------------
+def trade_withheld(trade, res):
+    """[iso3, group, flow, T, B] (kt, whole) for every flow whose trade records are more than 3x
+    their food group's typical ratio to the balance and more than 1.5x the balance itself."""
+    pairs = defaultdict(list)  # (group, flow) -> [(iso3, T kt, B kt)]
+    for iso, r in res.items():
+        if iso == "EU27" or "groups" not in r:
+            continue
+        for flow, key in (("imports", "M"), ("exports", "X")):
+            b_all, have_b = 0.0, False
+            for g, gr in r["groups"].items():
+                b = gr["comp"].get(key)
+                if g == "fish" or b is None or isnan(b):
+                    continue
+                b_all, have_b = b_all + b, True
+                parts = trade.get(iso, {}).get(g, {}).get(flow)
+                if parts:
+                    pairs[(g, flow)].append((iso, sum(parts.values()) / 1000, b))
+            parts = trade.get(iso, {}).get("all", {}).get(flow)
+            if parts and have_b:
+                pairs[("all", flow)].append((iso, sum(parts.values()) / 1000, b_all))
+    out = []
+    for (g, flow), rows in pairs.items():
+        rows = [(i, t, b) for i, t, b in rows if b > 0 and (b > 20 or t > 20)]
+        if not rows:
+            continue
+        typical = float(np.median([t / b for _, t, b in rows]))
+        out += [[i, g, flow, round(t), round(b)] for i, t, b in rows
+                if t / b > 3 * typical and t / b > 1.5]
+    return sorted(out)
+
+
+# Methodology, "Trends": a year more than 3x, or under a third of, both neighbours (all >= 5%).
+def unusual_years(series, years):
+    out = []
+    for k in range(1, len(series) - 1):
+        a, b, c = series[k - 1], series[k], series[k + 1]
+        if any(v is None or isnan(v) for v in (a, b, c)) or min(a, b, c) < 5:
+            continue
+        if b > 3 * max(a, c) or 3 * b < min(a, c):
+            out.append(years[k])
+    return out
+
+
 def intra_eu_dairy_claim(D):
     """FAO members' dairy trade with other members, window mean, Mt (members' imports x
     (1 - extra-EU share)), the methodology's 'members report buying far more ...' comparison."""
@@ -1118,10 +1164,25 @@ def main():
         why = [n for n, t in trade_alts.items() if flow == "grown" and check(t)]
         return why
 
+    # ---- withheld trade flows (methodology: "Trade records against the food balance") ----
+    w_rec = trade_withheld(trade, res)
+    hidden = {(i, g, f2) for i, g, f, *_ in w_rec for f2 in (["imports", "grown"] if f == "imports" else [f])}
+    rec_by = {tuple(w[:3]): w for w in w_rec}
+    exp_by = {tuple(w[:3]): w for w in tr["meta"].get("withheld", [])}
+    for k in sorted(set(rec_by) | set(exp_by)):
+        counts["trade_withheld"] += 1
+        e, r_ = exp_by.get(k), rec_by.get(k)
+        if e is None or r_ is None or abs(e[3] - r_[3]) > 1 or abs(e[4] - r_[4]) > 1:
+            record("trade_withheld", {"file": "trade.json", "country": k[0], "group": k[1], "flow": k[2],
+                                      "field": "meta.withheld"}, e, r_)
+
     for iso, groups in tr["countries"].items():
         for g, flows in groups.items():
             for flow, (total, parts) in flows.items():
                 w = {"file": "trade.json", "country": iso, "group": g, "flow": flow}
+                if (iso, g, flow) in hidden:
+                    counts["trade_withheld"] += 1
+                    record("trade_withheld", {**w, "field": "withheld but published"}, total, None)
                 mine = tvals(trade, iso, g, flow)
                 mt = sum(mine.values())
                 cat = "trade_grown" if flow == "grown" else "trade"
@@ -1165,7 +1226,8 @@ def main():
                            total, s_parts)
         for g, flows in trade.get(iso, {}).items():
             for flow, mine in flows.items():
-                if round(sum(mine.values())) >= 1 and flow not in groups.get(g, {}):
+                if round(sum(mine.values())) >= 1 and flow not in groups.get(g, {}) \
+                        and (iso, g, flow) not in hidden:
                     counts["trade_presence"] += 1
                     why = explain_trade(flow, lambda t: round(sum(tvals(t, iso, g, flow).values())) < 1)
                     record("trade_presence", {"file": "trade.json", "country": iso, "group": g,
@@ -1177,6 +1239,17 @@ def main():
             counts["trade_presence"] += 1
             record("trade_presence", {"file": "trade.json", "country": iso,
                                       "field": "country missing in export"}, None, "has trade")
+
+    # ---- unusual years in trends (methodology: "Trends") ----
+    for iso in sorted(set(res) | {i for i, c in ssr["countries"].items() if "trend_unusual" in c}):
+        mine = {g: ys for g, s in res.get(iso, {}).get("trend", {}).items()
+                if (ys := unusual_years(s, D.TREND))}
+        exp = ssr["countries"].get(iso, {}).get("trend_unusual", {})
+        for g in sorted(set(mine) | set(exp)):
+            counts["trend_unusual"] += 1
+            if sorted(mine.get(g, [])) != sorted(exp.get(g, [])):
+                record("trend_unusual", {"file": "ssr.json", "country": iso, "group": g,
+                                         "field": "trend_unusual"}, exp.get(g), mine.get(g))
 
     not_recomputed = [
         {"field": "ssr.json groups[*] (label, plain, notes, items) and countries[*].name/notes",
