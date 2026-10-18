@@ -459,8 +459,9 @@ def export_trade() -> None:
     v = v[v["verdict"] == "withhold"].sort_values(["iso3", "group", "flow"])
     hidden = {(r.iso3, r.group, f) for r in v.itertuples()
               for f in (["imports", "grown"] if r.flow == "imports" else ["exports"])}
-    # "All food": every group added up, in tonnes as traded.
-    t = pd.concat([t, t.assign(group="all")], ignore_index=True)
+    # "All food": every group added up, in tonnes as traded; fish left out, since only EU members
+    # have fish partners (methodology, "Trade partners", export file).
+    t = pd.concat([t, t[t["group"] != "fish"].assign(group="all")], ignore_index=True)
     countries: dict = {}
     concentration: dict = {}
     for (iso3, group, flow), sub in t.groupby(["iso3", "group", "flow"]):
@@ -475,12 +476,15 @@ def export_trade() -> None:
     out = {
         "meta": {
             "source": "fao_tm",
+            # Groups whose partners come from another source (methodology, "Comext").
+            "group_source": {"fish": "eurostat_comext"},
             "years": t["years"].iloc[0],
             "basis": {
                 "imports": "tonnes as traded (product weight); dairy in milk equivalent",
                 "exports": "tonnes as traded (product weight); dairy in milk equivalent",
                 # trade.trace_origins scales the splits to FBS import totals.
                 "grown": "tonnes in FBS primary equivalents (shares only)",
+                "fish": "tonnes live weight (EUMOFA factors per CN8 code and year); EU members only",
             },
             # Countries for which some flows come from partners' reports.
             "mirror": mirrored,

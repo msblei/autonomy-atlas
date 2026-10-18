@@ -145,3 +145,19 @@ test("all the numbers shows the published import and export concentration", asyn
   const fmt = (v) => (v == null ? "–" : v.toLocaleString("en-GB"));
   await expect(view(page)).toContainText(`${fmt(h.imports)} / ${fmt(h.exports)}`);
 });
+
+test("fish partners come from Eurostat for EU countries and are not traced", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  expect(trade.meta.group_source.fish).toBe("eurostat_comext");
+  const [total, parts] = trade.countries.DEU.fish.imports;
+  await open(page, "DEU/fish/trade");
+  await expect(view(page).locator("ol.partners li").first()).toContainText(
+    `${Math.round((parts[0][1] / total) * 100)}%`);
+  await expect(view(page).locator("[data-grown]")).toHaveCount(0);
+  await expect(page.locator("#foot")).toContainText("Eurostat Comext");
+  // all food leaves fish out, so it compares across countries
+  for (const id of Object.keys(trade.countries)) expect(trade.countries[id].fish?.grown).toBeUndefined();
+  expect(trade.countries.USA.fish).toBeUndefined();
+  await open(page, "USA/fish/trade");
+  await expect(view(page)).toContainText("known only for EU countries");
+});

@@ -36,6 +36,8 @@ FBS_ZIP = ROOT / "data/raw/faostat/FoodBalanceSheets_E_All_Data_(Normalized).zip
 TM_ZIP = tm_cache.TM_ZIP
 JRC_CSV = ROOT / "data/raw/jrc/bal/Dataset_EU_estimated_agricultural_balance_sheets.csv"
 USDA_ZIP = ROOT / "data/raw/usda/psd_alldata_csv.zip"
+COMEXT_GZ = ROOT / "data/raw/comext/DS-045409_food.csv.gz"
+EUMOFA_XLSX = ROOT / "data/raw/eumofa/conversion_factors_cn8.xlsx"
 OUT_DIR = ROOT / "web/public/data"
 REPORT = HERE / "recompute_report.json"
 FULL_MISMATCHES = HERE / ".cache" / "mismatches_full.json"
@@ -202,6 +204,49 @@ def load_jrc():
     return out, rawmilk
 
 
+# --------------------------------------------------------------------------------------------
+# Methodology, "Comext": EU members' fish trade in live weight (EUMOFA factor per CN8 and year)
+# --------------------------------------------------------------------------------------------
+FISH_HEADINGS = ("0301", "0302", "0303", "0304", "0305", "0306", "0307", "0308", "0309", "1604", "1605")
+COMEXT_ISO = {r["comext"]: r["iso3"] for r in read_csv_comments(MAP / "comext_partners.csv")}
+INTRA_UNNAMED = {"QR", "QV", "QY"}
+
+
+def load_comext_fish():
+    """-> [c, partner, named, flow, year, t] with t in tonnes live weight; c = ISO3 of the member,
+    partner = ISO3 or Comext's own code (named = it is a country)."""
+    cf = pd.read_excel(EUMOFA_XLSX, sheet_name="List of CF", dtype=str)[["Year", "CN-8", "CF"]]
+    cf.columns = ["year", "cn8", "cf"]
+    cf["cn8"] = cf["cn8"].str.replace(" ", "", regex=False)
+    cf["year"] = cf["year"].astype(int)
+    cf["cf"] = pd.to_numeric(cf["cf"], errors="coerce")
+    cf = cf[cf["cf"] > 0]
+    by_code = {c: dict(zip(g["year"], g["cf"])) for c, g in cf.groupby("cn8")}
+
+    def factor(code, year):
+        ys = by_code.get(code)
+        if not ys:
+            return math.nan
+        if year in ys:
+            return ys[year]
+        return ys[min(ys, key=lambda y: (abs(y - year), y))]
+
+    d = pd.read_csv(COMEXT_GZ, dtype=str, compression="gzip", keep_default_na=False)  # NA = Namibia
+    d = d[(d["partner"].str.len() == 2) & (d["product"].str.len() == 8)  # no WORLD, EXT_EU, ...
+          & d["product"].str.startswith(FISH_HEADINGS)
+          & (d["indicators"] == "QUANTITY_IN_100KG")]
+    d = d.assign(year=d["TIME_PERIOD"].astype(int), q=pd.to_numeric(d["OBS_VALUE"]))
+    fac = {k: factor(*k) for k in set(zip(d["product"], d["year"]))}
+    d["t"] = d["q"] / 10 * [fac[k] for k in zip(d["product"], d["year"])]
+    d = d[d["t"].notna()]
+    d["c"] = d["reporter"].map(COMEXT_ISO)
+    d["named"] = d["partner"].isin(COMEXT_ISO)
+    d["partner"] = d["partner"].map(COMEXT_ISO).fillna(d["partner"])
+    d["flow"] = d["flow"].map({"1": "imports", "2": "exports"})
+    d = d[d["c"] != d["partner"]]
+    return d.groupby(["c", "partner", "named", "flow", "year"], as_index=False)["t"].sum()
+
+
 def load_tm():
     p = tm_cache.build(SHAS["trade_matrix_zip"])
     t = pd.read_parquet(p)
@@ -286,6 +331,15 @@ def load_all() -> Data:
     tot = b.groupby(["c", "flow", "year"])["t"].sum()
     ext = b[b["extra"]].groupby(["c", "flow", "year"])["t"].sum()
     D.share_a = (ext.reindex(tot.index).fillna(0) / tot).where(tot > 0).to_dict()
+    # fish: extra-EU shares from Comext, live weight, over all partners (unnamed ones outside the
+    # EU except Comext's intra-EU codes)
+    D.fish = load_comext_fish()
+    f = D.fish.assign(extra=~(D.fish["partner"].isin(EU) | D.fish["partner"].isin(INTRA_UNNAMED)))
+    tot = f.groupby(["c", "flow", "year"])["t"].sum()
+    ext = f[f["extra"]].groupby(["c", "flow", "year"])["t"].sum()
+    for (c, flow, y), v in (ext.reindex(tot.index).fillna(0) / tot).where(tot > 0).items():
+        D.share_g[(c, flow, y, "fish")] = v
+    log(f"Comext fish loaded: {len(D.fish):,} rows")
     countries = sorted(D.fbs.index.get_level_values("iso3").unique())
     D.yearly = {}
     for iso in countries:
@@ -322,14 +376,9 @@ def build_eu27(D, opts):
                 vals = [x[k] for _, x in rows if not isnan(x[k])]
                 r[k] = sum(vals) if vals else math.nan
             sumD = sum(nz(x["D"]) for _, x in rows)
-            if i in D.FISH:  # no trade-matrix coverage: members' sum, gross trade blanked
-                r["M"] = r["X"] = math.nan
-                dv = [x["D"] for _, x in rows if not isnan(x["D"])]
-                r["D"] = sum(dv) if dv else math.nan
-            else:
-                r["M"] = sum(nz(x["M"]) * eu_share(D, m, "imports", y, i) for m, x in rows)
-                r["X"] = sum(nz(x["X"]) * eu_share(D, m, "exports", y, i) for m, x in rows)
-                r["D"] = nz(r["P"]) + r["M"] - r["X"] - nz(r["S"])
+            r["M"] = sum(nz(x["M"]) * eu_share(D, m, "imports", y, i) for m, x in rows)
+            r["X"] = sum(nz(x["X"]) * eu_share(D, m, "exports", y, i) for m, x in rows)
+            r["D"] = nz(r["P"]) + r["M"] - r["X"] - nz(r["S"])
             f = r["D"] / sumD if sumD else math.nan
             for u in USES:  # uses: members' sums scaled to D_EU
                 vals = [x[u] for _, x in rows if not isnan(x[u])]
@@ -424,8 +473,6 @@ def compute_balances(D, opts):
                             0.0 if k != "D" else math.nan)
                     else:
                         row[k] = (sum(present) / len(present)) if present else math.nan
-            if iso == "EU27" and i in D.FISH:
-                row["M"] = row["X"] = math.nan
             items[i] = row
         dairy = None
         if jrc_ok["dairy"]:
@@ -590,12 +637,12 @@ def compute_balances(D, opts):
                 if gr is None:
                     continue
                 gr["jrc_items"] = [f for f in JRC_CODE if f in used and JRC_CODE[f] in GI[g]]
+                eu_trade = ("+eurostat_comext" if g == "fish" else "+fao_tm") if eu else ""
                 gr["source"] = ("jrc_bal" if g == "dairy" and dairy else
-                                "fao_fbs" + ("+fao_tm" if eu else "") +
-                                ("+jrc_bal" if gr["jrc_items"] else ""))
+                                "fao_fbs" + eu_trade + ("+jrc_bal" if gr["jrc_items"] else ""))
                 groups[g] = gr
             af = all_food(items, dairy)
-            af["source"] = ("fao_fbs" + ("+fao_tm" if eu else "") +
+            af["source"] = ("fao_fbs" + ("+fao_tm+eurostat_comext" if eu else "") +
                             ("+jrc_bal" if (used or dairy) else ""))
             pops = [popd.get((iso, y)) for y in D.WIN]
             pops = [p for p in pops if not isnan(p)]
@@ -895,7 +942,13 @@ def build_trade(D, res, min_origin_t=0.0):
     out = defaultdict(lambda: defaultdict(dict))  # out[c][group][flow] = {partner: t}
     for (c, flow, g, p), v in (bil.groupby(["c", "flow", "group", "partner"])["t"].sum() / n).items():
         out[c][g].setdefault(flow, {})[p] = v
-    eu = bil[bil["c"].isin(EU) & ~bil["partner"].isin(EU)]
+    # fish (methodology "Comext"): members' named partners, window mean, live weight
+    fish = D.fish[D.fish["year"].isin(WIN) & D.fish["named"]].assign(group="fish")
+    fish = fish.rename(columns={"t": "t"})[["c", "partner", "flow", "year", "group", "t"]]
+    for (c, flow, p), v in (fish.groupby(["c", "flow", "partner"])["t"].sum() / n).items():
+        out[c]["fish"].setdefault(flow, {})[p] = v
+    eu = pd.concat([bil, fish], ignore_index=True)
+    eu = eu[eu["c"].isin(EU) & ~eu["partner"].isin(EU)]
     for (flow, g, p), v in (eu.groupby(["flow", "group", "partner"])["t"].sum() / n).items():
         out["EU27"][g].setdefault(flow, {})[p] = v
     # mirror bookkeeping: countries with any flow-year filled from partners
@@ -948,9 +1001,11 @@ def build_trade(D, res, min_origin_t=0.0):
     for c, gs in grown.items():
         for g, parts in gs.items():
             out[c][g]["grown"] = parts
-    for c in list(out):  # "all" = all groups added up by weight
+    for c in list(out):  # "all" = all groups added up by weight, fish left out
         allf = {}
         for g, fl in list(out[c].items()):
+            if g == "fish":
+                continue
             for flow, parts in fl.items():
                 d = allf.setdefault(flow, {})
                 for p, v in parts.items():
@@ -973,9 +1028,10 @@ def trade_withheld(trade, res):
             b_all, have_b = 0.0, False
             for g, gr in r["groups"].items():
                 b = gr["comp"].get(key)
-                if g == "fish" or b is None or isnan(b):
+                if b is None or isnan(b):
                     continue
-                b_all, have_b = b_all + b, True
+                if g != "fish":  # all food: without fish, as its trade total
+                    b_all, have_b = b_all + b, True
                 parts = trade.get(iso, {}).get(g, {}).get(flow)
                 if parts:
                     pairs[(g, flow)].append((iso, sum(parts.values()) / 1000, b))
@@ -1030,6 +1086,8 @@ def main():
     for k, p in {"fbs_zip": FBS_ZIP, "trade_matrix_zip": TM_ZIP, "jrc_csv": JRC_CSV}.items():
         SHAS[k] = sha256(p)
     SHAS["usda_psd_zip"] = sha256(USDA_ZIP)
+    SHAS["comext_gz"] = sha256(COMEXT_GZ)
+    SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
     for k in ("ssr.json", "items.json", "trade.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")

@@ -12,7 +12,19 @@ import argparse
 import logging
 import sys
 
-from . import compute, download, export, harmonise, manifest, report, trade, usda, validate
+from . import (
+    comext,
+    compute,
+    crosswalk,
+    download,
+    export,
+    harmonise,
+    manifest,
+    report,
+    trade,
+    usda,
+    validate,
+)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -31,6 +43,7 @@ def main(argv: list[str] | None = None) -> int:
                    help="window, inclusive (default: latest 3 FBS years)")
 
     sub.add_parser("export", help="write web/public/data/*.json")
+    sub.add_parser("crosswalk", help="regenerate mappings/hs_items.csv (HS6 -> food groups)")
     sub.add_parser("validate", help="check processed and published data; exit 1 on a blocking finding")
     sub.add_parser("manifest", help="record sha256 of the raw files as they are now")
     sub.add_parser("report", help="write data/processed/audit.html for review before a release")
@@ -56,12 +69,16 @@ def main(argv: list[str] | None = None) -> int:
         report.run()
     elif args.cmd == "release-snapshot":
         report.snapshot()
+    elif args.cmd == "crosswalk":
+        crosswalk.run()
     elif args.cmd == "build":
         manifest.check()
         harmonise.run()
+        comext.extract()
         trade.extract()
         compute.run(years=years)
         trade.run()
+        comext.run_compare(trade.fbs_window())
         usda.run()
     elif args.cmd == "export":
         export.run()
@@ -69,9 +86,11 @@ def main(argv: list[str] | None = None) -> int:
         download.run()
         manifest.record()
         harmonise.run()
+        comext.extract()
         trade.extract()
         compute.run(years=years)
         trade.run()
+        comext.run_compare(trade.fbs_window())
         usda.run()
         export.run()
         return _validate()

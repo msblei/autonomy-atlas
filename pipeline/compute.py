@@ -192,7 +192,7 @@ def group_kcal(items: pd.DataFrame) -> pd.DataFrame:
         return pd.Series(
             {
                 "ssr": np.average(sub["ssr"], weights=w),
-                # unknown imports (EU27 fish: no trade records) stay unknown, not 0%
+                # unknown imports (an EU27 year without trade shares) stay unknown, not 0%
                 "idr": np.average(sub["idr"], weights=w) if sub["idr"].notna().all() else np.nan,
                 "kcal": w.sum(),
                 "n_items": len(sub),
@@ -313,8 +313,8 @@ def _extra_eu_trade(sums: pd.DataFrame, members: pd.DataFrame, extra: pd.DataFra
     uses scaled to match (see add_eu_bloc)."""
     groups = item_to_group()[["item", "group"]]
     m = members[["iso3", "item", "year", "imports", "exports"]].merge(groups, on="item", how="left")
-    # Items outside the groups use the members' share for all foods; groups the trade records do
-    # not cover at all (fish) keep the old members' sum.
+    # Items outside the groups use the members' share for all foods; a group with no shares at
+    # all keeps the old members' sum (fish without a Comext download).
     traded = set(extra["group"])
     m = m[m["group"].isna() | m["group"].isin(traded)]
     m["group"] = m["group"].fillna("all")
@@ -411,7 +411,8 @@ def _jrc_foods(items: pd.DataFrame) -> pd.DataFrame:
 def _source(df: pd.DataFrame) -> pd.Series:
     """Where a row's figures come from (config.SOURCES keys, '+'-joined):
     fao_fbs; jrc_bal where the DG AGRI-JRC balance replaced FAO; the EU27 bloc's trade is
-    rebuilt from the FAO trade matrix (fao_tm)."""
+    rebuilt from the FAO trade matrix (fao_tm), its fish trade from Eurostat Comext
+    (eurostat_comext), all food from both."""
     jrc = pd.Series(False, index=df.index)
     for c in ("jrc_food", "jrc_foods"):
         if c in df:
@@ -421,7 +422,11 @@ def _source(df: pd.DataFrame) -> pd.Series:
         whole |= df["jrc_food"].notna()
     if "group" in df and "jrc_foods" in df:
         whole |= (df["group"] == JRC_WHOLE_GROUP) & (df["jrc_foods"] == JRC_WHOLE_GROUP)
-    base = np.where(df["iso3"] == EU_BLOC, "fao_fbs+fao_tm", "fao_fbs")
+    eu = df["iso3"] == EU_BLOC
+    group = df["group"] if "group" in df else pd.Series("all", index=df.index)  # overall = all food
+    base = np.where(~eu, "fao_fbs", np.where(group == "fish", "fao_fbs+eurostat_comext",
+                                             np.where(group == "all", "fao_fbs+fao_tm+eurostat_comext",
+                                                      "fao_fbs+fao_tm")))
     return pd.Series(np.where(whole, "jrc_bal", np.where(jrc, base + "+jrc_bal", base)),
                      index=df.index)
 

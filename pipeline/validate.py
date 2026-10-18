@@ -76,7 +76,7 @@ def check_balance_identity(groups: pd.DataFrame, items: pd.DataFrame) -> list[Fi
     """D = P + M - X - dS. FAO rounds each of the five figures of every item to 1 kt, so a group
     of n items as FAO publishes it may miss by up to n x 2.5 kt from rounding alone: beyond that
     is a warning. Rows we build (JRC-replaced items, the EU27 bloc) must satisfy it exactly. Rows
-    without trade figures (EU27 fish: FAO's trade records have no fish) are not balances."""
+    without trade figures (an EU27 year without members' trade shares) are not balances."""
     out = []
     n_items = (items[items["group"].notna() & items["supply"].notna()]
                .groupby(["iso3", "group"]).size())

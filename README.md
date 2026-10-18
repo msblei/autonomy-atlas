@@ -52,7 +52,8 @@ data/       raw / interim / processed (gitignored)
 ## Roadmap
 
 1. Country-level SSR/IDR choropleth from FAO Food Balance Sheets.
-2. Trade-partner arcs from Eurostat Comext and CEPII BACI; import-concentration indices.
+2. Trade partners and arcs (FAO trade matrix; fish from Eurostat Comext), import concentration;
+   CEPII BACI and a value basis still to come.
 3. Crop calendars and NUTS2 regional production ("what is grown where, and when").
 4. Feed-adjusted and calorie-weighted indices; scenario toggles.
 
@@ -61,7 +62,9 @@ data/       raw / interim / processed (gitignored)
 | Source | Used for | Licence |
 |---|---|---|
 | [FAOSTAT](https://www.fao.org/faostat/en/#data) Food Balance Sheets, Production, Trade Matrix | supply, SSR/IDR, bilateral trade | CC BY 4.0 |
-| [Eurostat](https://ec.europa.eu/eurostat) Comext, `apro_cpshr` | intra/extra-EU trade, NUTS2 crops | free reuse with attribution |
+| [Eurostat](https://ec.europa.eu/eurostat) Comext, `apro_cpshr` | EU members' fish trade and the EU's fish balance; a check on FAO's trade figures; NUTS2 crops (planned) | CC BY 4.0 |
+| [EUMOFA](https://fishery-aquaculture-market-observatory.ec.europa.eu) conversion factors | fish trade in live weight | EC reuse notice (attribution) |
+| [UN Statistics Division](https://unstats.un.org/unsd/classifications/Econ) CPC–HS correspondence | trade codes to food groups | UN terms of use (attribution) |
 | [CEPII BACI](https://www.cepii.fr/CEPII/en/bdd_modele/bdd_modele_item.asp?id=37) | reconciled bilateral trade | Etalab Open Licence 2.0 |
 | [DG AGRI–JRC EU agricultural balance sheets](https://agridata.ec.europa.eu) | EU dairy, tomatoes, olive oil, wine; dairy milk-equivalent factors | EC reuse notice (attribution) |
 | [USDA FAS PSD](https://apps.fas.usda.gov/psdonline) | second opinion on FAO's figures | US government work, public domain |

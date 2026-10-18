@@ -34,7 +34,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pacsv
 
-from . import config
+from . import comext, config
 from .compute import EU_BLOC
 from .harmonise import load_countries
 
@@ -257,7 +257,8 @@ def trace_origins(p: pd.DataFrame, fbs: pd.DataFrame) -> pd.DataFrame:
 
     `fbs`: tonnes-basis rows of ssr_groups (iso3, group, production, imports in 1000 t).
     """
-    imp = p[(p["flow"] == "imports") & (p["iso3"] != EU_BLOC)]
+    # Fish partners exist for EU members only: tracing needs the whole world's trade.
+    imp = p[(p["flow"] == "imports") & (p["iso3"] != EU_BLOC) & (p["group"] != "fish")]
     fbs = fbs.set_index(["group", "iso3"])
     rows = []
     for group, sub in imp.groupby("group"):
@@ -312,7 +313,8 @@ def trade_inputs() -> list:
     """Files the interim trade tables are built from."""
     m = config.MAPPINGS
     return [config.RAW / "faostat" / TM_ZIP, config.INTERIM / "fbs.parquet", m / "trade_items.csv",
-            m / "trade_only.csv", m / "world.csv", m / "countries.yaml"]
+            m / "trade_only.csv", m / "world.csv", m / "countries.yaml",
+            config.INTERIM / comext.YEARLY]
 
 
 def extract() -> None:
@@ -329,6 +331,10 @@ def extract() -> None:
     both = yearly(to_iso3(read_matrix(years, load_item_groups(), load_item_factors())))
     both.to_parquet(config.INTERIM / YEARLY, index=False)
     shares = extra_eu_shares(both)
+    # Fish is not in the trade matrix: its extra-EU shares come from Comext (live weight).
+    cx = config.INTERIM / comext.YEARLY
+    if cx.exists():
+        shares = pd.concat([shares, comext.fish_extra_shares(pd.read_parquet(cx))], ignore_index=True)
     shares.to_parquet(config.INTERIM / SHARES, index=False)
     log.info("wrote %s (%d rows) and %s (%d rows)", YEARLY, len(both), SHARES, len(shares))
 
@@ -342,7 +348,11 @@ def run() -> None:
     config.require_fresh(src, trade_inputs())
     years = fbs_window()
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
-    p = add_eu_bloc(average(fill_underreported(pd.read_parquet(src), years, groups), years))
+    p = average(fill_underreported(pd.read_parquet(src), years, groups), years)
+    cx = config.INTERIM / comext.YEARLY
+    if cx.exists():  # EU members' fish partners (the trade matrix has no fish)
+        p = pd.concat([p, comext.fish_partners(pd.read_parquet(cx), years)], ignore_index=True)
+    p = add_eu_bloc(p)
     groups = groups[groups["basis"] == "tonnes"][["iso3", "group", "production", "imports"]]
     out = pd.concat([p, trace_origins(p, groups)], ignore_index=True)
     out = out.assign(years=f"{years[0]}-{years[1]}")

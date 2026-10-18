@@ -151,7 +151,8 @@ exports are the trade with non-members only, in FBS primary equivalents:
 The shares are per member, food group and year from the FAOSTAT trade matrix
 (`trade.extra_eu_shares`, reported flows with mirror fallback; items outside the groups use the
 member's all-food share). Uses (food, feed, …) are the members' sums scaled to D_EU. Fish, which
-the trade matrix does not cover, keeps the members' sum with gross trade blanked.
+the trade matrix does not cover, takes its shares from Eurostat Comext (section "Comext": live
+weight, per member, flow and year).
 
 Why not simply add up the members (as FAO's own "European Union (27)" area does): members report
 buying far more from each other than they report selling to each other, so intra-EU trade does
@@ -191,7 +192,8 @@ change into group totals and the protein and calorie headlines.
   and kcal (`compute.collapse_jrc_dairy`). This moved Ireland's calorie coverage from 154% to 99%
   and the Netherlands' from 130% to 118%; protein headlines moved by less than 3 points.
 - **Cited where used.** Every row carries `source` (`fao_fbs`, `jrc_bal`, `fao_fbs+jrc_bal` for a
-  group with one JRC item, `fao_fbs+fao_tm` for the EU27 bloc), computed from the rows the JRC
+  group with one JRC item, `fao_fbs+fao_tm` for the EU27 bloc, `fao_fbs+eurostat_comext` for its fish,
+  `fao_fbs+fao_tm+eurostat_comext` for its all food), computed from the rows the JRC
   actually replaced, and the UI cites from that.
 
 **Comparison that decided it** (2021–2023, EU members + EU27, SSR in percentage points). Production
@@ -279,7 +281,8 @@ beyond SSR, so the methodology above still applies unchanged.
 Source: FAOSTAT Detailed Trade Matrix (`pipeline/trade.py`), same 3-year window as the FBS
 figures, yearly mean. Items are mapped to the food groups by CPC code in
 `pipeline/mappings/trade_items.csv` (feed such as oilcakes, live animals, fibres, tobacco and nuts
-other than groundnuts are left out). FAO's trade data has no fish.
+other than groundnuts are left out). FAO's trade data has no fish: fish partners come from
+Eurostat Comext, for EU members and the EU bloc only (section "Comext").
 
 - **Product weight, except where processing changes it a lot.** Partner shares count each
   shipment in the FBS basis of its group (`to_primary` in `trade_items.csv`; other items as
@@ -350,7 +353,10 @@ other than groundnuts are left out). FAO's trade data has no fish.
   transship (Rotterdam, Antwerp). The UI notes this when they are among the top five; no
   adjustment is applied.
 - **Export file:** `trade.json` keeps, per country × group × flow, the total and every partner with
-  at least 0.5% (at most 24), plus "all food" = all groups added up by weight.
+  at least 0.5% (at most 24), plus "all food" = all groups added up by weight, fish excluded (only
+  EU members have fish partners, and all-food totals must compare across countries).
+  `meta.group_source` names the source per group where it is not the trade matrix (`fish:
+  eurostat_comext`), `meta.basis` the fish basis.
 
 ### Trade records against the food balance
 
@@ -361,8 +367,8 @@ records for potatoes and roots are typically about 0.6 of the balance; for pulse
 are about equal. A country far from its group's typical ratio has trade
 records that do not describe its balance (transit cargo, misreported or mirrored flows).
 
-For each flow (imports, exports), each food group except fish, and each country with a food
-balance (not the EU27 bloc):
+For each flow (imports, exports), each food group (fish: EU members, from Comext), and each
+country with a food balance (not the EU27 bloc):
 
 - `T` = the trade-records total in kt (window mean, the total published in `trade.json`);
   `B` = the FBS flow in kt as published (`components_kt`, with the JRC's figures where they replace
@@ -376,7 +382,7 @@ balance (not the EU27 bloc):
   processing cannot explain (processed food weighs less than what it is made from). Saint Lucia
   2021–2023: 449 kt of sugar in the trade records for a balance of 14 kt.
 - **All food** uses the same rule with `T` = the all-food trade total and `B` = the sum of the
-  groups' FBS flows (fish excluded, as trade has none), with its own median.
+  groups' FBS flows, both without fish (the all-food trade total has none), with its own median.
 
 A withheld flow is not published: `imports` withholds that country's `imports` and `grown` entries
 for the group, `exports` its `exports` entry. `trade.json` `meta.withheld` lists each as
@@ -384,6 +390,65 @@ for the group, `exports` its `exports` entry. `trade.json` `meta.withheld` lists
 be. The balance figures themselves (bought and sold in the FBS) are unaffected; for all food,
 whose bought and sold totals come from the trade records, those totals are withheld with it.
 Other countries' flows with the withheld country as partner are their own records and stay.
+
+## Comext: EU members' fish trade, and a second look at the trade matrix
+
+Source: Eurostat Comext, dataset DS-045409 "EU trade since 1988 by HS2-4-6 and CN8"
+(`pipeline/comext.py`; download `atlas download --source comext`, about 270 requests through the
+SDMX API, merged into one raw file with `query.json` recording the query). Reporters: the 27
+members (Greece is GR in Comext). Partners: every partner; years 2021 to the latest complete year
+for food other than fish, 2010 on for fish (every trend year of the EU bloc's fish balance);
+flows 1 (imports) and 2 (exports); quantity (100 kg) and value (EUR). The value is kept for a
+later value basis and not shown yet. Partner codes become ISO3 with
+`mappings/comext_partners.csv` (Comext's own codes: XS Serbia, XM Montenegro, XI/XU the United
+Kingdom, XB/XC/XL Spain's Canary Islands, Ceuta, Melilla, XP Palestine). Codes that name no
+country (Q*: confidential partners, stores and provisions, high seas) stay out of the partner
+lists but count in the totals behind the extra-EU shares, as outside the EU except QR, QV and QY,
+which Comext defines as intra-EU. Aggregate partners in the extraction (WORLD, EXT_EU27_2020,
+INT_EU, …) are dropped, so nothing counts twice; the single partners add up to WORLD. Self-trade
+(Spain with the Canary Islands) is dropped.
+
+**Products.** Food other than fish is requested as HS6 codes, fish as CN8 codes.
+
+- *HS6 → food group* (`mappings/hs_items.csv`, generated by `atlas crosswalk`,
+  `pipeline/crosswalk.py`): the UN Statistics Division's CPC 2.1 ↔ HS 2017 correspondence gives
+  each HS6 code its CPC classes; FAO's trade items carry CPC codes (`trade_items.csv`), so the
+  code takes the group and `to_primary` factor of its FAO items when they agree. Where the CPC
+  class has no FAO item (frozen meat, fish, chocolate, bread), the items disagree (milk and
+  cream), or the factors differ (milk powders, tomato products), a hand decision in
+  `mappings/hs_overrides.csv` settles it, with its reason; the generator stops on any undecided
+  code. HS 2022 codes take the decision of the HS 2017 code they convert to (UNSD conversion
+  table); Comext reports 2021 in HS 2017 and later years in HS 2022.
+  One HS6 code is split at CN8 level because its products differ too much: whey (0404 10) in
+  powder counts as dry whey (7.48), liquid or concentrated whey as fresh whey (0.45)
+  (`mappings/cn8_items.csv`). Potato starch is left out, as are wheat and maize starch: FAO's
+  trade items count only cassava starch in the group.
+- *Fish* (the CN8 codes EUMOFA lists under HS 0301–0309, 1604 and 1605; not fish oil, fishmeal,
+  seaweed or the pasta and pet food EUMOFA also lists, which are no FBS fish item) is counted in
+  live weight, the basis of the FBS fish balance, with the EU fish
+  market observatory's (EUMOFA) conversion factor for each CN8 code and year (Metadata 2,
+  Annex 7, 2011 on: fresh whole fish 1, fillets about 2–3, salted, dried or canned fish more). A
+  code and year EUMOFA does not list (all of 2010) takes the code's nearest listed year (on a tie, the earlier one); a code
+  EUMOFA gives no factor above 0 (ornamental fish) is left out. Fish does not go through the HS6
+  crosswalk, whose overrides only mark it so it is not requested twice.
+
+**What it is used for.**
+
+1. *Fish partner lists* for EU members (yearly mean over the FBS window, partners that are
+   countries) and the EU bloc (members' trade with non-members, as for every group). `source`
+   `comext`; the "grown in" tracing needs the whole world's trade and is not done for fish.
+   Fishmeal is no fish in these records, but the FBS counts fish used as feed: a member that
+   imports fishmeal for its fish farms has records far below its balance (Greece 2021–2023: 189 kt
+   against 668 kt, of which 490 kt feed). The check of section "Trade records against the food
+   balance" flags it and the trade page says the records hold only part of the balance.
+2. *The EU bloc's fish balance*: the extra-EU shares `s_imp`, `s_exp` of section "National vs
+   EU-bloc view" for fish, per member, flow and year, live weight over all partners.
+3. *A comparison with the trade matrix* (not a source): for each member, group (fish excluded)
+   and flow over the window, Comext against the trade matrix's figures as the member reported
+   them, both in the FBS basis of the partner lists, partners that are countries
+   (`data/processed/comext_vs_fao.parquet`, shown on the audit page). FAO builds the EU members'
+   rows of its trade matrix from Comext, so large gaps point at a mapping difference, not at two
+   views of the world.
 
 ## Where imports were grown (re-export tracing)
 

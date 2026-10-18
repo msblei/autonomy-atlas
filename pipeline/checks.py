@@ -122,15 +122,16 @@ def trade_verdicts(partners: pd.DataFrame, groups: pd.DataFrame, eu_bloc: str = 
     on the tonnes basis (iso3, group, imports, exports in kt, as published or listed as withheld).
     """
     t = partners[partners["flow"].isin(["imports", "exports"]) & (partners["iso3"] != eu_bloc)]
-    g = groups[(groups["basis"] == "tonnes") & (groups["iso3"] != eu_bloc) & (groups["group"] != "fish")]
+    g = groups[(groups["basis"] == "tonnes") & (groups["iso3"] != eu_bloc)]
     rows = []
     for flow in ("imports", "exports"):
         tf = t[t["flow"] == flow]
         trade = tf.groupby(["iso3", "group"])["tonnes"].sum() / 1000
         bal = g.set_index(["iso3", "group"])[flow]
         pairs = [pd.concat([trade.rename("trade_kt"), bal.rename("balance_kt")], axis=1, join="inner")]
-        trade_all = tf.groupby("iso3")["tonnes"].sum() / 1000
-        bal_all = g.groupby("iso3")[flow].sum(min_count=1)
+        # All food without fish: only EU members have fish partners (trade.json "all").
+        trade_all = tf[tf["group"] != "fish"].groupby("iso3")["tonnes"].sum() / 1000
+        bal_all = g[g["group"] != "fish"].groupby("iso3")[flow].sum(min_count=1)
         a = pd.concat([trade_all.rename("trade_kt"), bal_all.rename("balance_kt")], axis=1, join="inner")
         a.index = pd.MultiIndex.from_arrays([a.index, ["all"] * len(a)], names=["iso3", "group"])
         pairs.append(a)

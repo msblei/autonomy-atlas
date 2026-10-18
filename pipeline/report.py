@@ -92,6 +92,36 @@ def _usda_section() -> str:
             + _table(rows.sort_values("median", ascending=False)))
 
 
+COMPARE_MIN_KT = 20  # member-group-flows smaller than this on both sides are not summarised
+
+
+def _comext_section() -> str:
+    from . import comext
+
+    path = config.PROCESSED / comext.COMPARE
+    if not path.exists():
+        return "<h2>Comext against FAO's trade matrix</h2><p class='bad'>No comparison (download Comext).</p>"
+    c = pd.read_parquet(path)
+    c = c[(c["comext_kt"] >= COMPARE_MIN_KT) | (c["fao_kt"] >= COMPARE_MIN_KT)]
+    r = c["ratio"]
+    within = ((r >= 0.9) & (r <= 1.1)).mean()
+    by = (c.groupby("group")["ratio"].agg(pairs="size", median="median",
+                                          within_20=lambda x: ((x >= 0.8) & (x <= 1.25)).mean())
+          .reset_index().sort_values("median"))
+    off = c.assign(gap=(c["comext_kt"] - c["fao_kt"]).abs()).sort_values("gap", ascending=False).head(15)
+    two = lambda x: f"{x:.2f}"  # ratios near 1 need two decimals
+    by[["median", "within_20"]] = by[["median", "within_20"]].map(two)
+    off = off.assign(ratio=off["ratio"].map(two))
+    return ("<h2>Comext against FAO's trade matrix</h2>"
+            f"<p class='note'>EU members' trade {c['years'].iloc[0]}, each group and flow with at least "
+            f"{COMPARE_MIN_KT} kt a year on either side, both in the partner lists' basis (methodology, "
+            f"\"Comext\"). FAO builds these rows from Comext, so a gap points at a difference in how "
+            f"products are mapped, or at FAO's own corrections of a member's figures. "
+            f"{len(c)} pairs: median Comext/FAO {r.median():.2f}, {within:.0%} within 10%.</p>"
+            + _table(by) + "<p class='note'>Largest gaps in kt:</p>"
+            + _table(off[["iso3", "group", "flow", "comext_kt", "fao_kt", "ratio"]]))
+
+
 # What each warning tests, its usual cause, and what the site does (reviews of 2026-10-17/18).
 CHECK_NOTES = {
     "usda_gap": "FAO's and USDA's figures for one country and commodity put its self-sufficiency far "
@@ -100,7 +130,8 @@ CHECK_NOTES = {
                 "points; the rest cannot move it that much.",
     "trade_vs_fbs": "Trade records far from their food group's typical ratio to the balance. All are "
                     "below it: the balance also counts food contained in processed goods (sugar in "
-                    "chocolate and soft drinks, milk in food preparations, wheat gluten in fish feed) "
+                    "chocolate and soft drinks, milk in food preparations, wheat gluten in fish feed; fish fed to "
+                    "farmed fish as fishmeal, which is not fish in the trade records) "
                     "that the trade records file elsewhere. Records far above it would be withheld.",
     "jrc_ratio_dairy": "The European Commission's own dairy ratio, on a basis its file does not "
                        "document, against ours from its production and trade figures. Expected every "
@@ -170,6 +201,7 @@ def run() -> None:
         rec_line,
         "<h2>Blocking findings</h2>" + _table(block, ["check", "iso3", "group", "detail"]),
         _usda_section(),
+        _comext_section(),
         f"<h2>Largest changes since the last release{' (' + rel['stamp'] + ')' if rel else ''}</h2>"
         + (_table(chg.head(TOP_CHANGES)) if rel else "<p>No release stored yet "
            "(`atlas release-snapshot` after publishing).</p>"),

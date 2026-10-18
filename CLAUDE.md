@@ -82,8 +82,9 @@ make serve       # cd web && npm run dev
 2. **Phase 2 (in part):** partner flows and arcs come from the FAOSTAT Detailed Trade Matrix for
    now (partners' reports where a country under-reports; processed goods converted to the FBS
    basis; implausible flows withheld), with the share from Russia and Ukraine on the trade page
-   and import/export concentration (HHI) on "All the numbers". Still to do: Eurostat Comext
-   (intra + extra EU, CN8) and CEPII BACI.
+   and import/export concentration (HHI) on "All the numbers". Eurostat Comext adds EU members'
+   fish partners and the EU bloc's fish balance, and a comparison with the FAO matrix on the audit
+   page. Still to do: CEPII BACI; a value (EUR) basis from Comext.
 3. **Phase 3:** seasons (FAO Crop Calendar API, USDA IPAD, GGCMI) as a 12-month strip per
    country × crop; NUTS2 production from Eurostat `apro_cpshr` and JRC EUCROPMAP rasters as a
    "what is grown where" layer.
@@ -97,7 +98,9 @@ make serve       # cd web && npm run dev
 | Supply/utilisation, SSR/IDR | FAOSTAT FBS (2010–) | `https://bulks-faostat.fao.org/production/FoodBalanceSheets_E_All_Data_(Normalized).zip` | CC BY 4.0. Elements: Production, Import quantity, Export quantity, Domestic supply quantity, Stock Variation, Feed, Food supply (kcal/capita/day) |
 | Production | FAOSTAT QCL | `.../Production_Crops_Livestock_E_All_Data_(Normalized).zip` | national, 1961– |
 | Bilateral trade (FAO items) | FAOSTAT Detailed Trade Matrix | `.../Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip` | CC BY 4.0. 420 MB zip, 8.5 GB CSV: stream it, never unzip. Trade items (CPC), not FBS items: `mappings/trade_items.csv` maps them to groups. No fish |
-| Bilateral trade (CN8, intra-EU) | Eurostat Comext | `https://ec.europa.eu/eurostat/api/comext/dissemination/` | EU reporters only |
+| Bilateral trade (HS6/CN8, EU members) | Eurostat Comext DS-045409 | SDMX API `https://ec.europa.eu/eurostat/api/comext/dissemination/sdmx/2.1/data/DS-045409/` (`atlas download --source comext`, ~270 queued requests merged into one file) | CC BY 4.0 (Eurostat). EU reporters only. Fish partners and the EU bloc's fish shares (FAO has no fish trade); other foods only compared with the FAO matrix (`pipeline/comext.py`). HS6 → groups via `mappings/hs_items.csv` (`atlas crosswalk`) |
+| HS ↔ CPC correspondence | UN Statistics Division: CPC 2.1–HS 2017 correspondence, HS 2022→2017 conversion | `https://unstats.un.org/unsd/classifications/Econ` | UN terms of use (attribution). Base of the HS6 crosswalk; hand decisions in `mappings/hs_overrides.csv` |
+| Fish live-weight factors | EUMOFA, Metadata 2 Annex 7 "Conversion factors by CN-8 code" | `https://fishery-aquaculture-market-observatory.ec.europa.eu/en/data/metadata` | EC reuse notice (attribution). Per CN8 code and year, 2011– |
 | Bilateral trade (HS6, reconciled) | CEPII BACI | manual download from CEPII page | Etalab 2.0; ~2-year lag |
 | EU balances (dairy, tomatoes, olive oil, wine) | DG AGRI–JRC "EU estimated agricultural balance sheets" | browser download only (`atlas download --source jrc` prints steps) → `data/raw/jrc/` | EC reuse notice (attribution). Intra-EU trade counted once, processed goods converted back; replaces FAO for EU dairy, tomatoes, olive oil, wine (`pipeline/jrc.py`, comparison in methodology) |
 | Second opinion on FBS (cereals, oilseeds, oils, sugar, meat, butter, coffee) | USDA FAS PSD | `https://apps.fas.usda.gov/psdonline/downloads/psd_alldata_csv.zip` (`atlas download --source usda`) | US government work, public domain. EU only as a bloc. Compared, never substituted: `pipeline/usda.py`; large gaps shown next to FAO's figure |

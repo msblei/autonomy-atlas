@@ -20,7 +20,9 @@ Inputs, read directly:
   `verify/.cache/tm_qty_<sha>.parquet` (about 15 s, once per zip hash).
 - `data/raw/jrc/bal/Dataset_EU_estimated_agricultural_balance_sheets.csv`
 - `data/raw/usda/psd_alldata_csv.zip` (USDA PSD, read out of the zip)
-- `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv}`
+- `data/raw/comext/DS-045409_food.csv.gz` (Eurostat Comext; only its fish CN8 rows are used) and
+  `data/raw/eumofa/conversion_factors_cn8.xlsx` (EUMOFA live-weight factors)
+- `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv,comext_partners.csv}`
 
 Outputs:
 
@@ -103,11 +105,12 @@ alternatives now are the pipeline's earlier behaviours, kept to explain any regr
     POWDER. The file has no separate bulk raw milk trade line, so it is taken to be inside
     drinking milk. Only uses are scaled with supply; FAO's per-person kcal and protein are kept.
     Dairy uses are scaled year by year, then averaged.
-9. **EU27 extra-EU shares.** By product weight, over partners mapped to ISO3. Fallback order:
-    member's all-food share, then 1.0. EU27 uses = members' sums × D_EU / ΣD_members per item
+9. **EU27 extra-EU shares.** By product weight, over partners mapped to ISO3; fish from Comext in
+    live weight over all partners (unnamed Q codes outside the EU except QR, QV, QY). Fallback
+    order: member's all-food share, then 1.0. EU27 uses = members' sums × D_EU / ΣD_members per item
     and year.
 10. **kcal-basis IDR** is not defined in the spec. It is computed like kcal SSR; unknown imports
-    (EU27 fish) give null.
+    give null.
 11. **Averages and claims** are not in the spec. `europe_avg` / `world_avg`: food kg per person
     = Σ food / Σ population; protein = population-weighted `g_per_day`.
     `claims.eu_intra_dairy_mt` = FAO members' dairy trade × (1 − extra-EU share), Mt. Both were
@@ -115,7 +118,9 @@ alternatives now are the pipeline's earlier behaviours, kept to explain any regr
 12. **Trade.** "No report at all" = no tonnes row of any item for that country, flow and year.
     Yearly mean = window sum / 3. "Grown" tracing runs on window-mean matrices, using the
     published (JRC-adjusted) national P and M. Trade-only countries, and countries without a
-    window balance, keep trade-matrix imports and P = 0.
+    window balance, keep trade-matrix imports and P = 0. Fish partners: EU members' Comext rows
+    (CN8 under 0301–0309, 1604, 1605, EUMOFA factor of that year or the nearest listed year; the
+    earlier year on a tie), named partners only; no "grown"; "all" leaves fish out.
 
 ## Not recomputed
 
