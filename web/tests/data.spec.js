@@ -280,7 +280,7 @@ test("what if Russia and Ukraine stopped selling: the map key switches and the p
   await open(page, "EGY/cereals");
   await expect(view(page)).toContainText(`Egypt would lack ${Math.round(v)}% of the cereals it uses`);
   await page.locator("#legend .whatif").click();
-  await expect(page.locator("#legend")).toContainText("grown in Russia or Ukraine");
+  await expect(page.locator("#legend")).toContainText("produced in Russia or Ukraine");
   await page.locator("#legend .whatif").click(); // and back
   await expect(page.locator("#legend")).toContainText("would last");
 });

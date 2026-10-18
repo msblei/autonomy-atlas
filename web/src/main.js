@@ -56,7 +56,7 @@ const SCALES = {
 
 // Where a food goes once it is in the country ("domestic supply"), in display order.
 const USES = [
-  { key: "food", label: "eaten by people", color: "#c9822f" },
+  { key: "food", label: "food for people", color: "#c9822f" },
   { key: "feed", label: "fed to animals", color: "#e3b47a" },
   { key: "processing", label: "made into other foods (oil, sugar, beer…)", color: "#9c7bb0" },
   { key: "other_uses", label: "industry & biofuel", color: "#6f8fa8" },
@@ -804,7 +804,7 @@ function tooltip(iso3) {
   if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}`;
   if (scenarioOn()) {
     return `<strong>${nameOf(id)}</strong><span class="v">${v < 1 ? "under 1" : Math.round(v)}% of ${state.group === "all"
-      ? "the protein in its food" : `the ${food()} it uses`} was grown in Russia or Ukraine</span>`;
+      ? "the protein in its food" : `the ${food()} it uses`} was produced in Russia or Ukraine</span>`;
   }
   const what = state.group === "all" ? "Own food lasts" : `Own ${food()} lasts`;
   return `<strong>${nameOf(id)}</strong>
@@ -1051,10 +1051,10 @@ function renderLegend() {
   const toggle = ["trade", "where", "table"].includes(state.level) ? "" : `<button type="button" class="linkish whatif" data-scenario="${state.scenario ? 0 : 1}">${state.scenario
     ? "Back to: how long it would last" : "What if Russia and Ukraine stopped selling?"}</button>`;
   if (scenarioOn()) {
-    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the protein in food</b>" : `the <b>${food()}</b> used`} that was grown in <b>Russia or Ukraine</b></p>
+    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the protein in food</b>" : `the <b>${food()}</b> used`} that was produced in <b>Russia or Ukraine</b></p>
       ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
   } else {
-    el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months</p>${seasonScale()}${toggle}`;
+    el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last${state.group === "all" ? ", by protein," : ","} in months</p>${seasonScale()}${toggle}`;
   }
   const b = el.querySelector("[data-scenario]");
   if (b) b.onclick = () => { state.scenario = b.dataset.scenario === "1"; if (state.scenario) loadScenario(); render(); keepFocus("#legend .whatif"); };
@@ -1328,7 +1328,9 @@ function viewIntro() {
 
 // No food balance (Japan, Singapore): say so; the card still shows what it buys and sells.
 function viewNoData() {
-  return `<p class="lead-none">No food balance from FAO.</p>`;
+  return `<p class="lead-none">No food balance from FAO.</p>
+    <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}, so there is nothing to divide. The card
+      shows only what it buys and sells, from the trade records.</p>`;
 }
 
 // For EU members: the EU as a whole, one row to compare and click.
@@ -1856,9 +1858,9 @@ function perPerson(id) {
   const tenths = pc.supply > 0 ? Math.round(((pc.food ?? 0) / pc.supply) * 10) : null;
   const eaten =
     tenths == null ? ""
-    : tenths >= 9 ? "Almost all of it is eaten by people."
-    : tenths === 0 ? "Hardly any of it is eaten by people directly."
-    : `Of every 10 kg used here, ${tenths} ${tenths === 1 ? "is" : "are"} eaten by people directly.`;
+    : tenths >= 9 ? "Almost all of it goes to food."
+    : tenths === 0 ? "Hardly any of it goes to food directly."
+    : `Of every 10 kg used here, ${tenths} ${tenths === 1 ? "goes" : "go"} to food directly.`;
   const eur = state.data.meta.europe_avg?.[state.group]?.food_kg_pc;
   const world = state.data.meta.world_avg?.[state.group]?.food_kg_pc;
   const avgs = [eur != null ? `Europe ${kg(eur)}` : null, world != null ? `world ${kg(world)}` : null]
@@ -1878,8 +1880,9 @@ function perPerson(id) {
       .map((u) => `<li><i style="background:${u.color}"></i>${kg(u.v)} ${u.label}</li>`)
       .join("")}</ul>
     ${eaten ? `<p class="small">${eaten}</p>` : ""}
-    ${perDay != null ? `<p class="small">The average person ${where} eats <strong>${kg(pc.food)}</strong> of ${food()} a year,
-      about ${perDay.toLocaleString("en-GB")} g a day${avgs ? ` (averages: ${avgs})` : ""}.</p>` : ""}
+    ${perDay != null ? `<p class="small">Food supply ${where}: <strong>${kg(pc.food)}</strong> of ${food()} per person a year,
+      about ${perDay.toLocaleString("en-GB")} g a day${avgs ? ` (averages: ${avgs})` : ""}. That is what reaches
+      shops and homes; what is wasted there is not taken off.</p>` : ""}
     ${trade}`;
 }
 
@@ -1897,7 +1900,8 @@ function storageNote(id) {
   const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0;
   const store = c.supply - (P + M - X);
   if (Math.abs(store) < Math.max(1, 0.005 * (P + M))) return "";
-  return `<p class="small">${shortTonnes(Math.abs(store))} a year ${store > 0 ? "taken out of" : "put into"} storage.</p>`;
+  return `<p class="small">In FAO's balance, ${shortTonnes(Math.abs(store))} a year ${store > 0 ? "come out of" : "go into"} stocks
+    (often FAO's estimate, which closes the balance).</p>`;
 }
 
 // Biggest surplus and shortfall per person for one food (produced minus used, kg/person/year).
@@ -1911,13 +1915,25 @@ function compareFood(id) {
     .sort((a, b) => b.v - a.v);
   if (rows.length < 10) return "";
   const signed = (v) => `${v > 0 ? "+" : "−"}${kg(Math.abs(v))}`;
+  // Withheld balances are not ranked; name those whose production per person alone would put
+  // them among the five, so the list does not read as complete (Ireland's dairy).
+  const fifth = rows[4].v;
+  const unranked = rankable()
+    .filter((r) => {
+      const prod = withheld(r.id)?.components_kt?.production, pop = r.c.population_k;
+      return prod != null && pop && (prod * 1000) / pop > fifth;
+    })
+    .map((r) => r.c.name);
+  const names = unranked.length > 1 ? `${unranked.slice(0, -1).join(", ")} and ${unranked.at(-1)}` : unranked[0];
   return `
     <h3>Who has ${food()} to spare?</h3>
     <p class="small">What it produces minus what it uses, per person a year</p>
     <div class="cols">
       <div><p class="small">Most to spare</p>${rankList(rows.slice(0, 5), signed)}</div>
       <div><p class="small">Most missing</p>${rankList(rows.slice(-5).reverse(), signed)}</div>
-    </div>`;
+    </div>
+    ${unranked.length ? `<p class="small">Not ranked, because FAO's figures for them do not hold together: ${names},
+      which produce much of it per person.</p>` : ""}`;
 }
 
 // Level 3: the receipt. Every figure behind the date, the sum, and how to look it up at FAO.
@@ -2154,7 +2170,8 @@ function receiptAll(id, v) {
     <h3>The sum for ${nameOf(id)}</h3>
     <p>“All food” cannot be added up in tonnes: a tonne of lettuce is not a tonne of cheese. So we
       count protein, the part of food that is hardest to replace. People ${id === EU ? "in the EU" : `in ${nameOf(id)}`}
-      get about <strong>${Math.round(p?.g_per_day ?? 0)} g</strong> of protein a day.</p>
+      are supplied about <strong>${Math.round(p?.g_per_day ?? 0)} g</strong> of protein a day (what reaches
+      shops and homes, more than is eaten).</p>
     ${country(id)?.indicators?.all?.n_withheld ? `<p class="aside">${country(id).indicators.all.n_withheld}
       ${country(id).indicators.all.n_withheld === 1 ? "food is" : "foods are"} left out because FAO's figures for
       ${country(id).indicators.all.n_withheld === 1 ? "it contradict" : "them contradict"} themselves (more sold or eaten
@@ -2219,7 +2236,13 @@ function caveats(id, g) {
       <li>It is a thought experiment. It treats a year's harvest as one big store, although fresh
         food cannot be kept all year.</li>
       <li>It assumes people keep eating the same mix of foods.</li>
+      <li>It assumes farms would produce as much as now, although they too buy fuel, fertiliser,
+        feed and seed abroad.</li>
+      <li>Producing enough is not the same as food security: a country can score high where many
+        people can afford little, and low where it can afford to buy abroad.</li>
       ${g.plain ? `<li>${g.plain}</li>` : ""}
+      ${id === "UKR" ? `<li>Ukraine suspended much of its statistics in 2022; FAO's figures for 2022 and 2023
+        rest largely on estimates. Treat them as provisional.</li>` : ""}
       ${id === EU ? `<li>For the EU, trade between member countries is left out: only what the EU as a whole produces and uses counts.</li>` : ""}
       ${id && isMember(id) ? `<li>Food it buys from other EU countries counts as buying abroad.</li>` : ""}
     </ul>`;
