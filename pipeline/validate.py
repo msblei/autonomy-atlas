@@ -36,7 +36,7 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # A warning the site already deals with (handled), or that a review found right (confirmed): listed
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
-PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "countries.geojson"]
+PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
 KT_TOL = 0.5  # kt, for identities between exported components
@@ -423,6 +423,27 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
     return out
 
 
+def check_regions(reg: dict, geo: dict) -> list[Finding]:
+    """Regional figures (methodology, "Where it is grown"): shares add up to 100% (rounding),
+    coverage at least 90%, every region has an outline, more than one region per country."""
+    out = []
+    outlines = {f["id"] for f in geo["features"]}
+    for iso3, gs in reg.get("countries", {}).items():
+        for group, r in gs.items():
+            rows = r["regions"]
+            if len(rows) < 2:
+                out.append(Finding("region_rows", BLOCK, f"{len(rows)} region(s)", iso3, group))
+            if abs(sum(x[2] for x in rows) - 100) > 0.05 * len(rows) + 0.1:
+                out.append(Finding("region_shares", BLOCK, f"shares add up to {sum(x[2] for x in rows):.1f}",
+                                   iso3, group))
+            if r["coverage"] is not None and r["coverage"] < 90:
+                out.append(Finding("region_coverage", BLOCK, f"coverage {r['coverage']}%", iso3, group))
+            missing = [x[0] for x in rows if x[0] not in outlines]
+            if missing:
+                out.append(Finding("region_outline", BLOCK, f"no outline for {missing[:3]}", iso3, group))
+    return out
+
+
 def check_seasons(sea: dict, ssr: dict | None) -> list[Finding]:
     """Crop calendars (methodology, "Seasons"): twelve months; each crop is sown and harvested
     once, so those shares add up to 100% (within rounding); growing covers sowing and harvest
@@ -549,6 +570,10 @@ def run(*, write: bool = True) -> list[Finding]:
         findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))
     else:
         findings += check_published(ssr, its, trade)
+    reg = config.WEB_DATA / "regions.json"
+    if reg.exists():
+        findings += check_regions(json.loads(reg.read_text(encoding="utf-8")),
+                                  json.loads((config.WEB_DATA / "regions.geojson").read_text(encoding="utf-8")))
     sea = config.WEB_DATA / "seasons.json"
     if sea.exists():
         findings += check_seasons(json.loads(sea.read_text(encoding="utf-8")), ssr)

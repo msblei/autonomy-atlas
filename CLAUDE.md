@@ -93,8 +93,10 @@ make serve       # cd web && npm run dev
 3. **Phase 3 (in part):** seasons as a 12-month strip per country × crop: done for cereals,
    potatoes, sugar beet, pulses and oilseeds (GGCMI calendar weighted by ISIMIP crop areas, "When
    it is grown" on the food page); fruit and vegetables still to come (FAO Crop Calendar API).
-   Still to do: NUTS2 production from Eurostat `apro_cpshr` and JRC EUCROPMAP rasters as a
-   "what is grown where" layer.
+   "What is grown where": regional production from Eurostat `apro_cpshr` (NUTS2, Germany NUTS1)
+   for cereals, potatoes, sugar beet, pulses and oilseeds, as a list and a map of t per km²
+   ("Where in … do they grow?", `#ISO/group/where`, `pipeline/regions.py`). Still to do: fruit
+   and vegetable seasons; JRC EUCROPMAP rasters (10 m crop types) for detail within regions.
 4. **Phase 4:** feed-adjusted SSR for livestock products (imported soy meal), calorie-weighted
    composite index, scenario toggles ("lose Ukraine/Russia supply").
 
@@ -111,7 +113,7 @@ make serve       # cd web && npm run dev
 | Bilateral trade (HS6, reconciled) | CEPII BACI, HS 2017 edition, release 202601 | `https://www.cepii.fr/DATA_DOWNLOAD/baci/data/BACI_HS17_V202601.zip` (`atlas download --source baci`, 795 MB, kept zipped) | Etalab 2.0, cite Gaulier & Zignago (2010). ~1-year lag. Fish partners outside the EU (live weight with the EU's EUMOFA mix per HS6); other foods only compared with the FAO matrix (`pipeline/baci.py`). A new release renames the file: update `config.SOURCES` and `baci.RELEASE` |
 | EU balances (dairy, tomatoes, olive oil, wine) | DG AGRI–JRC "EU estimated agricultural balance sheets" | browser download only (`atlas download --source jrc` prints steps) → `data/raw/jrc/` | EC reuse notice (attribution). Intra-EU trade counted once, processed goods converted back; replaces FAO for EU dairy, tomatoes, olive oil, wine (`pipeline/jrc.py`, comparison in methodology) |
 | Second opinion on FBS (cereals, oilseeds, oils, sugar, meat, butter, coffee) | USDA FAS PSD | `https://apps.fas.usda.gov/psdonline/downloads/psd_alldata_csv.zip` (`atlas download --source usda`) | US government work, public domain. EU only as a bloc. Compared, never substituted: `pipeline/usda.py`; large gaps shown next to FAO's figure |
-| Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | NUTS2, 2000–2024 |
+| Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | CC BY 4.0. NUTS2 (Germany NUTS1), 2000–2024; codes from several NUTS versions: matched to GISCO NUTS 2024, else 2021 (both downloaded with `boundaries`) |
 | Trade → primary equivalent | FAO *Technical Conversion Factors for Agricultural Commodities* (TCF) | `https://www.fao.org/fileadmin/templates/ess/documents/methodology/tcf.pdf` | FAO publication (cite FAO). Extraction rates, medians across countries, become `to_primary` in `mappings/trade_items.csv` (roots, tomato products, coffee, cocoa); dairy uses the JRC's milk-equivalent factors |
 | Seasons (calendar) | GGCMI Phase 3 crop calendar v1.01 (Jägermeyr et al. 2021) | Zenodo record 5062513 (`atlas download --source seasons`) | CC BY 4.0. Planting/maturity day per 0.5° cell, crop, rainfed/irrigated; static. Used for cereals, potatoes, sugar beet, pulses, oilseeds (`pipeline/seasons.py`); cassava and sugar cane left out (no single season) |
 | Seasons (where crops grow) | ISIMIP3a 15-crop land use (histsoc 1901–2021) and fractional country masks; GGCMI Phase 2 winter/spring wheat areas (Zenodo 3773827) | `files.isimip.org` (379 MB + 1 MB), Zenodo | CC BY 4.0. Weights for the calendar grid. MapSPAM 2020 would be finer but needs a guestbook form (name, e-mail) and IFPRI's terms: not scripted |

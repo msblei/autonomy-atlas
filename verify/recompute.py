@@ -390,6 +390,91 @@ def season_calendars():
     return out
 
 
+# --------------------------------------------------------------------------------------------
+# Methodology, "Where it is grown": regional production from Eurostat apro_cpshr
+# --------------------------------------------------------------------------------------------
+REGION_CROPS = {"cereals": ["C0000"], "potatoes_roots": ["R1000"], "sugar": ["R2000"], "pulses": ["P0000"],
+                "oilseeds": ["I1110", "I1120", "I1130"]}
+
+
+def region_rows(WIN):
+    """{iso: {group: {"coverage": %, "regions": {code: (kt, share, t_per_km2)}}}} and the breaks."""
+    raw = ROOT / "data/raw"
+    t = pd.read_csv(raw / "eurostat/apro_cpshr.tsv.gz", sep="\t", dtype=str)
+    t.columns = [c.strip() for c in t.columns]
+    keys = t.iloc[:, 0].str.split(",", expand=True)
+    t = t.assign(crop=keys[1], unit=keys[2], geo=keys[3])
+    t = t[t["unit"] == "HPRD_HUMD_EU_THS_T"]
+    feats = {}
+    for y in (2024, 2021):
+        for f in json.load(open(raw / f"gisco/NUTS_RG_20M_{y}_4326.geojson"))["features"]:
+            feats.setdefault(f["properties"]["NUTS_ID"], f["geometry"])
+
+    def area(geom):  # spherical polygon area, km2
+        R = 6371.0088
+        polys = [geom["coordinates"]] if geom["type"] == "Polygon" else geom["coordinates"]
+        tot = 0.0
+        for poly in polys:
+            for k, ring in enumerate(poly):
+                a = 0.0
+                for j in range(len(ring)):
+                    x1, y1 = ring[j]
+                    x2, y2 = ring[(j + 1) % len(ring)]
+                    a += math.radians(x2 - x1) * (2 + math.sin(math.radians(y1)) + math.sin(math.radians(y2)))
+                tot += (-1 if k else 1) * abs(a) * R * R / 2
+        return tot
+
+    iso = {c["eurostat"]: c["iso3"] for c in EUROPE if c.get("eurostat")}
+    out, dens = {}, defaultdict(list)
+    for g, crops in REGION_CROPS.items():
+        x = t[t["crop"].isin(crops)]
+        vals = defaultdict(dict)  # geo -> year -> summed kt
+        for _, r in x.iterrows():
+            for y in WIN:
+                v = str(r.get(str(y), ":")).strip().split(" ")[0]
+                try:
+                    vals[r["geo"]][y] = vals[r["geo"]].get(y, 0.0) + float(v)
+                except ValueError:
+                    pass
+        mean = {geo: sum(ys.values()) / len(ys) for geo, ys in vals.items() if ys}
+        for ctry in sorted({geo[:2] for geo in mean}):
+            if ctry not in iso:
+                continue
+            national = mean.get(ctry, 0.0)
+            chosen = None
+            for lvl in (2, 1):
+                regs = {geo: v for geo, v in mean.items()
+                        if geo[:2] == ctry and len(geo) == 2 + lvl and geo in feats and not geo.endswith("Z")}
+                if len(regs) > 1:
+                    chosen = regs
+                    break
+            if not chosen:
+                continue
+            total = sum(chosen.values())
+            if national <= 0 or total <= 0 or total / national < 0.9:
+                continue
+            rows = {}
+            for geo, kt in chosen.items():
+                d = 1000 * kt / area(feats[geo])
+                rows[geo] = (kt, 100 * kt / total, d)
+                if d > 0:
+                    dens[g].append(d)
+            out.setdefault(iso[ctry], {})[g] = {"coverage": round(100 * total / national), "regions": rows}
+        eu = {geo: v for c, gs in out.items() if c in EU and g in gs for geo, v in gs[g]["regions"].items()}
+        if eu:
+            tot = sum(v[0] for v in eu.values())
+            out.setdefault("EU27", {})[g] = {"coverage": None,
+                                             "regions": {geo: (v[0], 100 * v[0] / tot, v[2]) for geo, v in eu.items()}}
+
+    def nice(v):
+        if v <= 0:
+            return 0.0
+        p = 10 ** (math.floor(math.log10(v)) - 1)
+        return round(v / p) * p
+    breaks = {g: [nice(float(np.percentile(d, q))) for q in (20, 40, 60, 80)] for g, d in dens.items()}
+    return out, breaks
+
+
 def season_rows(res, D):
     """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
     cal = season_calendars()
@@ -1318,7 +1403,7 @@ def main():
     SHAS["comext_gz"] = sha256(COMEXT_GZ)
     SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
     SHAS["baci_zip"] = sha256(BACI_ZIP)
-    for k in ("ssr.json", "items.json", "trade.json", "seasons.json"):
+    for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
     D = load_all()
@@ -1516,6 +1601,30 @@ def main():
                     record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
                                          "field": "concentration"}, e, mine)
 
+    # ---- regions (methodology "Where it is grown") ----
+    reg = json.load(open(OUT_DIR / "regions.json"))
+    mine_r, mine_b = region_rows(D.WIN)
+    for g, b in sorted(mine_b.items()):
+        counts["region_breaks"] += 1
+        e = reg["meta"]["breaks"].get(g)
+        if e is None or any(abs(a - b_) > 1e-9 * max(1, abs(b_)) for a, b_ in zip(e, b)):
+            record("region_breaks", {"file": "regions.json", "group": g, "field": "breaks"}, e, b)
+    for iso in sorted(set(reg["countries"]) | set(mine_r)):
+        for g in sorted(set(reg["countries"].get(iso, {})) | set(mine_r.get(iso, {}))):
+            e, m_ = reg["countries"].get(iso, {}).get(g), mine_r.get(iso, {}).get(g)
+            w = {"file": "regions.json", "country": iso, "group": g}
+            counts["region_sets"] += 1
+            if e is None or m_ is None or {r[0] for r in e["regions"]} != set(m_["regions"]) \
+                    or e["coverage"] != m_["coverage"]:
+                record("region_sets", {**w, "field": "regions"}, e and sorted(r[0] for r in e["regions"]),
+                       m_ and sorted(m_["regions"]))
+                continue
+            for code, kt, share, dens in e["regions"]:
+                k2, s2, d2 = m_["regions"][code]
+                counts["region_values"] += 3
+                if abs(kt - k2) > 0.5 + 1e-6 or abs(share - s2) > 0.05 + 1e-6 or abs(dens - d2) > 0.5 + 1e-6:
+                    record("region_values", {**w, "field": code}, [kt, share, dens], [round(k2), round(s2, 1), round(d2)])
+
     # ---- seasons (methodology "Seasons") ----
     sea = json.load(open(OUT_DIR / "seasons.json"))["countries"]
     mine_s = season_rows(res, D)
@@ -1658,7 +1767,7 @@ def main():
     report = {
         "ok": total == 0,
         "n_mismatches": total,
-        "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json")},
+        "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json")},
         "runtime_s": round(time.time() - T0, 1),
         "window": f"{D.WIN[0]}-{D.WIN[-1]}",
         "primary_reading": PRIMARY,

@@ -615,6 +615,32 @@ is a typical year, not the years of the other figures.
 item, share, sown: [12], growing: [12], harvest: [12]}]}}`, `share` = the crop's % of the group's
 production.
 
+## Where it is grown: regions in Europe
+
+Regional crop production from Eurostat `apro_cpshr` ("Crop production in EU standard humidity by
+NUTS 2 regions"; `pipeline/regions.py`, `web/public/data/regions.json` and `regions.geojson`).
+Licence: Eurostat (CC BY 4.0); boundaries GISCO NUTS 2024 and 2021, 1:20 million (non-commercial,
+© EuroGeographics).
+
+- **What:** harvested production (`HPRD_HUMD_EU_THS_T`, 1000 t at EU standard humidity) per
+  region, yearly mean over the FBS window years the region reports. Food groups: cereals
+  (`C0000`, cereals for grain incl. seed), potatoes and roots (`R1000` potatoes), sugar (`R2000`
+  sugar beet), pulses (`P0000`), oilseeds (`I1110` rape and turnip rape + `I1120` sunflower +
+  `I1130` soya, the sum of those a region reports). Fruit, vegetables and wine are too sparse.
+- **Which regions:** per country and crop, the finest NUTS level with data in the window (NUTS 2,
+  else NUTS 1: Germany reports by Land). Codes are matched to the NUTS 2024 boundaries, else to
+  NUTS 2021; codes in neither (older classifications kept in the series, extra-regio `ZZ`) are
+  dropped. A country is shown when its kept regions add up to at least 90% of its national total
+  in the same table (`coverage`) and it has more than one region. The EU27 shows all its members'
+  shown regions (shares of their sum).
+- **Shown:** each region's share of the regions' sum (%), its production (kt a year), and its
+  production per km² of the region (t per km²; area from the boundaries, spherical, at 1:20
+  million). The map shades regions by t per km² in five classes per food, the same for every
+  country: the 20th, 40th, 60th and 80th percentiles of all shown regions' densities above 0,
+  rounded to two significant digits; regions that grow none of it are drawn as none.
+- **Not the FBS:** Eurostat's crop statistics (EU standard humidity, harvested production) are not
+  FAO's balance; the page shows shares and regional tonnes only, never next to the balance figures.
+
 ## Scenario "without trade" (considered, not built)
 
 With all trade stopped a country keeps its production, so "available without trade" per person is

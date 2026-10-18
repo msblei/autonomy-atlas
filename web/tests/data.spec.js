@@ -209,3 +209,17 @@ test("crop calendars: the strip shows the exported months in a typical year", as
   await open(page, "DEU/fruit"); // no calendar for fruit
   await expect(view(page).locator(".season")).toHaveCount(0);
 });
+
+test("where it is grown: regions and shares as exported, reached from the food page", async ({ page }) => {
+  const reg = JSON.parse(readFileSync(new URL("../public/data/regions.json", import.meta.url), "utf8"));
+  const r = reg.countries.DEU.cereals.regions;
+  await open(page, "DEU/cereals");
+  await view(page).locator("a.more", { hasText: "Where in Germany" }).click();
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe("#DEU/cereals/where");
+  const first = view(page).locator("ol.partners li").first();
+  await expect(first).toContainText(reg.names[r[0][0]]);
+  await expect(first).toContainText(`${Math.round(r[0][2])}%`);
+  await expect(page.locator("#foot")).toContainText("Eurostat crop statistics by region");
+  await page.locator("#up").click(); // back goes to the food page
+  await expect.poll(() => page.evaluate(() => location.hash)).toBe("#DEU/cereals");
+});

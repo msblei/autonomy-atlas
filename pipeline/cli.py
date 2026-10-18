@@ -21,6 +21,7 @@ from . import (
     export,
     harmonise,
     manifest,
+    regions,
     report,
     seasons,
     trade,
@@ -85,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         comext.run_value(trade.fbs_window())
         baci.run_compare(trade.fbs_window())
         seasons.run()
+        regions.run()
         usda.run()
     elif args.cmd == "export":
         export.run()
@@ -101,6 +103,7 @@ def main(argv: list[str] | None = None) -> int:
         comext.run_value(trade.fbs_window())
         baci.run_compare(trade.fbs_window())
         seasons.run()
+        regions.run()
         usda.run()
         export.run()
         return _validate()

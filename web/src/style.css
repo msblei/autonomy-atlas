@@ -245,7 +245,7 @@ a.sum-row[href]:hover strong svg { stroke: var(--ink); }
    lists and charts */
 
 .partners { list-style: none; margin: 6px 0 12px; padding: 0; }
-.partners a, .partners .rest {
+.partners a, .partners .rest, .partners .line {
   display: grid; grid-template-columns: 1fr 90px 44px; gap: 10px; align-items: center;
   padding: 8px 6px; border-bottom: 1px solid var(--edge); color: var(--ink); text-decoration: none;
 }
@@ -253,6 +253,7 @@ a.sum-row[href]:hover strong svg { stroke: var(--ink); }
 .partners .rest { color: var(--ink-soft); }
 .partners .track { height: 8px; margin: 0; }
 .partners .bar { background: var(--blue); }
+.partners .bar.prod { background: var(--produced); }
 .partners .pct { text-align: right; font-weight: 700; }
 
 /* calendar strip */

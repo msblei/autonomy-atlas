@@ -62,7 +62,7 @@ data/       raw / interim / processed (gitignored)
 | Source | Used for | Licence |
 |---|---|---|
 | [FAOSTAT](https://www.fao.org/faostat/en/#data) Food Balance Sheets, Production, Trade Matrix | supply, SSR/IDR, bilateral trade | CC BY 4.0 |
-| [Eurostat](https://ec.europa.eu/eurostat) Comext, `apro_cpshr` | EU members' fish trade and the EU's fish balance; a check on FAO's trade figures; NUTS2 crops (planned) | CC BY 4.0 |
+| [Eurostat](https://ec.europa.eu/eurostat) Comext, `apro_cpshr` | EU members' fish trade and the EU's fish balance; a check on FAO's trade figures; where crops grow, by region | CC BY 4.0 |
 | [EUMOFA](https://fishery-aquaculture-market-observatory.ec.europa.eu) conversion factors | fish trade in live weight | EC reuse notice (attribution) |
 | [UN Statistics Division](https://unstats.un.org/unsd/classifications/Econ) CPC–HS correspondence | trade codes to food groups | UN terms of use (attribution) |
 | [CEPII BACI](https://www.cepii.fr/CEPII/en/bdd_modele/bdd_modele_item.asp?id=37) | fish trade outside the EU; a check on FAO's trade figures | Etalab Open Licence 2.0 (cite Gaulier & Zignago 2010) |

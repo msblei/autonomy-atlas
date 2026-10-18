@@ -18,7 +18,7 @@ from datetime import UTC, datetime
 
 import pandas as pd
 
-from . import checks, config, jrc
+from . import checks, config, jrc, regions
 from .compute import EU_BLOC, to_wide
 from .harmonise import load_countries, load_products
 from .trade import load_trade_only
@@ -571,3 +571,4 @@ def run() -> None:
     export_ssr()
     export_trade()
     export_seasons()
+    regions.export()

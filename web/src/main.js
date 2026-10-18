@@ -272,6 +272,7 @@ map.on("load", async () => {
   addLabels();
 
   state.mapReady = true;
+  addRegionLayers();
   state.bloc = map.getZoom() < EU_ZOOM;
   paintMap();
   renderLegend();
@@ -288,6 +289,15 @@ map.on("load", async () => {
   // updates it (crossing EU_ZOOM turns "France" into "European Union" and back).
   let mouse = null; // last pointer position over the map, in pixels
   const hoverAt = (point) => {
+    const reg = state.level === "where" && map.getLayer("regions-fill")
+      ? map.queryRenderedFeatures(point, { layers: ["regions-fill"] })[0] : null;
+    const tip = reg && regionTooltip(reg.properties.code);
+    if (tip) {
+      map.getCanvas().style.cursor = "";
+      map.setFilter("atlas-hover", ["==", ["get", "iso3"], ""]);
+      popup.setLngLat(map.unproject(point)).setHTML(tip).addTo(map);
+      return;
+    }
     const f = map.queryRenderedFeatures(point, { layers: ["atlas-fill"] })[0];
     if (!f) {
       map.getCanvas().style.cursor = "";
@@ -345,7 +355,7 @@ function addLabels() {
 // Labels follow the colours: zoomed out the EU is one shape with one name.
 function filterLabels() {
   const members = state.data.meta.eu_members;
-  const bloc = state.bloc && state.level !== "trade";
+  const bloc = state.bloc && state.level !== "trade" && (state.level !== "where" || state.iso3 === EU);
   LABEL_RANKS.forEach(([min], i) => {
     const max = i ? LABEL_RANKS[i - 1][0] : Infinity;
     const hide = bloc ? members : [EU];
@@ -416,7 +426,8 @@ function parseHash() {
   const group = state.data.groups.some((g) => g.key === b) ? b : "all";
   if (c === "used" && group === "all") return { iso3: a, group, level: "country" };
   if (c === "trade" || c === "sells") return { iso3: a, group, level: "trade", flow: c === "sells" ? "exports" : "imports" };
-  if (["sources", "table", "used"].includes(c)) return { iso3: a, group, level: c };
+  if (c === "where" && group === "all") return { iso3: a, group, level: "country" };
+  if (["sources", "table", "used", "where"].includes(c)) return { iso3: a, group, level: c };
   return group === "all" ? { iso3: a, group, level: "country" } : { iso3: a, group, level: "food" };
 }
 
@@ -744,7 +755,7 @@ const DETAIL_ORDER = ["food", "imports", "exports", "used", "sources", "table"];
 
 function detailRow() {
   if (state.level === "trade") return DETAIL_ORDER.indexOf(state.flow);
-  if (["food", "country"].includes(state.level)) return 0;
+  if (["food", "country", "where"].includes(state.level)) return 0;
   return DETAIL_ORDER.indexOf(state.level);
 }
 
@@ -774,7 +785,7 @@ function render({ newPlace = false } = {}) {
 
 function showDetail({ fresh, dir, newPlace }) {
   const views = { intro: viewIntro, about: viewAbout, country: viewCountry,
-    food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable };
+    food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable, where: viewWhere };
   const el = document.getElementById("view");
   const noData = state.iso3 && !country(state.iso3) && state.level !== "about"
     && !(state.level === "trade" && state.trade?.countries[state.iso3]);
@@ -877,6 +888,15 @@ function renderPeek() {
 function paintMap() {
   if (!state.mapReady) return;
   filterLabels();
+  if (state.level === "where" && state.regions) {
+    paintRegions();
+    // one measure per view: the countries step back while the regions show tonnes per km²
+    map.setPaintProperty("atlas-fill", "fill-color", BACKDROP);
+    map.setFilter("atlas-nodata", ["in", ["get", "iso3"], ["literal", []]]);
+    map.setFilter("atlas-line", null);
+    return;
+  }
+  hideRegions();
   if (state.level === "trade" && (!state.trade || tradeFor(state.iso3))) { paintTrade(); return; }
   map.getSource("arcs").setData(emptyFC());
   let paint;
@@ -920,6 +940,11 @@ function seasonScale() {
 // The key sits right under the food buttons: what the map shows, then what the colours mean.
 function renderLegend() {
   const el = document.getElementById("legend");
+  if (state.level === "where" && regionsFor()) {
+    const [title, body] = regionLegend();
+    el.innerHTML = `<p class="title">${title}</p>${body}`;
+    return;
+  }
   if (state.level === "trade") {
     const [title, body] = tradeLegend();
     el.innerHTML = `<p class="title">${title}</p>${body}`;
@@ -955,7 +980,7 @@ function chooseFood(group) {
   }
   let level = state.level;
   if (["country", "foods", "food", "intro", "about"].includes(level)) level = group === "all" ? "country" : "food";
-  if (level === "used" && group === "all") level = "country";
+  if ((level === "used" || level === "where") && group === "all") level = "country";
   location.hash = hashFor({ iso3: state.iso3, group, level, flow: state.flow });
 }
 
@@ -1073,7 +1098,7 @@ function renderFrame() {
   const rows = cardRows(id);
   const here = state.level === "trade" ? state.flow
     : state.level === "used" ? "used"
-    : ["food", "country"].includes(state.level) ? "food" : null;
+    : ["food", "country", "where"].includes(state.level) ? "food" : null;
   for (const a of document.querySelectorAll("#card .sum-row")) {
     const r = rows[a.dataset.row];
     const has = r.value != null;
@@ -1123,6 +1148,12 @@ function renderFoot() {
     ? `<div class="tools"><a href="${link({ level: "sources" })}"${here("sources")}>How do we know?</a>
        <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
     : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
+  if (state.level === "where" && regionsFor()) {
+    el.innerHTML = `${tools}Figures: <a href="https://ec.europa.eu/eurostat/databrowser/view/apro_cpshr/default/table" target="_blank"
+      rel="noopener">Eurostat crop statistics by region</a>, ${state.regions.meta.years.replace("-", "–")} averages. Boundaries
+      © EuroGeographics.`;
+    return;
+  }
   if (state.level === "trade") {
     const key = tradeSourceKey();
     const t = state.data.meta.sources[key];
@@ -1292,6 +1323,7 @@ function viewFood() {
     ${w ? "" : secondOpinion(id)}
     ${w ? "" : trend(id)}
     ${w ? "" : seasonStrip(id)}
+    ${w ? "" : whereLink(id)}
     ${compareFood(id)}`;
 }
 
@@ -1329,6 +1361,111 @@ function seasonStrip(id) {
     </div>
     <p class="small season-key"><i class="m sowing"></i>sown <i class="m growing"></i>growing
       <i class="m harvest"></i>harvested · a typical year</p>`;
+}
+
+// ---- Where it is grown: regions in Europe (regions.json, methodology "Where it is grown") ----
+let regionsLoading = null;
+function loadRegions() {
+  regionsLoading ??= Promise.all([loadJSON("data/regions.json"), loadJSON("data/regions.geojson")])
+    .then(([d, geo]) => {
+      state.regions = d;
+      state.regionGeo = geo;
+      addRegionLayers();
+      if (state.iso3) render();
+    })
+    .catch((e) => console.error(e));
+}
+
+const regionsFor = (id = state.iso3, group = state.group) => state.regions?.countries[id]?.[group] ?? null;
+
+function whereLink(id) {
+  if (!state.regions) { loadRegions(); return ""; }
+  if (!regionsFor(id)) return "";
+  return `<p><a class="more" href="${link({ level: "where" })}">Where ${id === EU ? "in the EU" : `in ${nameOf(id)}`} do ${cropWords()} grow? ›</a></p>`;
+}
+
+function viewWhere() {
+  const id = state.iso3;
+  if (!state.regions) { loadRegions(); return `<p class="hint" data-loading>Loading…</p>`; }
+  const r = regionsFor(id);
+  if (!r) return `<p class="lead-none">No figures by region for ${food()} ${id === EU ? "in the EU" : `in ${nameOf(id)}`}.</p>`;
+  const rows = r.regions.map(([code, kt, share]) => ({ code, kt, share }));
+  const top = rows.slice(0, 8);
+  const rest = Math.max(0, 100 - top.reduce((a, x) => a + x.share, 0));
+  const max = top[0].share;
+  const name = (code) => state.regions.names[code] ?? code;
+  const level = id !== EU && rows.length && rows[0].code.length === 3 ? `${nameOf(id)} reports by state, not by smaller region. ` : "";
+  return `
+    <p class="q">Where ${id === EU ? "in the EU" : `in ${nameOf(id)}`} ${cropWords()} grow</p>
+    <ol class="partners">${top.map((x) => `
+      <li class="line"><span class="name">${name(x.code)}</span>
+        <span class="track"><span class="bar prod" style="width:${(x.share / max) * 100}%"></span></span>
+        <span class="pct">${x.share < 1 ? "<1" : Math.round(x.share)}%</span></li>`).join("")}
+      ${rest >= 1 ? `<li class="rest"><span class="name">Other regions</span><span></span><span class="pct">${Math.round(rest)}%</span></li>` : ""}
+    </ol>
+    <details class="notes"><summary>About these figures</summary>
+    <ul class="caveats">
+      <li>Harvested ${cropWords()} by region from the EU's crop statistics (Eurostat), ${state.regions.meta.years.replace("-", "–")} averages. They are not FAO's food balance, so only the shares are shown here.</li>
+      <li>${level}The map shades each region by how much it grows per square kilometre, so large regions do not look important just for their size.</li>
+      ${r.coverage != null && r.coverage < 100 ? `<li>The regions add up to ${r.coverage}% of ${nameOf(id)}'s total; the rest is not given by region.</li>` : ""}
+    </ul></details>`;
+}
+
+// The crops behind each food's regional figures (methodology, "Where it is grown").
+const CROP_WORDS = { cereals: "cereals", potatoes_roots: "potatoes", sugar: "sugar beet", pulses: "pulses",
+  oilseeds: "rapeseed, sunflower and soy" };
+const cropWords = (group = state.group) => CROP_WORDS[group] ?? food();
+
+const BACKDROP = "#e9e5dc";
+const REGION_COLORS = ["#e8efe4", "#bcd6b8", "#86b48a", "#4f8a61", "#2a5e40"];
+
+function addRegionLayers() {
+  if (!state.mapReady || !state.regionGeo || map.getSource("regions")) return;
+  map.addSource("regions", { type: "geojson", data: state.regionGeo, promoteId: "code" });
+  map.addLayer({ id: "regions-fill", type: "fill", source: "regions", paint: { "fill-color": NO_DATA },
+    filter: ["==", ["get", "code"], ""] }, "atlas-arcs");
+  map.addLayer({ id: "regions-line", type: "line", source: "regions",
+    paint: { "line-color": "#f8f6f1", "line-width": 0.8 }, filter: ["==", ["get", "code"], ""] }, "atlas-arcs");
+  paintMap();
+}
+
+// The regions of this country (all members' for the EU), shaded by t per km² in the food's
+// classes (regions.json meta.breaks); everything else on the map steps back.
+function paintRegions() {
+  const r = regionsFor();
+  const codes = r ? r.regions.map(([c]) => c) : [];
+  const br = state.regions?.meta.breaks[state.group] ?? [];
+  const step = ["step", ["feature-state", "d"], REGION_COLORS[0]];
+  br.forEach((b, i) => step.push(b, REGION_COLORS[i + 1]));
+  map.setPaintProperty("regions-fill", "fill-color", ["case",
+    ["==", ["typeof", ["feature-state", "d"]], "number"],
+    ["case", [">", ["feature-state", "d"], 0], step, NO_DATA], NO_DATA]);
+  for (const [code, , , d] of r?.regions ?? []) map.setFeatureState({ source: "regions", id: code }, { d });
+  map.setFilter("regions-fill", ["in", ["get", "code"], ["literal", codes]]);
+  map.setFilter("regions-line", ["in", ["get", "code"], ["literal", codes]]);
+}
+
+function hideRegions() {
+  if (!map.getLayer("regions-fill")) return;
+  map.setFilter("regions-fill", ["==", ["get", "code"], ""]);
+  map.setFilter("regions-line", ["==", ["get", "code"], ""]);
+}
+
+function regionLegend() {
+  const id = state.iso3;
+  const br = state.regions?.meta.breaks[state.group] ?? [];
+  const f = (x) => (x >= 10 ? Math.round(x) : x >= 1 ? x.toFixed(1).replace(/\.0$/, "") : x.toPrecision(1));
+  const labels = [`<${f(br[0])}`, ...br.slice(0, -1).map((b, i) => `${f(b)}–${f(br[i + 1])}`), `${f(br[br.length - 1])}+`];
+  return [`Where <b>${cropWords()}</b> grow ${id === EU ? "in the EU" : `in ${nameOf(id)}`}, tonnes per km²`,
+    `<div class="scale">${labels.map((l, i) => `<span class="${i === labels.length - 1 ? "last" : ""}"><i style="background:${REGION_COLORS[i]}"></i><em>${l}</em></span>`).join("")}
+      <span class="gap"></span><span class="nodata"><i style="background:${NO_DATA}"></i><em>none</em></span></div>`];
+}
+
+function regionTooltip(code) {
+  const r = regionsFor()?.regions.find(([c]) => c === code);
+  if (!r) return null;
+  const [, kt, share] = r;
+  return `<strong>${state.regions.names[code] ?? code}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)} a year`;
 }
 
 function namesOf(list) {

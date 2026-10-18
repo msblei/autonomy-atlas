@@ -91,7 +91,10 @@ def boundaries(*, force: bool = False) -> list[Path]:
         config.RAW / "natural_earth" / "ne_50m_admin_0_countries.zip",
         force=force,
     )
-    return [nuts, cntr, ne]
+    # NUTS 2021 too: regional series keep 2021 codes where NUTS 2024 changed (pipeline/regions.py)
+    nuts21 = fetch(config.GISCO_NUTS_GEOJSON.format(scale=config.GISCO_NUTS_SCALE, year=2021),
+                   config.RAW / "gisco" / f"NUTS_RG_{config.GISCO_NUTS_SCALE}_2021_4326.geojson", force=force)
+    return [nuts, nuts21, cntr, ne]
 
 
 def baci(*, force: bool = False) -> list[Path]:
