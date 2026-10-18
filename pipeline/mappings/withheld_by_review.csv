@@ -1,0 +1,7 @@
+# Figures withheld after a human review, although FAO's balance does not contradict itself
+# (docs/methodology.md, "Withheld by review"). Withheld everywhere like any other withheld figure:
+# map, rankings, trends, the card. The site states FAO's own lines (bought, fed to animals, eaten)
+# and then `note`, which says why in words: no figures in it (they come from the data). Add a line
+# only with a reason a reader can check in FAO's own figures, and the date of the review.
+iso3,group,reviewed,note
+URY,pulses,2026-10-18,"Imports this large, almost all of them fed to animals, could not be confirmed in the trade records."

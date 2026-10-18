@@ -226,6 +226,7 @@ def export_ssr() -> None:
 
     years = sorted(groups["years"].unique())
     disagree = _usda_disagreements(items)
+    review = checks.reviewed_withholds()
     window = tuple(int(y) for y in years[-1].split("-")) if years else None
     jrc_pub = jrc.published_ssr(window) if window else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
@@ -310,6 +311,8 @@ def export_ssr() -> None:
                 if reason:
                     ind["withheld"] = {"reason": reason, "components_kt": comp,
                                        "range": _range(r.get("ssr_low"), r.get("ssr_high"))}
+                    if reason == checks.REVIEWED:
+                        ind["withheld"]["note"] = review.get((iso3, r["group"]))
                     if reason == checks.PARTS_CONTRADICT:
                         # which foods' own figures contradict themselves, for the explanation
                         bad = items[(items["iso3"] == iso3) & (items["group"] == r["group"])

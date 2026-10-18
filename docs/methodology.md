@@ -55,6 +55,15 @@ residuals −107 kt, D −30 kt. Before this rule the ratio was blank but the pe
 still listed Jordan first with +10 kg "to spare". Ireland, beef 2016: P 588 kt, D 3 kt, ~50 kt
 eaten (FAO's own food line): SSR 19 600%, which spiked Ireland's "all food" trend to 1474%.
 
+**Withheld by review** (`reviewed`): a group listed in `pipeline/mappings/withheld_by_review.csv`
+(iso3, group, date of the review, `note`) is withheld like a contradictory one, in the window and
+in every single year, on both bases, although its balance adds up: only where a human review found
+FAO's figure implausible for a reason a reader can check in FAO's own figures, written in `note`,
+which the UI shows instead of the figure (and `ssr.json` carries as `withheld.note`). The group's
+items keep their own figures (expert view), and "all food" is unchanged. Uruguay, pulses
+2021–2023: 366 kt of "Pulses, Other" bought abroad a year, 361 kt of it fed to animals, against
+about 10 kt eaten and 5 kt of pulses in the trade records: 2% self-sufficient on paper.
+
 A withheld item has no SSR, so it drops out of the group kcal mean and "all food". JRC dairy is
 judged as one balance: the `food` test is not applied to it (its P, M, X, D are the JRC's, the
 food line FAO's), and its scaled items are not judged one by one.

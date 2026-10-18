@@ -28,6 +28,7 @@ EXPORTS_EXCEED = "exports_exceed_available"
 FOOD_EXCEEDS = "food_exceeds_supply"
 PARTS_CONTRADICT = "parts_contradict"
 RESIDUALS_LARGE = "residuals_large"
+REVIEWED = "reviewed"  # withheld by a human review (mappings/withheld_by_review.csv), not by a test
 
 # Tolerances: FAO rounds to 1 kt, so a few kt or per cent of slack is noise, not a contradiction.
 EXPORT_SLACK = 0.02  # exports may exceed production + imports - stock change by 2% ...
@@ -169,3 +170,19 @@ def unusual_years(by_year: dict) -> list[int]:
         if b > TREND_JUMP * max(a, c) or b * TREND_JUMP < min(a, c):
             out.append(int(y))
     return out
+
+
+
+def reviewed_withholds() -> dict[tuple[str, str], str]:
+    """(iso3, group) -> note, from mappings/withheld_by_review.csv (methodology, "Withheld by
+    review"): figures withheld after a human review although their balance adds up."""
+    import csv
+
+    from . import config
+
+    path = config.MAPPINGS / "withheld_by_review.csv"
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        rows = csv.DictReader(line for line in f if not line.startswith("#"))
+        return {(r["iso3"], r["group"]): r["note"] for r in rows}

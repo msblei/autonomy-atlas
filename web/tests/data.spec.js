@@ -46,7 +46,8 @@ test("food pages: figure, withheld explanation, and the receipt's sum", async ({
       await open(page, `${id}/${g}`);
       const v = ind.tonnes?.ssr;
       if (ind.withheld) {
-        await expect(view(page)).toContainText("do not add up");
+        // contradictory balances say so; one withheld by review gives the reviewed reason
+        await expect(view(page)).toContainText(ind.withheld.reason === "reviewed" ? ind.withheld.note : "do not add up");
         await expect(view(page).locator(".answer")).toHaveCount(0);
         await expect(view(page)).not.toContainText("Was it always like this?");
       } else if (v != null) {

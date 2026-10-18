@@ -100,6 +100,8 @@ REGION = {c["iso3"]: c["group"] for c in EUROPE}
 PRODUCTS = yaml.safe_load(open(MAP / "products.yaml"))["groups"]
 TRADE_ITEMS = {int(r["item_code"]): r["group"] for r in read_csv_comments(MAP / "trade_items.csv")
                if r["group"].strip()}
+# Methodology, "Withheld by review": groups withheld after a human review (iso3, group) -> note
+REVIEWED = {(r["iso3"], r["group"]): r["note"] for r in read_csv_comments(MAP / "withheld_by_review.csv")}
 # Methodology, "Trade partners": partner lists in the FBS basis where trade_items.csv gives a factor
 # (dairy in milk equivalent); the EU-bloc shares stay in product weight.
 TO_PRIMARY = {int(r["item_code"]): float(r["to_primary"]) for r in read_csv_comments(MAP / "trade_items.csv")
@@ -484,8 +486,12 @@ def compute_balances(D, opts):
                     ) if flagged else pub
         if reason is None and flagged and differ(pub, adj):
             reason = "parts_contradict"
+        if reason is None and (iso, g) in REVIEWED:
+            reason = "reviewed"
         rng = None  # exported for every withheld group
-        if reason:
+        if reason == "reviewed":
+            rng = "null"  # nothing contradicts itself: no two readings
+        elif reason:
             if not isnan(pub) and not isnan(adj):
                 rng = [min(pub, adj), max(pub, adj)]
             elif not isnan(pub) or not isnan(adj):  # one undefined: [defined, null]

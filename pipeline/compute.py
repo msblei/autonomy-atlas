@@ -442,6 +442,14 @@ def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str]
     items = items.merge(item_to_group(), on="item", how="left")
 
     groups = pd.concat([group_tonnes(items), group_kcal(items)], ignore_index=True)
+    # Withheld by review (checks.reviewed_withholds): window and single years, both bases.
+    review = checks.reviewed_withholds()
+    if review:
+        hit = pd.Series([(i, g) in review for i, g in zip(groups["iso3"], groups["group"], strict=True)],
+                        index=groups.index)
+        free = groups["flag"].fillna("") == ""
+        groups.loc[hit & free & (groups["basis"] == "tonnes"), "flag"] = checks.REVIEWED
+        groups.loc[hit, ["ssr", "idr"]] = np.nan
     totals = overall(collapse_jrc_dairy(items, groups), leaves | {JRC_DAIRY_ITEM})
     groups = groups.merge(_jrc_foods(items), on=["iso3", "group"], how="left")
     groups["jrc_foods"] = groups["jrc_foods"].fillna("")

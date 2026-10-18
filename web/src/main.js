@@ -69,6 +69,7 @@ const FLAG_TEXT = {
   exports_exceed_available: "No figure: FAO lists more exported than was produced, imported and taken from stocks.",
   food_exceeds_supply: "No figure: FAO lists more eaten than there is left for use at home.",
   parts_contradict: "No figure: the total rests on single foods whose figures contradict themselves.",
+  reviewed: "No figure: withheld after a review of FAO's figures (see the food's page).",
   jrc_group_only: "Dairy comes from the European Commission's balance in milk equivalent, for dairy as a whole: no ratio per product and none weighted by calories.",
 };
 
@@ -596,6 +597,11 @@ function whyWithheld(id, group = state.group) {
   const c = w.components_kt ?? {};
   const P = c.production ?? 0, M = c.imports ?? 0, X = c.exports ?? 0, S = c.stock_variation ?? 0;
   const who = id === EU ? "the EU" : nameOf(id);
+  if (w.reason === "reviewed") {
+    // Withheld by review (mappings/withheld_by_review.csv): FAO's own lines, then the reason.
+    return `FAO lists ${tonnes(M)} of ${food(group)} bought abroad a year in ${who}, ${tonnes(c.feed)} of it fed
+      to animals, while people eat ${tonnes(c.food)}. ${w.note ?? ""}`;
+  }
   if (w.reason === "supply_missing" || c.supply == null) {
     return `FAO publishes no complete balance for ${food(group)} in ${who}.`;
   }
