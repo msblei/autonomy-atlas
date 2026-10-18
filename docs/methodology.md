@@ -412,7 +412,10 @@ A withheld food (sections "Withheld") has no figure, but its two readings (`with
 agree on the map's band: both at or above 104.17% (more than a year) or both under 50% (under
 six months). The map and the country's food list then show that band, in words ("more than a
 year on any reading of FAO's figures"), never a number; rankings still leave the food out.
-Single foods only: the "all food" range is not feed-adjusted.
+For "all food" the range is not feed-adjusted; the adjustment lowers a reading by at most the
+imported share of feed protein `f` (section "Feed": only pigs, poultry and eggs, each at most by
+`f`), so the lower reading counts as `(1 − f) × low`. Ukraine (2021–2023): 184.5% × (1 − 0.003),
+more than a year on any reading.
 
 ## Trade partners (who buys from and sells to whom)
 

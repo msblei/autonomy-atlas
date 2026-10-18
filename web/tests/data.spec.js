@@ -410,3 +410,10 @@ test("what if: a scenario shows its own food", async ({ page }) => {
   await expect(page).toHaveURL(/#DEU\/stimulants$/);
   await expect(page.locator("#legend")).toContainText("coffee, cocoa, tea");
 });
+
+test("all food withheld but more than a year on any reading (Ukraine): the band, not a blank", async ({ page }) => {
+  const u = C.UKR.indicators.all.kcal.withheld.range;
+  expect(u[0] * (1 - C.UKR.feed.imported_pct / 100)).toBeGreaterThan(104.17);
+  await open(page, "UKR");
+  await expect(view(page)).toContainText("produces more calories than it uses");
+});

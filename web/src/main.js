@@ -803,13 +803,17 @@ function implausibleWords(w, id, group) {
 // contradictory parts read generously) on the same side of 100%.
 // A withheld food whose two readings of FAO's figures (withheld.range) fall on the same side:
 // more than enough on both, or under six months on both. The map and the food list show that
-// band, never a figure; rankings leave it out. Single foods only: the "all food" range is not
-// feed-adjusted.
+// band, never a figure; rankings leave it out. "All food": its range is not feed-adjusted, and the
+// adjustment lowers it by at most the imported share of feed protein, so the lower reading counts
+// at (1 - that share) (methodology, "Withheld foods on the map"; Ukraine).
 function robustPct(id, group = state.group) {
-  if (group === "all") return null;
-  const r = withheld(id, group)?.range;
+  const all = group === "all";
+  const r = all ? country(id)?.indicators?.all?.kcal?.withheld?.range : withheld(id, group)?.range;
   if (!r || r[0] == null || r[1] == null) return null;
-  if (r[0] >= SEASONS[4].max) return r[0];
+  const f = all ? country(id)?.feed?.imported_pct : 0;
+  if (f == null) return null;
+  const lo = r[0] * (1 - f / 100);
+  if (lo >= SEASONS[4].max) return lo;
   if (r[1] < SEASONS[0].max) return r[1];
   return null;
 }
