@@ -766,7 +766,15 @@ self-sufficiency is left for the animals that live on it.
   imported share of all concentrate feed is a warning (`feed_dgagri_gap`). On the audit page,
   never on the site. With the 2021–2023 window: 41.9% imported against DG AGRI's 40.7%; soya
   bean meal 93% against 97%, rapeseed meal 28% against 30%, sunflower meal 43% against 48%,
-  cereals 10% against 15% (not traced further). Total concentrate protein 38 Mt against 42 Mt:
+  cereals 10% against 15%. The cereals gap is an assumption, not a difference in the data: both
+  count about the same cereal protein fed (14.4 Mt against 15.2 Mt; wheat 4.3 against 4.7, maize
+  4.8 against 4.8). DG AGRI's methodology sheet sends imported cereals to feed first: all imported
+  common wheat, 90% of imported maize (in each of 2021/22–2023/24: wheat not of EU origin equals
+  the imports exactly; maize 90%; barley none). Here imports and production mix evenly (wheat
+  5% imported, maize 24%; DG AGRI 17% and 30%). We keep the even mix: it is one rule for every
+  country and item, applied per member before the EU is summed, while DG AGRI's is an expert
+  judgement for the EU alone. With DG AGRI's rule for cereals the EU's imported share would be
+  about 44% instead of 41.9% (0.8 Mt more imported cereal protein). Total concentrate protein 38 Mt against 42 Mt:
   DG AGRI also counts sources FAO's accounts do not list as feed, among them wet distillers'
   grains, former foodstuff and processed animal protein (together about 1.8 Mt).
 
