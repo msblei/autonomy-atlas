@@ -35,6 +35,7 @@ PUBLISHED = ["ssr.json", "items.json", "trade.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
 KT_TOL = 0.5  # kt, for identities between exported components
+FAO_ROUNDING_KT = 2.5  # P, M, X, dS and D each rounded to 1 kt by FAO: at most 5 x 0.5 kt per item
 REL_TOL = 0.005  # 0.5%, for identities between processed (unrounded) figures
 KCAL_RANGE = (1400, 4200)  # kcal/person/day: below or above is not a national average
 PROTEIN_RANGE = (25, 160)  # g/person/day
@@ -67,10 +68,13 @@ def _f(x) -> float | None:
 
 
 def check_balance_identity(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
-    """D = P + M - X - dS. FAO's own balances satisfy it to rounding in 99.6% of rows (a miss is
-    a warning); rows we build (JRC-replaced items, the EU27 bloc) must satisfy it exactly. Rows
+    """D = P + M - X - dS. FAO rounds each of the five figures of every item to 1 kt, so a group
+    of n items as FAO publishes it may miss by up to n x 2.5 kt from rounding alone: beyond that
+    is a warning. Rows we build (JRC-replaced items, the EU27 bloc) must satisfy it exactly. Rows
     without trade figures (EU27 fish: FAO's trade records have no fish) are not balances."""
     out = []
+    n_items = (items[items["group"].notna() & items["supply"].notna()]
+               .groupby(["iso3", "group"]).size())
 
     def gaps(df):
         lhs = df[["production", "imports", "exports"]].fillna(0)
@@ -81,7 +85,11 @@ def check_balance_identity(groups: pd.DataFrame, items: pd.DataFrame) -> list[Fi
 
     g = groups[groups["basis"] == "tonnes"]
     rebuilt, gap, scale, ok = gaps(g)
-    for _, r in g[ok & (gap > np.maximum(1.0, REL_TOL * scale))].iterrows():
+    ours_row = (g["iso3"] == EU_BLOC) | (g.get("source", pd.Series("", index=g.index)) == "jrc_bal")
+    rounding = pd.Series([FAO_ROUNDING_KT * n_items.get((i, gr), 1) for i, gr in zip(g["iso3"], g["group"], strict=True)],
+                         index=g.index)
+    tol = np.maximum(np.maximum(1.0, REL_TOL * scale), np.where(ours_row, 0.0, rounding))
+    for _, r in g[ok & (gap > tol)].iterrows():
         ours = r["iso3"] == EU_BLOC or r.get("source") == "jrc_bal"
         out.append(Finding("balance_identity", BLOCK if ours else WARN,
                            f"supply {r['supply']:.0f} kt but P+M-X-dS = {rebuilt.loc[r.name]:.0f} kt"

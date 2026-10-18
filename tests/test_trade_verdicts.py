@@ -107,3 +107,18 @@ def test_partner_shares_use_the_converted_figures():
                       columns=["reporter", "partner", "group", "flow", "year", "value", "primary"])
     out = trade.average(trade.yearly(df), (2022, 2022)).set_index("partner")["tonnes"]
     assert out["A"] > out["B"]
+
+
+def test_balance_identity_allows_fao_rounding_but_not_real_gaps():
+    from pipeline import validate
+
+    def frames(gap):
+        groups = pd.DataFrame([{"iso3": "AAA", "group": "fish", "basis": "tonnes", "source": "fao_fbs",
+                                "production": 100.0, "imports": 50.0, "exports": 20.0, "stock_variation": 0.0,
+                                "supply": 130.0 + gap}])
+        items = pd.DataFrame([{"iso3": "AAA", "group": "fish", "item": f"i{k}", "supply": 10.0} for k in range(3)])
+        return groups, items
+
+    assert validate.check_balance_identity(*frames(3.0)) == []  # 3 items x 2.5 kt of rounding
+    found = validate.check_balance_identity(*frames(20.0))
+    assert [f.check for f in found] == ["balance_identity"] and found[0].severity == validate.WARN

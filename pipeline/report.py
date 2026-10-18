@@ -92,6 +92,30 @@ def _usda_section() -> str:
             + _table(rows.sort_values("median", ascending=False)))
 
 
+# What each warning tests, its usual cause, and what the site does (reviews of 2026-10-17/18).
+CHECK_NOTES = {
+    "usda_gap": "FAO's and USDA's figures for one country and commodity put its self-sufficiency far "
+                "apart. Different compilations, neither known to be right. Shown on the food's page "
+                "when the item is at least 10% of its group; smaller items are only listed here.",
+    "trade_vs_fbs": "Trade records far from their food group's typical ratio to the balance. All are "
+                    "below it: the balance also counts food contained in processed goods (sugar in "
+                    "chocolate and soft drinks, milk in food preparations, wheat gluten in fish feed) "
+                    "that the trade records file elsewhere. Records far above it would be withheld.",
+    "jrc_ratio_dairy": "The European Commission's own dairy ratio, on a basis its file does not "
+                       "document, against ours from its production and trade figures. Expected every "
+                       "release; both are shown on the sources page.",
+    "negative_items_in_group": "Items with negative supply (re-exports exceeding what FAO counts "
+                               "as available) shrink the group's 'uses at home'. Self-sufficiency is "
+                               "barely affected where the country produces little of the food.",
+    "trend_spike": "A single year far from both neighbours: most likely an error in FAO's figures. "
+                   "Kept in the series and drawn apart, named, in the year-by-year chart.",
+    "ssr_extreme": "Over 1000% self-sufficient. So far always a real exporter of a food it barely "
+                   "uses (Iceland's fish, Ghana's cocoa); check new entries.",
+    "balance_identity": "FAO's balance misses production + imports - exports - stock change = "
+                        "supply by more than its rounding can explain (2.5 kt per item).",
+}
+
+
 def run() -> None:
     W = config.WEB_DATA
     vpath = W / "validation.json"
@@ -151,14 +175,16 @@ def run() -> None:
         "shown, and for all food the bought or sold total neither.</p>" + _table(tdf),
     ]
     for check, sub in warn.groupby("check"):
+        note = CHECK_NOTES.get(check)
         sections.append(f"<h2>Warning: {html.escape(check)} ({len(sub)})</h2>"
+                        + (f"<p class='note'>{html.escape(note)}</p>" if note else "")
                         + _table(sub.sort_values(["iso3", "group"]), ["iso3", "group", "detail"]))
     page = f"""<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Data audit</title>
 <style>
 body{{font:14px/1.45 system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#222;background:#fff}}
 table{{border-collapse:collapse;width:100%;margin:8px 0 24px}}th,td{{border-bottom:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top}}
-th{{background:#f4f4f2;position:sticky;top:0}}.ok{{color:#1e6b45}}.bad{{color:#b84a2a;font-weight:600}}.none{{color:#777}}
+th{{background:#f4f4f2;position:sticky;top:0}}.note{{color:#555;max-width:80ch}}.ok{{color:#1e6b45}}.bad{{color:#b84a2a;font-weight:600}}.none{{color:#777}}
 </style>{''.join(sections)}</html>"""
     REPORT.write_text(page, encoding="utf-8")
     log.info("wrote %s (%d withheld, %d trade flows withheld, %d warnings, %d changes)", REPORT,
