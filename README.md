@@ -14,12 +14,18 @@ product, with every number traceable to its source.
 ## Status
 
 **Phase 1 working locally.** The pipeline builds FAO Food Balance figures for ~178 countries plus
-the EU as a bloc. The map opens on one plain question: if a country ate only what its own farms
-produce, for how many months of the year would its food last? Readers then dig deeper
-one level at a time: food by food, a single food (trend, per person, where the harvest goes),
-"How do we know?" (the FAO figures, the sum worked out, how to check it on FAOSTAT) and finally
-all the numbers (SSR/IDR, tonnes/kcal, FAO items). A "bought and sold" view shows who each
-country buys each food from and sells it to, on the map, from the FAO trade matrix.
+the EU as a bloc, with the European Commission's balance sheets for EU dairy, tomatoes, olive oil
+and wine. The map opens on one plain question: if a country ate only what its own farms produce,
+for how many months of the year would its food last? Choose a country and a food, and a card shows
+the year's balance (produces + buys − sells = uses), which is also the way in: how long the food
+lasts and how that changed, who the country buys from and sells to (on the map), and what the food
+is used for. "How do we know?" works every figure out from FAO's lines; "All the numbers" shows
+SSR/IDR, tonnes/kcal and FAO items.
+
+Every published number is checked before release (`make verify`): tests, invariant checks, an
+independent recomputation written from `docs/methodology.md` alone, and browser tests of what the
+page shows. Figures whose FAO balance contradicts itself, or that a review found implausible, are
+withheld everywhere and the page says why.
 
 ## Quick start
 
@@ -28,7 +34,8 @@ make setup      # Python venv, pip install -e ".[dev]", npm install in web/
 make download   # FAOSTAT bulk files, Eurostat regional crops, boundaries (~1 GB)
 make build      # harmonise + compute SSR/IDR -> data/processed/
 make export     # write web/public/data/*.json
-make serve      # http://localhost:5173
+make verify     # every check; required before anything is published
+make serve      # http://localhost:5173 (or the next free port)
 ```
 
 Or step by step with the CLI: `atlas download --source faostat`, `atlas build`, `atlas export`.
@@ -56,9 +63,13 @@ data/       raw / interim / processed (gitignored)
 | [FAOSTAT](https://www.fao.org/faostat/en/#data) Food Balance Sheets, Production, Trade Matrix | supply, SSR/IDR, bilateral trade | CC BY 4.0 |
 | [Eurostat](https://ec.europa.eu/eurostat) Comext, `apro_cpshr` | intra/extra-EU trade, NUTS2 crops | free reuse with attribution |
 | [CEPII BACI](https://www.cepii.fr/CEPII/en/bdd_modele/bdd_modele_item.asp?id=37) | reconciled bilateral trade | Etalab Open Licence 2.0 |
-| [FAO Crop Calendar](https://cropcalendar.apps.fao.org) | seasons | free API |
+| [DG AGRI–JRC EU agricultural balance sheets](https://agridata.ec.europa.eu) | EU dairy, tomatoes, olive oil, wine; dairy milk-equivalent factors | EC reuse notice (attribution) |
+| [USDA FAS PSD](https://apps.fas.usda.gov/psdonline) | second opinion on FAO's figures | US government work, public domain |
+| [FAO Technical Conversion Factors](https://www.fao.org/fileadmin/templates/ess/documents/methodology/tcf.pdf) | processed trade back to raw product | FAO publication (cite FAO) |
+| [FAO Crop Calendar](https://cropcalendar.apps.fao.org) | seasons (planned) | free API |
 | [Eurostat GISCO](https://ec.europa.eu/eurostat/web/gisco) NUTS | boundaries | non-commercial, © EuroGeographics |
 | [Natural Earth](https://www.naturalearthdata.com) | country boundaries | public domain |
+| [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/) (Braille Institute) | typeface, also on the map | SIL Open Font License |
 
 See `docs/research-report.md` for the full inventory, including crop-type maps, JRC MARS, USDA
 crop calendars and the methodological caveats (re-exports, feed use, measurement basis, Ukraine data
