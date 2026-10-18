@@ -360,8 +360,10 @@ because that is how FAO, national statistics (Switzerland, Japan) and the JRC me
 self-sufficiency, and because energy, not protein, is what a diet runs short of first in Europe,
 where people get about twice the protein they need. A protein weighting also hid vegetable oil
 almost entirely (India: 99.5% of its protein, while it imports over half its edible oil). The
-protein figures stay on "All the numbers". The capped version (`kcal.feed_share`) is the stricter
-"could it keep today's menu, food by food?" and is shown second, next to the comparisons. Trend
+protein figures stay on "All the numbers". The capped version (`kcal.feed_share`, "could it keep
+today's menu, food by food?") is on "All the numbers" only: two figures for nearly the same
+question confused readers (2026-10-18), and the capped one answers a different question (it marks a
+country down for coffee it cannot grow, and it cannot exceed 100%). Trend
 lines for "all food" (not shown in the UI) stay the unadjusted protein figure: feed shares exist
 for the window only.
 
@@ -379,9 +381,10 @@ N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the
 (`web/src/calendar.js`).
 
 **Comparisons between countries** ("How does … compare?", "Runs out soonest", "Lasts longest")
-use the capped figure (today's menu, `kcal.feed_share`), and the panel shows it next to them: with
-the uncapped one a fish surplus stood in for every other food, and Iceland, the Seychelles and
-Micronesia led the list.
+use the headline (`kcal.feed_ssr`), so the map, the tooltip and the lists show one figure. Sugar
+exporters lead the list (Eswatini, Belize): in calories that is what their land produces. (With
+the earlier protein headline a fish surplus put Iceland first, which is why the lists then used the
+capped figure.)
 
 A duration was chosen over a date ("runs out on 5 November", counting from 1 January) and over
 "from today": both suggest a real starting point and invite questions about harvest timing that
@@ -963,10 +966,13 @@ self-sufficiency is left for the animals that live on it.
     0.13 Mt, casein 0.11 Mt and flours, a few tenths of a Mt of protein at typical contents. Left
     out, as everywhere, so that one table serves every country.
 
-## Scenario: without Russia and Ukraine
+## Scenarios: what if some countries stopped selling
 
-What a country would lack if Russia and Ukraine stopped selling, and nothing took their place
-(`pipeline/scenario.py`, `web/public/data/scenario.json`).
+What a country would lack if a group of countries stopped selling food, and nothing took their
+place (`pipeline/scenario.py`, `web/public/data/scenario.json`). The groups are in
+`mappings/scenarios.yaml`: Russia and Ukraine (two of the largest grain and sunflower-oil sellers,
+whose sales the 2022 war put at risk), South America, and the United States and Canada. Below,
+"Russia and Ukraine" stands for any group; a country in the group gets no figure.
 
 - **Per country and food:** `lack = 100 × M × s / (P + M)` (% of what it uses), with P and M the
   food balance's production and imports as published (`components_kt`), and `s` the share of its
@@ -988,8 +994,10 @@ What a country would lack if Russia and Ukraine stopped selling, and nothing too
 - **What it does not say:** that the food would be missing for long (other sellers step in, at a
   price), or what animals would lack in feed (sunflower meal from Ukraine is feed, not a food
   group here). The page says so.
-- **Export:** `scenario.json` `{meta: {partners, years, basis}, countries: {iso3: {group: lack %}}}`;
-  shown as a "What if?" map for the chosen food and a line on the food page.
+- **Export:** `scenario.json` `{meta: {years, basis, eu_bloc, scenarios: [{key, label, short,
+  sellers}]}, scenarios: {key: {iso3: {group: lack %}}}}`; chosen with the "What if?" button on
+  the map, shown as that map for the chosen food (a badge on the map says which scenario is on) and
+  a line on the country's and food's page while it is on.
 
 ## FAO against USDA
 

@@ -707,14 +707,15 @@ def feed_rows(res, D):
     return out
 
 
-def scenario_rows(res, D, trade, hidden):
-    """Methodology "Scenario": {iso: {group: lack %}}; all = calorie-weighted."""
+def scenario_rows(res, D, trade, hidden, sellers=("RUS", "UKR")):
+    """Methodology "Scenarios": {iso: {group: lack %}} if `sellers` stopped selling; all =
+    calorie-weighted."""
     out = {}
     code_of = {}
     for c, nm in D.item_names.items():
         code_of.setdefault(nm, c)
     for iso, r in res.items():
-        if iso in ("RUS", "UKR") or "groups" not in r:
+        if iso in sellers or "groups" not in r:
             continue
         rows = {}
         for g, gr in r["groups"].items():
@@ -730,7 +731,7 @@ def scenario_rows(res, D, trade, hidden):
             tot = sum(parts.values())
             if tot <= 0:
                 continue
-            s_ = (parts.get("RUS", 0.0) + parts.get("UKR", 0.0)) / tot
+            s_ = sum(parts.get(c, 0.0) for c in sellers) / tot
             rows[g] = 100 * M * s_ / (max(nz(P), 0.0) + M)
         bal = r.get("item_bal") or {}
         num = den = 0.0
@@ -2038,15 +2039,20 @@ def main():
                                          "field": "concentration"}, e, mine)
 
     # ---- scenario (methodology "Scenario") ----
-    sc = json.load(open(OUT_DIR / "scenario.json"))["countries"]
-    mine_sc = scenario_rows(res, D, trade, hidden)
-    for iso in sorted(set(sc) | set(mine_sc)):
-        for g in sorted(set(sc.get(iso, {})) | set(mine_sc.get(iso, {}))):
-            e, m_ = sc.get(iso, {}).get(g), mine_sc.get(iso, {}).get(g)
-            counts["scenario"] += 1
-            if e is None or m_ is None or abs(e - m_) > 0.05 + 1e-9:
-                record("scenario", {"file": "scenario.json", "country": iso, "group": g, "field": "lack"},
-                       e, None if m_ is None else round(m_, 1))
+    sc_all = json.load(open(OUT_DIR / "scenario.json"))["scenarios"]
+    scen_def = yaml.safe_load(open(MAP / "scenarios.yaml"))["scenarios"]
+    if sorted(sc_all) != sorted(scen_def):
+        record("scenario", {"file": "scenario.json", "field": "scenarios"}, sorted(sc_all), sorted(scen_def))
+    for key, sdef in scen_def.items():
+        sc = sc_all.get(key, {})
+        mine_sc = scenario_rows(res, D, trade, hidden, tuple(sdef["sellers"]))
+        for iso in sorted(set(sc) | set(mine_sc)):
+            for g in sorted(set(sc.get(iso, {})) | set(mine_sc.get(iso, {}))):
+                e, m_ = sc.get(iso, {}).get(g), mine_sc.get(iso, {}).get(g)
+                counts["scenario"] += 1
+                if e is None or m_ is None or abs(e - m_) > 0.05 + 1e-9:
+                    record("scenario", {"file": "scenario.json", "scenario": key, "country": iso, "group": g,
+                                        "field": "lack"}, e, None if m_ is None else round(m_, 1))
 
     # ---- feed (methodology "Feed") ----
     mine_f = feed_rows(res, D)

@@ -465,3 +465,36 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 /* "What if?" under the map key */
 #legend .whatif { display: block; margin: 6px auto 0; font-size: 12px; }
 #card .value .unit { font-weight: 400; font-size: 0.85em; color: var(--ink-soft); }
+
+/* "What if?" on the map, top centre between the panel and the food menu. */
+#whatif {
+  position: absolute; z-index: 2; top: 14px;
+  left: calc(12px + var(--panel-w) + 20px); right: calc(12px + var(--rail-w) + 20px);
+  display: flex; flex-direction: column; align-items: center; pointer-events: none;
+}
+#whatif[hidden] { display: none; }
+#whatif > *, #whatif .menu { pointer-events: auto; }
+#whatif svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; flex: none; }
+#whatif .open, #whatif .badge .name, #whatif .badge .x {
+  display: inline-flex; align-items: center; gap: 7px; font: inherit; font-size: 14px; cursor: pointer;
+  border: 1px solid var(--edge-strong); background: var(--paper); color: var(--ink);
+  padding: 7px 13px; border-radius: 999px; box-shadow: 0 1px 4px rgb(0 0 0 / 0.12);
+}
+#whatif .badge { display: inline-flex; gap: 4px; }
+#whatif .badge .name { background: var(--ink); color: var(--paper); border-color: var(--ink); }
+#whatif .badge .x { padding: 7px 9px; }
+#whatif .menu {
+  list-style: none; margin: 6px 0 0; padding: 4px; background: var(--paper);
+  border: 1px solid var(--edge-strong); border-radius: 11px; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15);
+}
+#whatif .menu button {
+  display: block; width: 100%; text-align: left; font: inherit; font-size: 14px; color: var(--ink);
+  background: none; border: 0; border-radius: 7px; padding: 7px 10px; cursor: pointer;
+}
+#whatif .menu button:hover, #whatif .menu button[aria-checked="true"] { background: var(--edge); }
+#view .lack { margin: 10px 0 0; }
+@media (max-width: 760px) {
+  /* phones: under the food menu and the key, on the right */
+  #whatif { left: 6px; right: 6px; top: 122px; align-items: flex-end; }
+  #whatif .open, #whatif .badge .name, #whatif .badge .x { font-size: 13px; padding: 6px 11px; }
+}

@@ -276,15 +276,18 @@ test("feed from abroad: the imported share and the feed-adjusted meat as exporte
   await expect(box).not.toContainText("would last for about");
 });
 
-test("what if Russia and Ukraine stopped selling: the map key switches and the page says the share", async ({ page }) => {
+test("what if: scenarios from the button on the map, a badge while one is on", async ({ page }) => {
   const sc = JSON.parse(readFileSync(new URL("../public/data/scenario.json", import.meta.url), "utf8"));
-  const v = sc.countries.EGY.cereals;
+  const v = sc.scenarios.ru_ua.EGY.cereals;
   await open(page, "EGY/cereals");
-  await expect(view(page)).toContainText(`Egypt would lack ${Math.round(v)}% of the cereals it uses`);
-  await expect(page.locator("#legend .whatif")).toHaveCount(0); // the key belongs to the main map
-  await page.locator("#view .whatif").click();
-  await expect(page.locator("#legend")).toContainText("produced in Russia or Ukraine");
-  await page.locator("#view .whatif").click(); // and back
+  await expect(view(page)).not.toContainText("would be missing"); // no scenario text until one is on
+  await page.locator("#whatif [data-open]").click();
+  await page.locator('#whatif [data-pick="ru_ua"]').click();
+  await expect(page.locator("#whatif .badge")).toContainText("Russia and Ukraine stop selling");
+  await expect(page.locator("#legend")).toContainText("would be missing");
+  await expect(view(page)).toContainText(`${Math.round(v)}% of the cereals it uses would be missing`);
+  await page.locator("#whatif [data-end]").click(); // and off again
+  await expect(page.locator("#whatif .badge")).toHaveCount(0);
   await expect(page.locator("#legend")).toContainText("would last");
 });
 
@@ -307,12 +310,11 @@ test("how do we know: every source is credited with its licence", async ({ page 
   }
 });
 
-test("all food: countries are compared on today's menu (capped), not on the headline", async ({ page }) => {
-  // A fish surplus standing in for every other food put Iceland first (methodology, "How long").
+test("all food: countries are compared on the headline, the figure the map shows", async ({ page }) => {
   await open(page, "DEU");
   const cmp = view(page).locator("h3", { hasText: "compare?" }).locator("xpath=following-sibling::div[1]");
   const top = await cmp.locator("ol.rank").nth(1).locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href").slice(1)));
-  const menu = (id) => C[id].indicators?.all?.kcal?.feed_share;
+  const menu = (id) => C[id].indicators?.all?.kcal?.feed_ssr;
   const pool = Object.keys(C).filter((id) => id !== "EU27" && menu(id) != null).sort((a, b) => menu(b) - menu(a));
   expect(top).toEqual(pool.slice(0, 5));
 });

@@ -12,7 +12,7 @@ const VIEWS = [
   ["trade by money", "DEU/cereals/trade", '[data-mode="value"]'],
   ["where by region", "DEU/cereals/where", null],
   ["where fields", "DEU/cereals/where", '[data-fields="1"]'],
-  ["what if", "EGY/cereals", "#view .whatif"],
+  ["what if menu", "EGY/cereals", "#whatif [data-open]"],
   ["how do we know", "about", null],
   ["legal notice", "legal", null],
   ["privacy policy", "privacy", null],

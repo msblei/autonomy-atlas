@@ -29,3 +29,13 @@ def test_no_figure_for_the_two_sellers_or_withheld_foods():
     p = pd.DataFrame(columns=["iso3", "group", "flow", "partner", "tonnes"])
     items = pd.DataFrame(columns=["iso3", "item", "kcal"])
     assert scenario.compute(p, g, items, {"groups": {}}).empty
+
+
+def test_other_sellers_and_their_own_figure_left_out():
+    g = _groups([("DEU", "stimulants", 0.0, 10.0, 0.0, 10.0, ""), ("BRA", "stimulants", 50.0, 0.0, 40.0, 10.0, "")])
+    p = pd.DataFrame([("DEU", "stimulants", "grown", "BRA", 6_000.0), ("DEU", "stimulants", "grown", "VNM", 4_000.0)],
+                     columns=["iso3", "group", "flow", "partner", "tonnes"])
+    items = pd.DataFrame(columns=["iso3", "item", "kcal"])
+    out = scenario.compute(p, g, items, {"groups": {}}, ("BRA", "ARG")).set_index(["iso3", "group"])["lack"]
+    assert out[("DEU", "stimulants")] == pytest.approx(60.0)
+    assert ("BRA", "stimulants") not in out.index

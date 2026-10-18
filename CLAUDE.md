@@ -30,8 +30,9 @@ Updating the data (what changes when, the manual JRC step, versions, review list
   (production, imports, exports, supply) over the window, then compute the ratio — never average
   ratios.
 - **Headline ("all food"):** calories, counting pork, chicken and eggs only for home-grown feed
-  (`kcal.feed_ssr`; comparisons on the capped `kcal.feed_share`). Protein and the unadjusted
-  figures stay on "All the numbers". (Changed from uncapped protein on 2026-10-18 after an
+  (`kcal.feed_ssr`), one figure for map, tooltip, panel and rankings. The capped "today's menu"
+  figure, protein and the unadjusted figures stay on "All the numbers" only (one figure in the UI,
+  user's decision 2026-10-18). (Changed from uncapped protein on 2026-10-18 after an
   expert review: protein hid imported soy feed and vegetable oil.) It measures land and harvests,
   not food security; the UI says so.
 - **Two autonomy views, always both:** `national` (all imports count, including from other EU
@@ -112,10 +113,11 @@ make serve       # cd web && npm run dev
 4. **Phase 4 (done, 2026-10):** feed-adjusted SSR: imported share of feed protein (cakes count
    as imported when their beans were), meat and eggs counting pigs and poultry only for home-grown
    feed ("Feed from abroad" on the food page; cattle, sheep and milk not adjusted: grass).
-   Calorie-weighted composite: the "all food" kcal coverage already is one. Scenario "What if
-   Russia and Ukraine stopped selling?": a map mode and a line per food page, the share of use
-   grown there (traced), even-mix over production + imports so transit does not count
-   (`pipeline/scenario.py`).
+   Calorie-weighted composite: the "all food" kcal coverage already is one. Scenarios "What if
+   … stopped selling?" (Russia and Ukraine, South America, the US and Canada;
+   `mappings/scenarios.yaml`): a "What if?" button on the map and a badge while one is on, the
+   share of use grown there (traced), even-mix over production + imports so transit does not
+   count (`pipeline/scenario.py`).
 
 ## Data sources (phase 1 + 2)
 

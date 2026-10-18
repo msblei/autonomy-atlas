@@ -29,7 +29,7 @@ const state = {
   grown: false, // imports traced back to where they were grown, instead of who sold them
   byValue: false, // trade in euros (Eurostat Comext, EU countries) instead of tonnes
   fields: false, // "Where it is grown": the 2 km crop map instead of the regions' tonnes
-  scenario: false, // the map shows what each country would lack without Russia and Ukraine
+  scenario: null, // key of the "What if?" scenario on the map (scenario.json), or null
   indicator: "ssr", // ssr | idr (table level only)
   basis: "tonnes", // tonnes | kcal (table level only)
   bloc: false, // zoomed out: EU members are coloured with the EU27 bloc's figures (see EU_ZOOM)
@@ -575,12 +575,6 @@ function pctFor(id, group = state.group) {
   return v == null || Number.isNaN(v) ? null : v;
 }
 
-// "Today's menu": the same calorie figure with every food capped at 100%, so nothing is swapped.
-function menuFor(id) {
-  const v = country(id)?.indicators?.all?.kcal?.feed_share;
-  return v == null || Number.isNaN(v) ? null : v;
-}
-
 // The foods that would run out first, for "… like fruit and soy" (at most `n`, below 9 months).
 function shortest(id, n = 2) {
   return state.data.groups
@@ -610,11 +604,11 @@ function valueFor(id, indicator = tableIndicator(), basis = tableBasis()) {
 }
 
 function mapValue(id) {
-  if (scenarioOn()) return state.scen.countries[id]?.[state.group] ?? null;
+  if (scenarioOn()) return scenCountries()[id]?.[state.group] ?? null;
   return state.level === "table" ? valueFor(id) : pctFor(id) ?? robustPct(id);
 }
 
-// ---- What if Russia and Ukraine stopped selling? (scenario.json, methodology "Scenario") ----
+// ---- What if some countries stopped selling? (scenario.json, methodology "Scenarios") ----
 let scenLoading = null;
 function loadScenario() {
   scenLoading ??= loadJSON("data/scenario.json")
@@ -622,27 +616,63 @@ function loadScenario() {
     .catch((e) => console.error(e));
 }
 // Only where the map shows the main measure (not trade, regions or the expert table).
-const scenarioOn = () => state.scenario && !!state.scen && !["trade", "where", "table"].includes(state.level);
+const scenarioOn = () => !!state.scenario && !!state.scen && !["trade", "where", "table"].includes(state.level);
+const scenInfo = (key = state.scenario) => state.scen?.meta?.scenarios?.find((x) => x.key === key) ?? null;
+const scenCountries = () => state.scen?.scenarios?.[state.scenario] ?? {};
 const LACK = [{ max: 1, color: "#f3ead8", label: "<1%" }, { max: 5, color: "#ecc98f", label: "1–5%" },
   { max: 10, color: "#e09a55", label: "5–10%" }, { max: 25, color: "#c8642f", label: "10–25%" },
   { max: 50, color: "#9e3d1f", label: "25–50%" }, { max: Infinity, color: "#6b2412", label: "50%+" }];
 
+// The country's share, one line, only while a scenario is on (the badge on the map says which).
 function lackLine(id) {
-  if (!state.scen) { loadScenario(); return ""; }
-  const v = state.scen.countries[id]?.[state.group];
-  // Only where it matters: a line saying "under 1%" on every page was noise (Brazil).
-  if (v == null || v < 1) return "";
+  if (!scenarioOn()) return "";
+  const v = scenCountries()[id]?.[state.group];
   const who = id === EU ? "the EU" : nameOf(id);
-  const what = state.group === "all" ? "the calories in its food" : `the ${food()} it uses`;
-  return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${Math.round(v)}%</strong> of ${what},
-    unless others sold more. ${whatIf(state.scenario ? "Back to the main map" : "Show every country on the map")}</p>`;
+  if (v == null) return "";
+  const what = state.group === "all" ? "of the calories in its food" : `of the ${food()} it uses`;
+  return `<p class="lack"><strong>${v < 1 ? "Under 1" : Math.round(v)}%</strong> ${what} would be missing
+    for ${who}.</p>`;
 }
 
-// The switch to and from the "What if?" map: on the start page and next to a country's share,
-// not in the map key, so the key always belongs to the main map. Wired in wire().
-function whatIf(label) {
-  return `<button type="button" class="linkish whatif" data-scenario="${state.scenario ? 0 : 1}">${label}</button>`;
+// The "What if?" control on the map: a button that opens the scenarios; while one is on, a badge
+// with its name and a close button. Hidden where the map shows something else (trade, regions).
+const ICON_WHATIF = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v6a5 5 0 0 0 10 0V4M5 4h14M9 20h6M12 15v5" /></svg>`;
+const ICON_CLOSE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>`;
+let whatIfOpen = false;
+function renderWhatIf() {
+  const el = document.getElementById("whatif");
+  if (!el) return;
+  const off = ["trade", "where", "table"].includes(state.level);
+  el.hidden = off;
+  if (off) return;
+  const on = scenarioOn() ? scenInfo() : null;
+  const menu = whatIfOpen && state.scen ? `<ul class="menu" role="menu">${state.scen.meta.scenarios.map((x) => `
+      <li role="none"><button type="button" role="menuitemradio" aria-checked="${x.key === state.scenario}"
+        data-pick="${x.key}">${x.label}</button></li>`).join("")}</ul>` : "";
+  el.innerHTML = on
+    ? `<div class="badge"><button type="button" class="name" data-open aria-expanded="${whatIfOpen}">${ICON_WHATIF}
+        <span>What if: <b>${on.label}</b></span></button>
+        <button type="button" class="x" data-end aria-label="End the scenario">${ICON_CLOSE}</button></div>${menu}`
+    : `<button type="button" class="open" data-open aria-expanded="${whatIfOpen}">${ICON_WHATIF}<span>What if…?</span></button>${menu}`;
+  for (const b of el.querySelectorAll("[data-open]")) {
+    b.onclick = (e) => {
+      e.stopPropagation(); // the click-outside listener below would close it again at once
+      whatIfOpen = !whatIfOpen; if (whatIfOpen) loadScenario(); renderWhatIf();
+      document.querySelector("#whatif [data-open]")?.focus();
+    };
+  }
+  for (const b of el.querySelectorAll("[data-pick]")) {
+    b.onclick = () => { state.scenario = b.dataset.pick; whatIfOpen = false; render(); };
+  }
+  const end = el.querySelector("[data-end]");
+  if (end) end.onclick = () => { state.scenario = null; whatIfOpen = false; render(); };
 }
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && whatIfOpen) { whatIfOpen = false; renderWhatIf(); document.querySelector("#whatif [data-open]")?.focus(); }
+});
+document.addEventListener("click", (e) => {
+  if (whatIfOpen && !e.target.closest("#whatif")) { whatIfOpen = false; renderWhatIf(); }
+});
 
 // kg/person/year from 1000 t and 1000 persons: kt * 1000 / population_k.
 function perCapita(id, group = state.group) {
@@ -843,8 +873,8 @@ function tooltip(iso3) {
   }
   if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}`;
   if (scenarioOn()) {
-    return `<strong>${nameOf(id)}</strong><span class="v">${v < 1 ? "under 1" : Math.round(v)}% of ${state.group === "all"
-      ? "the calories in its food" : `the ${food()} it uses`} was produced in Russia or Ukraine</span>`;
+    return `<strong>${nameOf(id)}</strong><span class="v">${v < 1 ? "Under 1" : Math.round(v)}% of ${state.group === "all"
+      ? "the calories in its food" : `the ${food()} it uses`} would be missing</span>`;
   }
   const what = state.group === "all" ? "Own food lasts" : `Own ${food()} lasts`;
   if (contradicts && pctFor(id) == null) {
@@ -852,11 +882,8 @@ function tooltip(iso3) {
       <span class="v"><i style="background:${season(v).color}"></i>${what} ${robustBand(v)} on any reading of
       FAO's figures, which do not hold together</span>`;
   }
-  const menu = state.group === "all" ? menuFor(id) : null;
-  const strict = menu != null && lasts(menu) !== lasts(v)
-    ? `<span class="strict">Eating exactly as today: ${lasts(menu)}</span>` : "";
   return `<strong>${nameOf(id)}</strong>
-    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>${strict}`;
+    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -880,6 +907,7 @@ function detailRow() {
 function render({ newPlace = false } = {}) {
   paintMap();
   renderLegend();
+  renderWhatIf();
   renderControls();
   renderFrame();
   renderFoot();
@@ -1096,18 +1124,14 @@ function renderLegend() {
       <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>`;
     return;
   }
-  const toggle = scenarioOn() ? `<button type="button" class="linkish whatif" data-scenario="0">Back to: how long it would last</button>` : "";
+  const toggle = "";
   if (scenarioOn()) {
-    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the calories in food</b>" : `the <b>${food()}</b> used`} that was produced in <b>Russia or Ukraine</b></p>
-      <p class="small">Two of the world's largest sellers of grain and sunflower oil, whose sales the war
-        put at risk in 2022.</p>
+    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the calories in food</b>" : `the <b>${food()}</b> used`} that would be missing</p>
       ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
   } else {
     el.innerHTML = `<p class="title">${state.group === "all" ? "Months <b>its own food</b> would last, counted in calories"
       : `How long <b>its own ${food()}</b> would last, in months`}</p>${seasonScale()}${toggle}`;
   }
-  const b = el.querySelector("[data-scenario]");
-  if (b) b.onclick = () => { state.scenario = false; render(); };
 }
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
@@ -1378,14 +1402,6 @@ function wire(el) {
       render(); fitTrade();
     };
   }
-  for (const b of el.querySelectorAll("[data-scenario]")) {
-    b.onclick = () => {
-      state.scenario = b.dataset.scenario === "1";
-      if (state.scenario) loadScenario();
-      render();
-      keepFocus("#view .whatif");
-    };
-  }
   for (const b of el.querySelectorAll("[data-fields]")) {
     b.onclick = () => { state.fields = b.dataset.fields === "1"; render(); keepFocus(`[data-fields="${b.dataset.fields}"]`); };
   }
@@ -1418,8 +1434,7 @@ function viewIntro() {
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
       .concat(country(EU) ? [EU] : [])
       .map((id) => `<button type="button" data-go="#${id}">${id === EU ? "European Union" : nameOf(id)}</button>`)
-      .join("")}</div>
-    <p class="small">${whatIf(state.scenario ? "Back to the main map" : "What if Russia and Ukraine stopped selling?")}</p>`;
+      .join("")}</div>`;
 }
 
 // No food balance (Japan, Singapore): say so; the card still shows what it buys and sells.
@@ -1500,28 +1515,21 @@ function foodList(id) {
       FAO's figures for ${missing.length === 1 ? "it do" : "them do"} not hold together.</p>` : ""}`;
 }
 
-// Countries ranked by the "all food" date.
-// Compared on today's menu (each food at most 100%), not on the headline: there a fish surplus
-// stands in for every other food, which put Iceland and the Seychelles at the top for years.
+// Countries ranked by the "all food" figure, the one the map shows (methodology, "How long").
 function compareAll(id) {
   const rows = rankable()
-    .map((r) => ({ ...r, v: menuFor(r.id) }))
+    .map((r) => ({ ...r, v: pctFor(r.id, "all") }))
     .filter((r) => r.v != null)
     .sort((a, b) => b.v - a.v);
-  const me = menuFor(id);
+  const me = pctFor(id, "all");
   if (!rows.length || me == null) return "";
   const shorter = rows.filter((r) => r.v < me - 0.5).length;
   return `
     <h3>How does ${id === EU ? "the EU" : nameOf(id)} compare?</h3>
-    <p>Countries are compared on a stricter question: could they eat exactly as today? Then each food
-      counts only up to what is eaten of it, so a surplus of wheat cannot make up for coffee that is not
-      grown${pctFor(id, "all") != null && Math.round(pctFor(id, "all")) !== Math.round(me) ? ` (the map lets it:
-      <strong>${Math.round(pctFor(id, "all"))}%</strong>, ${lasts(pctFor(id, "all"), { short: true })})` : ""}.</p>
-    <p>On that question its own food would last <strong>${lasts(me, { short: true })}</strong>
-      (${Math.round(me)}%): longer than in <strong>${shorter}</strong> of ${rows.length} countries.</p>
+    <p>Its own food lasts longer than in <strong>${shorter}</strong> of ${rows.length} countries.</p>
     <div class="cols">
-      <div><p class="small">Runs out soonest, eating as today</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
-      <div><p class="small">Lasts longest, eating as today</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
+      <div><p class="small">Runs out soonest</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
+      <div><p class="small">Lasts longest</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
     </div>`;
 }
 
@@ -2403,10 +2411,6 @@ function receiptAll(id, v) {
       only for the rest. Beef, lamb and milk count in full: cattle and sheep live mostly on grass.
       That gives <strong>${Math.round(v)}%</strong>.</p>` : ""}
     ${inMonths(id, v)}
-    ${menuFor(id) != null ? `<h3>Keeping today's menu</h3>
-    <p>If no food may stand in for another (each food counts at most 100%), it is
-      <strong>${Math.round(menuFor(id))}%</strong>: ${forHowLong(menuFor(id))}. That is the stricter
-      question of eating exactly as today, and the one countries are compared on.</p>` : ""}
     ${country(id)?.indicators?.all?.protein?.feed_ssr != null ? `<p class="small">Counted by protein instead
       of calories, it is ${Math.round(country(id).indicators.all.protein.feed_ssr)}%
       (<a href="${link({ level: "table", group: "all" })}">all the numbers</a>).</p>` : ""}

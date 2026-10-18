@@ -1,0 +1,16 @@
+# "What if …?" scenarios: a group of countries stops selling food, and nothing takes its place
+# (methodology, "Scenarios: what if some countries stopped selling"). `sellers` are ISO3 codes;
+# a country in the group gets no figure. `label` is what the map's scenario button says.
+scenarios:
+  ru_ua:
+    label: Russia and Ukraine stop selling
+    short: Russia and Ukraine
+    sellers: [RUS, UKR]
+  south_america:
+    label: South America stops selling
+    short: South America
+    sellers: [ARG, BOL, BRA, CHL, COL, ECU, GUY, PRY, PER, SUR, URY, VEN]
+  north_america:
+    label: The United States and Canada stop selling
+    short: the United States and Canada
+    sellers: [USA, CAN]
