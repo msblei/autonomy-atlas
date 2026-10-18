@@ -39,3 +39,16 @@ test("back goes up one step at a time", async ({ page }) => {
     await expect.poll(() => page.evaluate(() => location.hash)).toBe(want);
   }
 });
+
+test("the map and start page come from the small core file; the panel waits for the full one", async ({ page }) => {
+  let release;
+  const held = new Promise((r) => { release = r; });
+  await page.route("**/data/ssr.json", async (route) => { await held; await route.continue(); });
+  await page.goto("./#DEU/cereals");
+  await expect(page.locator("#legend")).toContainText("would last"); // painted from ssr_core.json
+  await expect(page.locator("#view")).toContainText("Loading");
+  await expect(page.locator("#card")).toHaveAttribute("aria-busy", "true");
+  release();
+  await expect(page.locator("#view .answer")).toBeVisible();
+  await expect(page.locator("#card")).toHaveAttribute("aria-busy", "false");
+});

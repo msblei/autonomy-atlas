@@ -36,7 +36,7 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # A warning the site already deals with (handled), or that a review found right (confirmed): listed
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
-PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
+PUBLISHED = ["ssr.json", "ssr_core.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
              "cropmap.json", "scenario.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
@@ -650,6 +650,14 @@ def run(*, write: bool = True) -> list[Finding]:
         findings += check_published(ssr, its, trade)
     if ssr is not None:
         findings += check_feed(ssr)
+        core = W / "ssr_core.json"
+        if not core.exists():
+            findings.append(Finding("core_missing", BLOCK, "ssr_core.json not exported"))
+        else:
+            from .export import core_of
+
+            if json.loads(core.read_text(encoding="utf-8")) != core_of(ssr):
+                findings.append(Finding("core_differs", BLOCK, "ssr_core.json is not the subset of ssr.json"))
     sc = config.WEB_DATA / "scenario.json"
     if sc.exists() and ssr is not None:
         findings += check_scenario(json.loads(sc.read_text(encoding="utf-8")), ssr)

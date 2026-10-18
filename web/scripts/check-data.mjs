@@ -34,7 +34,7 @@ for (const [name, hash] of Object.entries(v.files ?? {})) {
   if (!existsSync(p)) fail(`${name} was validated but is missing.`);
   if (sha(p) !== hash) fail(`${name} changed after validation (re-run \`atlas validate\`).`);
 }
-for (const name of ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json", "cropmap.json", "scenario.json", "countries.geojson"]) {
+for (const name of ["ssr.json", "ssr_core.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json", "cropmap.json", "scenario.json", "countries.geojson"]) {
   if (!(name in (v.files ?? {}))) fail(`${name} is not covered by validation.json.`);
 }
 

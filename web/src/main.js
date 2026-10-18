@@ -207,12 +207,22 @@ function anchorOf(geometry) {
 // can take seconds). The panel renders as soon as the data is in; the map is painted once both
 // are ready.
 const geoReady = loadJSON("data/countries.geojson");
-const dataReady = Promise.all([geoReady, loadJSON("data/ssr.json")]).then(([geo, data]) => {
+// Two steps: ssr_core.json (16 KB compressed: names and each food's headline figure) colours the
+// map and draws the start page; the full ssr.json (≈190 KB) replaces it for the panel. On the start
+// page it is fetched once the borders and the core are in, so on a slow line it does not slow the
+// map down; a link straight to a country fetches it at once, since the panel is what was asked
+// for. Until it is in, a country's panel says "Loading…" (state.full).
+const fullEarly = location.hash.length > 1 && !location.hash.startsWith("#about")
+  ? loadJSON("data/ssr.json") : null;
+function prepare(data) {
   // export.py drops empty fields to keep the file small; restore the ones the code walks.
   for (const c of Object.values(data.countries)) {
     c.indicators ??= {};
     c.trend ??= {};
   }
+  return data;
+}
+const dataReady = Promise.all([geoReady, loadJSON("data/ssr_core.json").then(prepare)]).then(([geo, data]) => {
   state.data = data;
   for (const f of geo.features) {
     const { iso3, iso2, name } = f.properties;
@@ -226,6 +236,7 @@ const dataReady = Promise.all([geoReady, loadJSON("data/ssr.json")]).then(([geo,
   buildCountryPicker();
   window.addEventListener("hashchange", () => route());
   route();
+  (fullEarly ?? loadJSON("data/ssr.json")).then(prepare).then((full) => { state.data = full; state.full = true; render(); });
   // The trade figures are only needed for "bought" and "sold": fetch them when the page is idle,
   // so those rarely have to wait.
   (window.requestIdleCallback ?? ((f) => setTimeout(f, 1500)))(() => loadTrade());
@@ -815,6 +826,9 @@ function render({ newPlace = false } = {}) {
   swapTimer = setTimeout(() => showDetail({ fresh, dir, newPlace }), 110);
 }
 
+// The panel's figures come from the full ssr.json; the start and about pages need only the core.
+const needsFull = () => !state.full && !["intro", "about"].includes(state.level);
+
 function showDetail({ fresh, dir, newPlace }) {
   const views = { intro: viewIntro, about: viewAbout, country: viewCountry,
     food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable, where: viewWhere };
@@ -823,6 +837,11 @@ function showDetail({ fresh, dir, newPlace }) {
     && !(state.level === "trade" && state.trade?.countries[state.iso3]);
   // What replaces a "Loading…" line fades in too, instead of popping up.
   if (el.querySelector(".detail [data-loading]") && !matchMedia("(prefers-reduced-motion: reduce)").matches) fresh = true;
+  if (needsFull()) {
+    // no data-hash: the browser tests wait for the real detail, not for this line
+    el.innerHTML = `<div class="detail"><p class="hint" data-loading>Loading…</p></div>`;
+    return;
+  }
   // data-hash: which address this detail shows (the browser tests wait for it).
   el.innerHTML = `<div class="detail${fresh ? " enter" : ""}" data-hash="${location.hash}" style="--in:${dir * 8 || 4}px">${noData ? viewNoData() : views[state.level]()}</div>`;
   if (fresh) {
@@ -903,7 +922,9 @@ for (const el of [document.getElementById("frame"), document.getElementById("vie
 function renderPeek() {
   const id = state.iso3;
   let line = "Could your country feed itself?";
-  if (id) {
+  if (id && !state.full) {
+    line = `<b>${nameOf(id)}</b> ${groupInfo().label}`;
+  } else if (id) {
     const rows = cardRows(id);
     const key = state.level === "trade" ? state.flow : state.level === "used" ? "used" : "food";
     const r = rows[key];
@@ -1145,8 +1166,10 @@ function renderFrame() {
   back.setAttribute("aria-label", upLabel);
   if (frame.hidden) return;
   if (!document.querySelector("#card .sum-row")) buildCard();
+  document.getElementById("card").setAttribute("aria-busy", String(!state.full));
   document.getElementById("place").textContent = nameOf(id);
   document.getElementById("foodline").innerHTML = `${foodIcon(state.group)}<span>${groupInfo().label}</span>`;
+  if (!state.full) return; // the card's figures come with the full ssr.json (a moment later)
   const rows = cardRows(id);
   const here = state.level === "trade" ? state.flow
     : state.level === "used" ? "used"

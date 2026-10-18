@@ -4,6 +4,8 @@ Outputs (web/public/data/):
     countries.geojson   country polygons in scope, properties {iso3, iso2, name}
     ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend,
                         trend_unusual?}}}
+    ssr_core.json       the subset the first paint needs (names, headline figures, withheld
+                        reasons; core_of), 16 KB compressed against ~190 KB; loaded first
     items.json          {iso3: {group: [{item, ssr, supply_kt}]}}  (expert view, loaded lazily)
     trade.json          {meta{…, withheld}, names, countries{iso3: {group: {imports|exports|grown:
                         [total_t, [[partner, t], ...]]}}}}  (trade view, loaded lazily)
@@ -216,6 +218,33 @@ def group_entries(products: dict) -> list[dict]:
     ]
 
 
+# The first paint (map colours, tooltips, the start page) needs only these; the panel waits for the
+# full ssr.json, fetched in parallel. A strict subset: validate.check_core compares the two.
+CORE_COUNTRY = ("name", "region", "europe", "view", "notes")
+
+
+def core_of(full: dict) -> dict:
+    """ssr.json -> ssr_core.json: meta, groups, and per country the names and each food's headline
+    figure (tonnes SSR; all food: protein SSR) with its withheld reason."""
+    countries = {}
+    for iso3, c in full["countries"].items():
+        e = {k: c[k] for k in CORE_COUNTRY if k in c}
+        ind = {}
+        for g, i in (c.get("indicators") or {}).items():
+            where = i.get("protein", {}) if g == "all" else i
+            figure = {"ssr": where["ssr"]} if where.get("ssr") is not None else {}
+            w = {"reason": where["withheld"]["reason"]} if where.get("withheld") else None
+            if g == "all":
+                ind[g] = {"protein": {**figure, **({"withheld": w} if w else {})}}
+            else:
+                ind[g] = {**({"tonnes": {"ssr": i["tonnes"]["ssr"]}} if (i.get("tonnes") or {}).get("ssr") is not None else {}),
+                          **({"withheld": w} if w else {})}
+        if ind:
+            e["indicators"] = ind
+        countries[iso3] = e
+    return {"meta": full["meta"], "groups": full["groups"], "countries": countries}
+
+
 def export_ssr() -> None:
     m = config.MAPPINGS
     for name in ("groups", "items", "overall", "trends"):
@@ -377,6 +406,10 @@ def export_ssr() -> None:
                     encoding="utf-8")
     log.info("wrote %s (%d countries, %.0f KB)", dest, len(out["countries"]),
              dest.stat().st_size / 1024)
+    dest = config.WEB_DATA / "ssr_core.json"
+    dest.write_text(json.dumps(core_of(_compact(out)), ensure_ascii=False, separators=(",", ":")),
+                    encoding="utf-8")
+    log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)
     dest = config.WEB_DATA / "items.json"
     dest.write_text(json.dumps(_compact(item_tables), ensure_ascii=False, separators=(",", ":")),
                     encoding="utf-8")
