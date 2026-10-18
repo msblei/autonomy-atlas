@@ -586,3 +586,6 @@ def run() -> None:
     from . import cropmap
 
     cropmap.run()
+    from . import scenario
+
+    scenario.export()

@@ -99,11 +99,13 @@ make serve       # cd web && npm run dev
    Eurostat `apro_cpshr` (NUTS2, Germany NUTS1) as a list and a map of t per km² ("Where in … do
    they grow?", `#ISO/group/where`, `pipeline/regions.py`), and "Fields", JRC's 2 km crop
    shares from EUCROPMAP 2018 as one map image per food (`pipeline/cropmap.py`).
-4. **Phase 4 (in part):** feed-adjusted SSR done: imported share of feed protein (cakes count
+4. **Phase 4 (done, 2026-10):** feed-adjusted SSR: imported share of feed protein (cakes count
    as imported when their beans were), meat and eggs counting pigs and poultry only for home-grown
    feed ("Feed from abroad" on the food page; cattle, sheep and milk not adjusted: grass).
-   Calorie-weighted composite: the "all food" kcal coverage already is one. Still to do:
-   scenario toggles ("lose Ukraine/Russia supply").
+   Calorie-weighted composite: the "all food" kcal coverage already is one. Scenario "What if
+   Russia and Ukraine stopped selling?": a map mode and a line per food page, the share of use
+   grown there (traced), even-mix over production + imports so transit does not count
+   (`pipeline/scenario.py`).
 
 ## Data sources (phase 1 + 2)
 

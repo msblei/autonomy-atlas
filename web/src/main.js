@@ -28,6 +28,7 @@ const state = {
   grown: false, // imports traced back to where they were grown, instead of who sold them
   byValue: false, // trade in euros (Eurostat Comext, EU countries) instead of tonnes
   fields: false, // "Where it is grown": the 2 km crop map instead of the regions' tonnes
+  scenario: false, // the map shows what each country would lack without Russia and Ukraine
   indicator: "ssr", // ssr | idr (table level only)
   basis: "tonnes", // tonnes | kcal (table level only)
   bloc: false, // zoomed out: EU members are coloured with the EU27 bloc's figures (see EU_ZOOM)
@@ -588,7 +589,31 @@ function valueFor(id, indicator = tableIndicator(), basis = tableBasis()) {
 }
 
 function mapValue(id) {
+  if (scenarioOn()) return state.scen.countries[id]?.[state.group] ?? null;
   return state.level === "table" ? valueFor(id) : pctFor(id);
+}
+
+// ---- What if Russia and Ukraine stopped selling? (scenario.json, methodology "Scenario") ----
+let scenLoading = null;
+function loadScenario() {
+  scenLoading ??= loadJSON("data/scenario.json")
+    .then((d) => { state.scen = d; render(); })
+    .catch((e) => console.error(e));
+}
+// Only where the map shows the main measure (not trade, regions or the expert table).
+const scenarioOn = () => state.scenario && !!state.scen && !["trade", "where", "table"].includes(state.level);
+const LACK = [{ max: 1, color: "#f3ead8", label: "<1%" }, { max: 5, color: "#ecc98f", label: "1–5%" },
+  { max: 10, color: "#e09a55", label: "5–10%" }, { max: 25, color: "#c8642f", label: "10–25%" },
+  { max: 50, color: "#9e3d1f", label: "25–50%" }, { max: Infinity, color: "#6b2412", label: "50%+" }];
+
+function lackLine(id) {
+  if (!state.scen) { loadScenario(); return ""; }
+  const v = state.scen.countries[id]?.[state.group];
+  if (v == null || v < 1) return "";
+  const who = id === EU ? "the EU" : nameOf(id);
+  const what = state.group === "all" ? "the protein in its food" : `the ${food()} it uses`;
+  return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${Math.round(v)}%</strong> of ${what},
+    unless others sold more.</p>`;
 }
 
 // kg/person/year from 1000 t and 1000 persons: kt * 1000 / population_k.
@@ -739,6 +764,10 @@ function tooltip(iso3) {
       ? "No reliable data from FAO" : "No data from FAO"}</span>`;
   }
   if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}`;
+  if (scenarioOn()) {
+    return `<strong>${nameOf(id)}</strong><span class="v">${v < 1 ? "under 1" : Math.round(v)}% of ${state.group === "all"
+      ? "the protein in its food" : `the ${food()} it uses`} was grown in Russia or Ukraine</span>`;
+  }
   const what = state.group === "all" ? "Own food lasts" : `Own ${food()} lasts`;
   return `<strong>${nameOf(id)}</strong>
     <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>`;
@@ -907,6 +936,9 @@ function paintMap() {
     const { stops, colors } = SCALES[tableIndicator()] ?? SCALES.ssr;
     paint = ["interpolate", ["linear"], ["feature-state", "v"]];
     stops.forEach((s, i) => paint.push(s, colors[i]));
+  } else if (scenarioOn()) {
+    paint = ["step", ["feature-state", "v"], LACK[0].color];
+    LACK.slice(0, -1).forEach((s, i) => paint.push(s.max, LACK[i + 1].color));
   } else {
     paint = ["step", ["feature-state", "v"], SEASONS[0].color];
     SEASONS.slice(1).forEach((s, i) => paint.push(SEASONS[i].max, s.color));
@@ -968,7 +1000,16 @@ function renderLegend() {
       <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>`;
     return;
   }
-  el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months</p>${seasonScale()}`;
+  const toggle = ["trade", "where", "table"].includes(state.level) ? "" : `<button type="button" class="linkish whatif" data-scenario="${state.scenario ? 0 : 1}">${state.scenario
+    ? "Back to: how long it would last" : "What if Russia and Ukraine stopped selling?"}</button>`;
+  if (scenarioOn()) {
+    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the protein in food</b>" : `the <b>${food()}</b> used`} that was grown in <b>Russia or Ukraine</b></p>
+      ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
+  } else {
+    el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months</p>${seasonScale()}${toggle}`;
+  }
+  const b = el.querySelector("[data-scenario]");
+  if (b) b.onclick = () => { state.scenario = b.dataset.scenario === "1"; if (state.scenario) loadScenario(); render(); };
 }
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
@@ -1261,6 +1302,7 @@ function viewCountry() {
   return `
     ${head}
     ${euLine(id, "all")}
+    ${lackLine(id)}
     ${foodList(id)}
     ${compareAll(id)}`;
 }
@@ -1340,6 +1382,7 @@ function viewFood() {
     ${w ? "" : storageNote(id)}
     ${g.plain ? `<p class="small">${g.plain}</p>` : ""}
     ${euLine(id)}
+    ${w ? "" : lackLine(id)}
     ${w ? "" : secondOpinion(id)}
     ${w ? "" : feedNote(id)}
     ${w ? "" : trend(id)}

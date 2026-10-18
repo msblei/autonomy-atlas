@@ -37,7 +37,7 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
 PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
-             "cropmap.json", "countries.geojson"]
+             "cropmap.json", "scenario.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
 KT_TOL = 0.5  # kt, for identities between exported components
@@ -424,6 +424,22 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
     return out
 
 
+def check_scenario(sc: dict, ssr: dict) -> list[Finding]:
+    """Scenario (methodology, "Scenario"): a share of use (0-100%), none for Russia and Ukraine
+    themselves, none for a withheld food."""
+    out = []
+    for iso3, gs in sc.get("countries", {}).items():
+        if iso3 in ("RUS", "UKR"):
+            out.append(Finding("scenario_scope", BLOCK, "scenario for Russia or Ukraine", iso3))
+        for group, v in gs.items():
+            if not 0 <= v <= 100:
+                out.append(Finding("scenario_range", BLOCK, f"lack {v}%", iso3, group))
+            ind = ssr["countries"].get(iso3, {}).get("indicators", {}).get(group, {})
+            if group != "all" and ind.get("withheld"):
+                out.append(Finding("scenario_withheld", BLOCK, "figure for a withheld food", iso3, group))
+    return out
+
+
 def check_feed(ssr: dict) -> list[Finding]:
     """Feed adjustment (methodology, "Feed"): the imported share is a share, and counting only
     home-grown feed can lower meat and eggs but never raise them; no figure for a withheld food."""
@@ -634,6 +650,9 @@ def run(*, write: bool = True) -> list[Finding]:
         findings += check_published(ssr, its, trade)
     if ssr is not None:
         findings += check_feed(ssr)
+    sc = config.WEB_DATA / "scenario.json"
+    if sc.exists() and ssr is not None:
+        findings += check_scenario(json.loads(sc.read_text(encoding="utf-8")), ssr)
     cm = config.WEB_DATA / "cropmap.json"
     if cm.exists():
         findings += check_cropmap(json.loads(cm.read_text(encoding="utf-8")))

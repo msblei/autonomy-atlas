@@ -262,3 +262,14 @@ test("feed from abroad: the imported share and the feed-adjusted meat as exporte
   await expect(box).toContainText("cows live mostly on grass");
   await expect(box).not.toContainText("would last for about");
 });
+
+test("what if Russia and Ukraine stopped selling: the map key switches and the page says the share", async ({ page }) => {
+  const sc = JSON.parse(readFileSync(new URL("../public/data/scenario.json", import.meta.url), "utf8"));
+  const v = sc.countries.EGY.cereals;
+  await open(page, "EGY/cereals");
+  await expect(view(page)).toContainText(`Egypt would lack ${Math.round(v)}% of the cereals it uses`);
+  await page.locator("#legend .whatif").click();
+  await expect(page.locator("#legend")).toContainText("grown in Russia or Ukraine");
+  await page.locator("#legend .whatif").click(); // and back
+  await expect(page.locator("#legend")).toContainText("would last");
+});

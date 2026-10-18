@@ -655,6 +655,45 @@ def feed_rows(res, D):
     return out
 
 
+def scenario_rows(res, D, trade, hidden):
+    """Methodology "Scenario": {iso: {group: lack %}}; all = protein-weighted."""
+    out = {}
+    code_of = {}
+    for c, nm in D.item_names.items():
+        code_of.setdefault(nm, c)
+    for iso, r in res.items():
+        if iso in ("RUS", "UKR") or "groups" not in r:
+            continue
+        rows = {}
+        for g, gr in r["groups"].items():
+            if gr["reason"] or (iso, g, "imports") in hidden:
+                continue
+            P, M, Dd = gr["comp"]["P"], gr["comp"]["M"], gr["comp"]["D"]
+            if isnan(Dd) or Dd <= 0:
+                continue
+            if isnan(M) or M <= 0:
+                rows[g] = 0.0
+                continue
+            parts = trade.get(iso, {}).get(g, {}).get("imports" if g == "fish" else "grown", {})
+            tot = sum(parts.values())
+            if tot <= 0:
+                continue
+            s_ = (parts.get("RUS", 0.0) + parts.get("UKR", 0.0)) / tot
+            rows[g] = 100 * M * s_ / (max(nz(P), 0.0) + M)
+        bal = r.get("item_bal") or {}
+        num = den = 0.0
+        for g, v in rows.items():
+            pr = sum(nz(bal[code_of[nm]]["protein"]) for nm in PRODUCTS[g]["items"]
+                     if nm in code_of and code_of[nm] in bal)
+            if pr > 0:
+                num, den = num + v * pr, den + pr
+        if den > 0:
+            rows["all"] = num / den
+        if rows:
+            out[iso] = rows
+    return out
+
+
 def season_rows(res, D):
     """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
     cal = season_calendars()
@@ -1584,7 +1623,7 @@ def main():
     SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
     SHAS["baci_zip"] = sha256(BACI_ZIP)
     for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
-              "cropmap.json"):
+              "cropmap.json", "scenario.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
     D = load_all()
@@ -1781,6 +1820,17 @@ def main():
                 if e is None or abs(e - mine) > 1:
                     record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
                                          "field": "concentration"}, e, mine)
+
+    # ---- scenario (methodology "Scenario") ----
+    sc = json.load(open(OUT_DIR / "scenario.json"))["countries"]
+    mine_sc = scenario_rows(res, D, trade, hidden)
+    for iso in sorted(set(sc) | set(mine_sc)):
+        for g in sorted(set(sc.get(iso, {})) | set(mine_sc.get(iso, {}))):
+            e, m_ = sc.get(iso, {}).get(g), mine_sc.get(iso, {}).get(g)
+            counts["scenario"] += 1
+            if e is None or m_ is None or abs(e - m_) > 0.05 + 1e-9:
+                record("scenario", {"file": "scenario.json", "country": iso, "group": g, "field": "lack"},
+                       e, None if m_ is None else round(m_, 1))
 
     # ---- feed (methodology "Feed") ----
     mine_f = feed_rows(res, D)
@@ -1997,7 +2047,7 @@ def main():
         "ok": total == 0,
         "n_mismatches": total,
         "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json",
-                                                              "import_months.json", "cropmap.json")},
+                                                              "import_months.json", "cropmap.json", "scenario.json")},
         "runtime_s": round(time.time() - T0, 1),
         "window": f"{D.WIN[0]}-{D.WIN[-1]}",
         "primary_reading": PRIMARY,

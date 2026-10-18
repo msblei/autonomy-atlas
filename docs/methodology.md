@@ -743,11 +743,30 @@ self-sufficiency is left for the animals that live on it.
 - **Export:** `ssr.json` country `feed`: `{imported_pct, top: [[item, % of imported protein] × ≤3],
   meat_ssr, eggs_ssr, items_pct}` (`items_pct` = share of the feed tonnage the table covers).
 
-## Scenario "without trade" (considered, not built)
+## Scenario: without Russia and Ukraine
 
-With all trade stopped a country keeps its production, so "available without trade" per person is
-just production per person — the SSR view already shows it. A useful scenario needs feed origin
-(phase 4) or partner-level trade to remove specific suppliers such as RU/UA (phase 2).
+What a country would lack if Russia and Ukraine stopped selling, and nothing took their place
+(`pipeline/scenario.py`, `web/public/data/scenario.json`).
+
+- **Per country and food:** `lack = 100 × M × s / (P + M)` (% of what it uses), with P and M the
+  food balance's production and imports as published (`components_kt`), and `s` the share of its
+  imports **grown** in Russia or Ukraine. What a country has, P + M, is an even mix (as in section
+  "Where imports were grown"): exports and stocks take the same mix, so its own use has the same
+  share from Russia and Ukraine. Dividing by D instead counted transit as use (Slovenia, through
+  Koper, came out at 213% of its oilseeds) (section "Where imports were grown": what comes through
+  Turkey as flour or through the Netherlands counts where it was grown). Fish has no tracing: its
+  `s` is the share bought from them (Comext or BACI). The EU as one: its own figures (imports from
+  outside the EU, traced).
+- **All food:** the foods' figures weighted by their protein per person (FBS items, as the
+  headline): `Σ_g protein_g × lack_g / Σ_g protein_g` over the foods with a figure.
+- **No figure:** for Russia and Ukraine themselves; for a withheld food (its balance contradicts
+  itself) or a withheld import flow (section "Trade records against the food balance"); where
+  D ≤ 0 (nothing used).
+- **What it does not say:** that the food would be missing for long (other sellers step in, at a
+  price), or what animals would lack in feed (sunflower meal from Ukraine is feed, not a food
+  group here). The page says so.
+- **Export:** `scenario.json` `{meta: {partners, years, basis}, countries: {iso3: {group: lack %}}}`;
+  shown as a "What if?" map for the chosen food and a line on the food page.
 
 ## FAO against USDA
 

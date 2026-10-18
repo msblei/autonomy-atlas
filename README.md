@@ -55,7 +55,7 @@ data/       raw / interim / processed (gitignored)
 2. Trade partners and arcs (FAO trade matrix; fish from Eurostat Comext), import concentration;
    for EU countries also in euros (Comext); fish from Comext and CEPII BACI.
 3. Crop calendars and NUTS2 regional production ("what is grown where, and when").
-4. Feed-adjusted and calorie-weighted indices; scenario toggles.
+4. Feed-adjusted meat and eggs; "What if Russia and Ukraine stopped selling?" (done).
 
 ## Data and licences
 
