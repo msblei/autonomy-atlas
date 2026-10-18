@@ -450,6 +450,30 @@ INT_EU, …) are dropped, so nothing counts twice; the single partners add up to
    rows of its trade matrix from Comext, so large gaps point at a mapping difference, not at two
    views of the world.
 
+### Value basis: what EU countries pay and earn (EUR)
+
+From the same Comext extraction (`VALUE_IN_EUROS`), for EU members and the EU bloc only:
+
+- **What it is.** Per member, food group and flow (imports, exports), the value of its trade with
+  each partner that is a country, yearly mean over the FBS window, in nominal euros (not
+  adjusted for prices; food prices peaked in 2022). Imports are valued at the EU border including
+  freight and insurance (CIF), exports free on board (FOB), as Comext records them. Products and
+  groups as in the tonnes basis (`hs_items.csv`, `cn8_items.csv`; fish = the CN8 codes with an
+  EUMOFA factor above 0); no conversion factors, a euro is a euro. Self-trade and partners that
+  are no country are left out, as for the partner lists by weight.
+- **EU bloc:** members' trade with non-members, summed.
+- **All food** = all groups but fish, as for weight (the two bases describe the same goods).
+- **Never mixed with weight.** It is a basis of its own: the trade page switches between "by
+  weight" (FAO trade matrix, FBS basis, as above; fish from Comext in live weight) and "by
+  value" (Comext, EUR) for the whole view: list, totals, map. The balance card stays in tonnes.
+  No self-sufficiency ratio is computed in value: that would need the value of production,
+  which trade data does not have.
+- **Export:** `trade.json` `value`: `meta` (`source: eurostat_comext`, `years`, `unit:
+  "thousand EUR"`, `basis`), `countries` `{iso3: {group: {imports|exports: [total, [[partner,
+  value], …]]}}}` with the same list rule as by weight (every partner with at least 0.5%, at most
+  24; values in thousand euros, rounded), and `concentration` (HHI over all partners, as by
+  weight, of the value shares).
+
 ## Where imports were grown (re-export tracing)
 
 The trade view's "Grown in" switch follows imports back through transit and processing hubs

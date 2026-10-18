@@ -212,6 +212,60 @@ COMEXT_ISO = {r["comext"]: r["iso3"] for r in read_csv_comments(MAP / "comext_pa
 INTRA_UNNAMED = {"QR", "QV", "QY"}
 
 
+_COMEXT = None
+
+
+def comext_raw():
+    global _COMEXT
+    if _COMEXT is None:
+        _COMEXT = pd.read_csv(COMEXT_GZ, dtype=str, compression="gzip", keep_default_na=False)  # NA = Namibia
+    return _COMEXT
+
+
+def eumofa_codes():
+    """CN8 codes with an EUMOFA factor above 0 in some year."""
+    cf = pd.read_excel(EUMOFA_XLSX, sheet_name="List of CF", dtype=str)
+    return set(cf.loc[pd.to_numeric(cf["CF"], errors="coerce") > 0, "CN-8"].str.replace(" ", "", regex=False))
+
+
+def comext_value(years):
+    """Methodology "Value basis": out[c][group][flow] = {partner: EUR a year}, members (named
+    partners, no self-trade) and EU27 (members to non-members); "all" = every group but fish."""
+    hs = {(int(r["version"]), r["hs"]): r for r in read_csv_comments(MAP / "hs_items.csv") if r["group"]}
+    cn8 = {r["cn8"]: r["group"] for r in read_csv_comments(MAP / "cn8_items.csv")}
+    fish = eumofa_codes()
+    d = comext_raw()
+    d = d[(d["indicators"] == "VALUE_IN_EUROS") & d["partner"].isin(COMEXT_ISO)]
+    d = d[d["TIME_PERIOD"].astype(int).isin(years)]
+    out = defaultdict(lambda: defaultdict(lambda: defaultdict(lambda: defaultdict(float))))
+    for rep_, par, prod, flow, year, val in zip(d["reporter"], d["partner"], d["product"], d["flow"],
+                                                d["TIME_PERIOD"], d["OBS_VALUE"]):
+        if not val:
+            continue
+        y = int(year)
+        if len(prod) == 8:
+            if prod.startswith(FISH_HEADINGS):
+                g = "fish" if prod in fish else None
+            else:
+                g = cn8.get(prod)
+        else:
+            r = hs.get((2017 if y <= 2021 else 2022, prod))
+            g = r["group"] if r and r["group"] != "fish" and r["to_primary"] != "cn8" else None
+        c, p = COMEXT_ISO[rep_], COMEXT_ISO[par]
+        if g is None or c == p:
+            continue
+        f = {"1": "imports", "2": "exports"}[flow]
+        v = float(val) / len(years)
+        out[c][g][f][p] += v
+        if g != "fish":
+            out[c]["all"][f][p] += v
+        if c in EU and p not in EU:
+            out["EU27"][g][f][p] += v
+            if g != "fish":
+                out["EU27"]["all"][f][p] += v
+    return out
+
+
 def load_comext_fish():
     """-> [c, partner, named, flow, year, t] with t in tonnes live weight; c = ISO3 of the member,
     partner = ISO3 or Comext's own code (named = it is a country)."""
@@ -231,7 +285,7 @@ def load_comext_fish():
             return ys[year]
         return ys[min(ys, key=lambda y: (abs(y - year), y))]
 
-    d = pd.read_csv(COMEXT_GZ, dtype=str, compression="gzip", keep_default_na=False)  # NA = Namibia
+    d = comext_raw()
     d = d[(d["partner"].str.len() == 2) & (d["product"].str.len() == 8)  # no WORLD, EXT_EU, ...
           & d["product"].str.startswith(FISH_HEADINGS)
           & (d["indicators"] == "QUANTITY_IN_100KG")]
@@ -1285,6 +1339,32 @@ def main():
                 if e is None or abs(e - mine) > 1:
                     record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
                                          "field": "concentration"}, e, mine)
+
+    # ---- value basis (methodology "Value basis"): totals, listed partners, HHI, in thousand EUR ----
+    val = comext_value(D.WIN)
+    exp_v = (tr.get("value") or {}).get("countries", {})
+    exp_vh = (tr.get("value") or {}).get("concentration", {})
+    keys = {(c, g, f) for c, gs in val.items() for g, fl in gs.items() for f, parts in fl.items()
+            if sum(parts.values()) > 0} | {(c, g, f) for c, gs in exp_v.items() for g, fl in gs.items() for f in fl}
+    for c, g, f in sorted(keys):
+        w = {"file": "trade.json", "country": c, "group": g, "flow": f, "field": "value"}
+        parts = val.get(c, {}).get(g, {}).get(f, {})
+        tot = sum(parts.values()) / 1000
+        e = exp_v.get(c, {}).get(g, {}).get(f)
+        counts["value_total"] += 1
+        if e is None or abs(e[0] - tot) > 1:
+            record("value_total", w, e and e[0], round(tot))
+            continue
+        top = sorted(parts.items(), key=lambda kv: -kv[1])
+        want = [[p, round(v / 1000)] for p, v in top if v / 1000 >= 0.005 * tot][:24]
+        counts["value_partner"] += 1
+        if [p for p, _ in e[1]] != [p for p, _ in want] or any(abs(a[1] - b[1]) > 1 for a, b in zip(e[1], want)):
+            record("value_partner", w, e[1][:5], want[:5])
+        counts["value_hhi"] += 1
+        mine = round(sum((100 * v / (tot * 1000)) ** 2 for v in parts.values()))
+        eh = exp_vh.get(c, {}).get(g, {}).get(f)
+        if eh is None or abs(eh - mine) > 1:
+            record("value_hhi", w, eh, mine)
 
     for iso, groups in tr["countries"].items():
         for g, flows in groups.items():

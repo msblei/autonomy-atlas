@@ -79,6 +79,7 @@ def main(argv: list[str] | None = None) -> int:
         compute.run(years=years)
         trade.run()
         comext.run_compare(trade.fbs_window())
+        comext.run_value(trade.fbs_window())
         usda.run()
     elif args.cmd == "export":
         export.run()
@@ -91,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         compute.run(years=years)
         trade.run()
         comext.run_compare(trade.fbs_window())
+        comext.run_value(trade.fbs_window())
         usda.run()
         export.run()
         return _validate()

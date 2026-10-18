@@ -26,6 +26,7 @@ const state = {
   level: "intro", // intro | country | foods | food | trade | used | sources | table | about
   flow: "imports", // imports | exports (trade level)
   grown: false, // imports traced back to where they were grown, instead of who sold them
+  byValue: false, // trade in euros (Eurostat Comext, EU countries) instead of tonnes
   indicator: "ssr", // ssr | idr (table level only)
   basis: "tonnes", // tonnes | kcal (table level only)
   bloc: false, // zoomed out: EU members are coloured with the EU27 bloc's figures (see EU_ZOOM)
@@ -1030,7 +1031,7 @@ function cardRows(id, group = state.group) {
     }
   }
   if (!state.trade) { loadTrade(); rows.imports.why = rows.exports.why = "Loading"; return rows; }
-  const M = tradeFor(id, group, "imports")?.[0], X = tradeFor(id, group, "exports")?.[0];
+  const M = tradeFor(id, group, "imports", "weight")?.[0], X = tradeFor(id, group, "exports", "weight")?.[0];
   const top = Math.max(M ?? 0, X ?? 0) || 1;
   if (M != null) Object.assign(rows.imports, { value: shortTonnes(M / 1000), bar: [0, (M / top) * 100] });
   if (X != null) Object.assign(rows.exports, { value: shortTonnes(X / 1000), bar: [0, (X / top) * 100] });
@@ -1139,7 +1140,18 @@ function wire(el) {
     b.onclick = () => { location.hash = b.dataset.go; };
   }
   for (const b of el.querySelectorAll("[data-grown]")) {
-    b.onclick = () => { state.grown = b.dataset.grown === "1"; render(); fitTrade(); };
+    b.onclick = () => {
+      state.grown = b.dataset.grown === "1";
+      if (state.grown) state.byValue = false;
+      render(); fitTrade();
+    };
+  }
+  for (const b of el.querySelectorAll("[data-mode]")) {
+    b.onclick = () => {
+      state.grown = b.dataset.mode === "grown";
+      state.byValue = b.dataset.mode === "value";
+      render(); fitTrade();
+    };
   }
   const ind = el.querySelector("#indicator");
   if (ind) ind.onchange = () => { state.indicator = ind.value; render(); };
@@ -1737,7 +1749,12 @@ function hhiRows(id) {
   if (!state.trade) { loadTrade(); return ""; }
   const h = state.trade.concentration?.[id]?.[state.group] ?? {};
   const cell = (v) => (v == null ? "–" : Math.round(v).toLocaleString("en-GB"));
-  return `<tr><td>Import / export concentration (HHI)</td><td>${cell(h.imports)} / ${cell(h.exports)}</td></tr>`;
+  const v = state.trade.value?.countries[id]?.[state.group];
+  const hv = state.trade.value?.concentration?.[id]?.[state.group] ?? {};
+  const money = (e) => (e ? euros(e[0]) : "–");
+  return `<tr><td>Import / export concentration (HHI)</td><td>${cell(h.imports)} / ${cell(h.exports)}</td></tr>
+    ${v ? `<tr><td>Import / export value a year (Eurostat)</td><td>${money(v.imports)} / ${money(v.exports)}</td></tr>
+    <tr><td>Concentration by value (HHI)</td><td>${cell(hv.imports)} / ${cell(hv.exports)}</td></tr>` : ""}`;
 }
 
 const HHI_NOTE = `HHI = sum of squared partner shares in %, over all partners: 10,000 = a single partner,
@@ -1831,14 +1848,15 @@ function loadTrade() {
 // [total tonnes, [[partner, tonnes], ...]] or null.
 // The flow the trade view shows: imports by seller, imports by where they were grown, or exports.
 function tradeFlow() {
-  return state.flow === "imports" && state.grown && canTrace() ? "grown" : state.flow;
+  return state.flow === "imports" && state.grown && !state.byValue && canTrace() ? "grown" : state.flow;
 }
 
 // Fish partners come from the EU's own trade figures (Eurostat Comext), not FAO's, and only for
 // EU countries; tracing where it was caught would need the whole world's trade.
-const tradeSourceKey = (group = state.group) => state.trade?.meta.group_source?.[group] ?? "fao_tm";
+const tradeSourceKey = (group = state.group) => (tradeBasis() === "value" ? "eurostat_comext"
+  : state.trade?.meta.group_source?.[group] ?? "fao_tm");
 const fromEurostat = (group = state.group) => tradeSourceKey(group) === "eurostat_comext";
-const canTrace = (group = state.group) => !fromEurostat(group);
+const canTrace = (group = state.group) => (state.trade?.meta.group_source?.[group] ?? "fao_tm") === "fao_tm";
 const recordsOf = (group = state.group) => (fromEurostat(group) ? "The EU's trade records" : "FAO's trade records");
 
 // A flow withheld because its trade records are far above the food balance (trade.json
@@ -1850,8 +1868,25 @@ function tradeWithheld(id, group = state.group, flow = tradeFlow()) {
   return w ? { trade: w[3], balance: w[4] } : null;
 }
 
-function tradeFor(id, group = state.group, flow = tradeFlow()) {
+function tradeFor(id, group = state.group, flow = tradeFlow(), basis = tradeBasis()) {
+  if (basis === "value") return state.trade?.value?.countries[id]?.[group]?.[flow] ?? null;
   return state.trade?.countries[id]?.[group]?.[flow] ?? null;
+}
+
+// What EU countries pay and earn (trade.json value, methodology "Value basis"): a basis of its
+// own for the whole trade view, never mixed with tonnes.
+function hasValue(id = state.iso3, group = state.group, flow = state.flow) {
+  return flow !== "grown" && !!state.trade?.value?.countries[id]?.[group]?.[flow];
+}
+function tradeBasis() {
+  return state.byValue && tradeFlow() !== "grown" && hasValue() ? "value" : "weight";
+}
+
+// "€73.6 billion" from thousand euros.
+function euros(k) {
+  if (k >= 1e6) return `€${(k / 1e6).toFixed(1)} billion`;
+  if (k >= 1e3) return `€${Math.round(k / 1e3)} million`;
+  return `€${Math.round(k)} thousand`;
 }
 
 // Partner shares in percent, largest first.
@@ -1883,10 +1918,11 @@ function viewTrade() {
   const g = groupInfo();
   const head = "";
   if (!state.trade) { loadTrade(); return `<p class="hint" data-loading>Loading…</p>`; }
-  if (state.group === "fish" && !tradeFor(id)) {
+  if (state.group === "fish" && !tradeFor(id, state.group, state.flow, "weight")) {
     return `<p class="lead-none">Trading partners for fish are known only for EU countries.</p>`;
   }
-  const wh = tradeWithheld(id);
+  const value = tradeBasis() === "value";
+  const wh = !value && tradeWithheld(id);
   if (wh) {
     return `<p class="lead-none">No reliable trading partners${fromEurostat() ? "" : " from FAO"}.</p>
       <details class="notes"><summary>Why?</summary><p>${recordsOf()} list ${tonnes(wh.trade)}
@@ -1898,10 +1934,14 @@ function viewTrade() {
   const grown = imports && state.grown && canTrace();
   const t = tradeFor(id);
   const rows = shares(id);
-  const toggle = imports && canTrace() ? `
-    <div class="seg sub" role="group" aria-label="Who sold it or where it was grown">
-      <button type="button" data-grown="0" aria-pressed="${!grown}">Who sold it</button>
-      <button type="button" data-grown="1" aria-pressed="${grown}">Where it was grown</button>
+  // One row of ways to read the list: by seller (tonnes), by where it was grown, by money.
+  const mode = value ? "value" : grown ? "grown" : "sold";
+  const modes = [["sold", imports ? "Who sold it" : "Who bought it"],
+    imports && canTrace() && ["grown", "Where grown"],
+    hasValue(id, state.group, state.flow) && ["value", imports ? "Money paid" : "Money earned"]].filter(Boolean);
+  const toggle = modes.length > 1 ? `
+    <div class="seg sub" role="group" aria-label="How to count">
+      ${modes.map(([k, label]) => `<button type="button" data-mode="${k}" aria-pressed="${mode === k}">${label}</button>`).join("")}
     </div>` : "";
   if (!t || !t[0] || !rows.length) {
     // No trade record is not the same as no trade: say what we have, not what we infer.
@@ -1932,7 +1972,7 @@ function viewTrade() {
       </a></li>`).join("")}
       ${rest >= 1 ? `<li class="rest"><span class="name">Other countries</span><span></span><span class="pct">${Math.round(rest)}%</span></li>` : ""}
     </ol>
-    ${partial(t, fbsTotal)}
+    ${value ? `<p class="small">${imports ? "Paid abroad" : "Earned abroad"}: <strong>${euros(t[0])}</strong> a year</p>` : partial(t, fbsTotal)}
     ${fromEu != null && fromEu >= 1 ? `<p class="small">${grown ? "Grown in" : imports ? "From" : "To"} other EU countries: <strong>${Math.round(fromEu)}%</strong></p>` : ""}
     ${fromWar != null && fromWar >= 1 ? `<p class="small">${grown ? "Grown in" : "From"} Russia and Ukraine: <strong>${Math.round(fromWar)}%</strong></p>` : ""}
     ${hubs.length && imports ? `<p class="aside">Much of what comes from ${namesList(hubs.map((r) => r.id))} only passes
@@ -1942,14 +1982,15 @@ function viewTrade() {
     <ul class="caveats">
       ${grown ? `<li>Traced back by assuming that every country sells on an even mix of what it grows and what it buys. It is an estimate, not a shipping record.</li>
         <li>Shares are of the food as grown: processed goods such as flour or juice are counted back to the grain or fruit, as in FAO's food balances.</li>` : ""}
-      ${grown ? "" : fbsTotal != null
+      ${value ? `<li>In euros as the EU's own trade records (Eurostat) give them: ${imports ? "the price at the EU border, with freight and insurance" : "the price at the border"}, averaged over the years shown and not adjusted for rising prices.</li>`
+        : grown ? "" : fbsTotal != null
         ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from ${recordsOf().replace("The", "the")}, ${fromEurostat()
           ? "counted as whole fish, the way the food balance counts it: a tonne of fillets counts as about two and a half tonnes of fish (the EU's own factors)."
           : state.group === "dairy"
           ? "converted to the milk it takes to make each product (a tonne of cheese counts as about three and a half tonnes of milk), the EU's own factors."
           : "which count tonnes as shipped (a tonne of juice counts like a tonne of fruit)."}</li>`
         : `<li>Counted in tonnes as shipped, dairy as the milk it takes to make it: a tonne of juice counts the same as a tonne of fruit.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
-      ${mirror ? `<li>${nameOf(id)} did not report all of its trade, so where its own figures are missing or far too low we use what other countries say they sold to it or bought from it.</li>` : ""}
+      ${mirror && !value ? `<li>${nameOf(id)} did not report all of its trade, so where its own figures are missing or far too low we use what other countries say they sold to it or bought from it.</li>` : ""}
       ${state.group === "all" ? "<li>Fish is not included: its trading partners are known only for EU countries.</li>" : ""}
     </ul></details>`;
 }
@@ -1983,11 +2024,14 @@ function tradeTooltip(iso3) {
   const home = id === EU ? isMember(iso3) : iso3 === id;
   if (home) return `<strong>${nameOf(id === EU ? EU : iso3)}</strong>`;
   const r = shares(id).find((x) => x.id === iso3);
+  const money = tradeBasis() === "value";
   const what = tradeFlow() === "grown"
     ? `of the ${food()} ${whoOf(id)} buys abroad was grown here`
-    : state.flow === "imports"
-      ? `of the ${food()} ${whoOf(id)} buys abroad`
-      : `of the ${food()} ${whoOf(id)} sells abroad`;
+    : money
+      ? `of what ${whoOf(id)} ${state.flow === "imports" ? "pays for" : "earns from"} ${food()} abroad`
+      : state.flow === "imports"
+        ? `of the ${food()} ${whoOf(id)} buys abroad`
+        : `of the ${food()} ${whoOf(id)} sells abroad`;
   return `<strong>${nameOf(iso3)}</strong><br>${r ? `${r.share < 1 ? "<1" : Math.round(r.share)}% ${what}` : "little or none"}`;
 }
 
@@ -1995,9 +2039,11 @@ function tradeLegend() {
   const id = state.iso3;
   const title = tradeFlow() === "grown"
     ? `Where the ${food()} ${whoOf(id)} buys was <b>grown</b>`
-    : state.flow === "imports"
-      ? `Where ${whoOf(id)} <b>buys</b> its ${food()}`
-      : `Where ${whoOf(id)} <b>sells</b> its ${food()}`;
+    : tradeBasis() === "value"
+      ? `Where the money for ${whoOf(id)}'s ${food()} <b>${state.flow === "imports" ? "goes" : "comes from"}</b>`
+      : state.flow === "imports"
+        ? `Where ${whoOf(id)} <b>buys</b> its ${food()}`
+        : `Where ${whoOf(id)} <b>sells</b> its ${food()}`;
   const steps = [...TRADE_STEPS].reverse().map((s) => ({ color: s.color, label: s.label }));
   const body = `<div class="scale">
       <span class="home"><i style="background:${HOME}"></i><em>${nameOf(id)}</em></span><span class="gap"></span>

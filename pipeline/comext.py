@@ -188,6 +188,33 @@ def fish_extra_shares(yearly: pd.DataFrame) -> pd.DataFrame:
     return g.rename(columns={"reporter": "iso3"})[["iso3", "group", "flow", "year", "share"]]
 
 
+VALUE = "trade_value.parquet"
+
+
+def value_partners(yearly: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
+    """What members pay and earn per partner (methodology, "Value basis"): iso3, group, flow,
+    partner, eur (yearly mean over `years`, nominal), for members and the EU bloc (members' trade
+    with non-members). Partners that are no country are left out."""
+    v = yearly[yearly["year"].between(*years) & yearly["country"] & yearly["eur"].notna()]
+    n = years[1] - years[0] + 1
+    out = v.groupby(["reporter", "group", "flow", "partner"], as_index=False)["eur"].sum()
+    out = out.assign(eur=out["eur"] / n).rename(columns={"reporter": "iso3"})
+    bloc = out[out["iso3"].isin(config.EU27) & ~out["partner"].isin(config.EU27)]
+    bloc = bloc.groupby(["group", "flow", "partner"], as_index=False)["eur"].sum().assign(iso3="EU27")
+    return pd.concat([out, bloc[out.columns]], ignore_index=True)
+
+
+def run_value(years: tuple[int, int]) -> None:
+    src, dest = config.INTERIM / YEARLY, config.PROCESSED / VALUE
+    if not src.exists():
+        dest.unlink(missing_ok=True)
+        return
+    v = value_partners(pd.read_parquet(src), years).assign(years=f"{years[0]}-{years[1]}")
+    v.to_parquet(dest, index=False)
+    log.info("wrote %s (%d rows; EU bloc food imports %.1f bn EUR a year)", dest, len(v),
+             v.query("iso3 == 'EU27' and flow == 'imports' and group != 'fish'")["eur"].sum() / 1e9)
+
+
 def compare_with_fao(yearly: pd.DataFrame, fao: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     """Members' trade per group and flow over `years`, Comext against FAO's trade matrix as
     reported by the member (both in the FBS basis, partners that are countries, yearly kt):

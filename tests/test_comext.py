@@ -97,3 +97,19 @@ def test_hs_items_csv_is_what_the_generator_makes():
     built = crosswalk.build()
     saved = pd.read_csv(crosswalk.OUT, comment="#", dtype=str, keep_default_na=False)
     assert saved.to_dict("records") == built.astype(str).to_dict("records"), "run `atlas crosswalk`"
+
+
+def test_value_partners_mean_over_window_and_eu_bloc_outside_only():
+    y = pd.DataFrame([
+        ("DEU", "BRA", True, "stimulants", "imports", 2021, 1.0, 1.0, 300.0),
+        ("DEU", "BRA", True, "stimulants", "imports", 2022, 1.0, 1.0, 600.0),
+        ("DEU", "NLD", True, "stimulants", "imports", 2021, 1.0, 1.0, 900.0),
+        ("DEU", "QV", False, "stimulants", "imports", 2021, 1.0, 1.0, 999.0),  # no country: left out
+        ("FRA", "BRA", True, "stimulants", "imports", 2022, 1.0, 1.0, 300.0),
+    ], columns=["reporter", "partner", "country", "group", "flow", "year", "tonnes", "primary", "eur"])
+    v = comext.value_partners(y, (2021, 2023)).set_index(["iso3", "partner"])["eur"]
+    assert v[("DEU", "BRA")] == pytest.approx(300.0)  # (300 + 600) / 3 years
+    assert v[("DEU", "NLD")] == pytest.approx(300.0)
+    assert ("DEU", "QV") not in v.index
+    assert v[("EU27", "BRA")] == pytest.approx(400.0)  # members' purchases from outside the EU
+    assert ("EU27", "NLD") not in v.index

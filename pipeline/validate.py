@@ -402,6 +402,24 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
                                            f"{flow}: partners {s} t > total {total} t", iso3, group))
                     if any(p == iso3 for p, _ in parts):
                         out.append(Finding("trade_self", BLOCK, f"{flow} lists itself", iso3, group))
+        # Value basis (EUR): EU members and the EU bloc only; partners within the total, not the
+        # country itself; the bloc's trade with non-members no more than its members' total trade.
+        val = (trade.get("value") or {}).get("countries", {})
+        for iso3, gs in val.items():
+            if iso3 not in config.EU27 and iso3 != EU_BLOC:
+                out.append(Finding("value_scope", BLOCK, "value basis outside the EU", iso3))
+            for group, flows in gs.items():
+                for flow, (total, parts) in flows.items():
+                    if sum(t for _, t in parts) > total + 0.5 * (len(parts) + 1) or total <= 0:
+                        out.append(Finding("value_parts_exceed_total", BLOCK, f"{flow}: {total}", iso3, group))
+                    if any(p == iso3 for p, _ in parts):
+                        out.append(Finding("trade_self", BLOCK, f"{flow} value lists itself", iso3, group))
+        for group, flows in val.get(EU_BLOC, {}).items():
+            for flow, (total, _) in flows.items():
+                members = sum(val.get(m, {}).get(group, {}).get(flow, [0])[0] for m in config.EU27)
+                if total > members + 1:
+                    out.append(Finding("value_bloc_exceeds_members", BLOCK,
+                                       f"{flow}: EU {total} > members {members}", EU_BLOC, group))
     return out
 
 

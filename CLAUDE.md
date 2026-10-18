@@ -31,7 +31,9 @@ Formulas and methodological rules: `docs/methodology.md`.
   states) and `eu_bloc` (only extra-EU imports count, EU treated as one unit). They can tell
   opposite stories; the UI must let the user toggle.
 - **Measurement basis is explicit:** every indicator is labelled `tonnes`, `kcal` or `value`.
-  Phase 1 ships tonnes and kcal (both from FBS). Value basis comes later from trade data.
+  Phase 1 ships tonnes and kcal (both from FBS). Value (EUR) exists for trade only, EU members
+  and the EU bloc, from Comext ("Money paid / earned" on the trade page; no value SSR: that
+  would need production values).
 - **Stack:** Python 3.11+ pipeline (pandas, pyarrow, DuckDB) producing Parquet in `data/processed/`
   and small JSON/GeoJSON for the web in `web/public/data/`. Frontend is Vite + vanilla JS +
   MapLibre GL JS. deck.gl ArcLayer for trade flows (phase 2). No framework until it earns its place.
@@ -84,7 +86,8 @@ make serve       # cd web && npm run dev
    basis; implausible flows withheld), with the share from Russia and Ukraine on the trade page
    and import/export concentration (HHI) on "All the numbers". Eurostat Comext adds EU members'
    fish partners and the EU bloc's fish balance, and a comparison with the FAO matrix on the audit
-   page. Still to do: CEPII BACI; a value (EUR) basis from Comext.
+   page, and a value basis in euros for EU trade (what members pay and earn, per partner).
+   Still to do: CEPII BACI.
 3. **Phase 3:** seasons (FAO Crop Calendar API, USDA IPAD, GGCMI) as a 12-month strip per
    country × crop; NUTS2 production from Eurostat `apro_cpshr` and JRC EUCROPMAP rasters as a
    "what is grown where" layer.

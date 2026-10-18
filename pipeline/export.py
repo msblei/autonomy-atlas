@@ -427,21 +427,47 @@ TRADE_MIN_SHARE = 0.005
 TRADE_MAX_PARTNERS = 24
 
 
-def _trade_entry(sub: pd.DataFrame) -> list:
-    """[total tonnes, [[partner, tonnes], ...]] largest first; the rest is total minus the list."""
-    total = sub["tonnes"].sum()
-    s = sub.groupby("partner")["tonnes"].sum().sort_values(ascending=False)
+def _trade_entry(sub: pd.DataFrame, col: str = "tonnes", scale: float = 1.0) -> list:
+    """[total, [[partner, amount], ...]] largest first; the rest is total minus the list.
+    `col` / `scale`: tonnes as they are, or euros in thousands (scale 1/1000)."""
+    total = sub[col].sum() * scale
+    s = sub.groupby("partner")[col].sum().sort_values(ascending=False) * scale
     s = s[s >= TRADE_MIN_SHARE * total].head(TRADE_MAX_PARTNERS)
     return [round(total), [[p, round(t)] for p, t in s.items()]]
 
 
-def _hhi(sub: pd.DataFrame) -> int | None:
+def _hhi(sub: pd.DataFrame, col: str = "tonnes") -> int | None:
     """Sum of squared partner shares in percent, over all partners: 10,000 = one partner."""
-    by = sub.groupby("partner")["tonnes"].sum()
+    by = sub.groupby("partner")[col].sum()
     total = by.sum()
     if not total > 0:
         return None
     return round(float(((by / total * 100) ** 2).sum()))
+
+
+def _value_block() -> dict | None:
+    from . import comext
+
+    src = config.PROCESSED / comext.VALUE
+    if not src.exists():
+        return None
+    v = pd.read_parquet(src)
+    v = pd.concat([v, v[v["group"] != "fish"].assign(group="all")], ignore_index=True)
+    countries: dict = {}
+    concentration: dict = {}
+    for (iso3, group, flow), sub in v.groupby(["iso3", "group", "flow"]):
+        if not sub["eur"].sum() > 0:
+            continue
+        countries.setdefault(iso3, {}).setdefault(group, {})[flow] = _trade_entry(sub, "eur", 1 / 1000)
+        h = _hhi(sub, "eur")
+        if h is not None:
+            concentration.setdefault(iso3, {}).setdefault(group, {})[flow] = h
+    return {
+        "meta": {"source": "eurostat_comext", "years": v["years"].iloc[0], "unit": "thousand EUR",
+                 "basis": "nominal euros a year; imports CIF, exports FOB; all food without fish"},
+        "countries": countries,
+        "concentration": concentration,
+    }
 
 
 def export_trade() -> None:
@@ -496,6 +522,8 @@ def export_trade() -> None:
         "countries": countries,
         # Herfindahl-Hirschman index of partner shares (methodology, "Trade partners").
         "concentration": concentration,
+        # What EU members and the EU bloc pay and earn (methodology, "Value basis").
+        "value": _value_block(),
     }
     dest = config.WEB_DATA / "trade.json"
     dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

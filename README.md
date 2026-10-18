@@ -53,7 +53,7 @@ data/       raw / interim / processed (gitignored)
 
 1. Country-level SSR/IDR choropleth from FAO Food Balance Sheets.
 2. Trade partners and arcs (FAO trade matrix; fish from Eurostat Comext), import concentration;
-   CEPII BACI and a value basis still to come.
+   for EU countries also in euros (Comext); CEPII BACI still to come.
 3. Crop calendars and NUTS2 regional production ("what is grown where, and when").
 4. Feed-adjusted and calorie-weighted indices; scenario toggles.
 

@@ -153,7 +153,7 @@ test("fish partners come from Eurostat for EU countries and are not traced", asy
   await open(page, "DEU/fish/trade");
   await expect(view(page).locator("ol.partners li").first()).toContainText(
     `${Math.round((parts[0][1] / total) * 100)}%`);
-  await expect(view(page).locator("[data-grown]")).toHaveCount(0);
+  await expect(view(page).locator('[data-mode="grown"]')).toHaveCount(0);
   await expect(page.locator("#foot")).toContainText("Eurostat Comext");
   // all food leaves fish out, so it compares across countries
   for (const id of Object.keys(trade.countries)) expect(trade.countries[id].fish?.grown).toBeUndefined();
@@ -161,3 +161,26 @@ test("fish partners come from Eurostat for EU countries and are not traced", asy
   await open(page, "USA/fish/trade");
   await expect(view(page)).toContainText("known only for EU countries");
 });
+
+test("money paid and earned: euros from Eurostat for EU countries, tonnes stay in the card", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  const v = trade.value.countries.DEU.cereals;
+  await open(page, "DEU/cereals/trade");
+  const card = await page.locator("#card").innerText();
+  await view(page).locator('[data-mode="value"]').click();
+  await expect(view(page).locator('[data-mode="value"]')).toHaveAttribute("aria-pressed", "true");
+  const [total, parts] = v.imports;
+  await expect(view(page).locator("ol.partners li").first()).toContainText(nameShare(parts[0], total));
+  await expect(view(page)).toContainText(`Paid abroad: €${(total / 1e6).toFixed(1)} billion`);
+  await expect(page.locator("#foot")).toContainText("Eurostat Comext");
+  expect(await page.locator("#card").innerText()).toBe(card);
+  // a country outside the EU has no money view and falls back to tonnes
+  await open(page, "USA/cereals/trade");
+  await expect(view(page).locator('[data-mode="value"]')).toHaveCount(0);
+  await expect(page.locator("#foot")).toContainText("FAO");
+});
+
+function nameShare([, amount], total) {
+  const p = (amount / total) * 100;
+  return `${p < 1 ? "<1" : Math.round(p)}%`;
+}
