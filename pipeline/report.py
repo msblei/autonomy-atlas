@@ -150,6 +150,8 @@ def run() -> None:
     rel = _latest_release()
     chg = changes(rel["ssr"], ssr) if rel else pd.DataFrame()
     warn = findings[findings["severity"] == "warn"]
+    handled = findings[findings["severity"] == "handled"]
+    confirmed = findings[findings["severity"] == "confirmed"]
     block = findings[findings["severity"] == "block"]
 
     rec_line = ("<p class='bad'>verify/recompute_report.json missing: run verify/recompute.py.</p>"
@@ -174,11 +176,22 @@ def run() -> None:
         "(methodology, \"Trade records against the food balance\"): the split by country is not "
         "shown, and for all food the bought or sold total neither.</p>" + _table(tdf),
     ]
+    sections.append(f"<h2>Open warnings ({len(warn)})</h2><p>Need a human look before release: fix, "
+                    "withhold by review, or confirm in mappings/confirmed_findings.csv.</p>")
     for check, sub in warn.groupby("check"):
         note = CHECK_NOTES.get(check)
-        sections.append(f"<h2>Warning: {html.escape(check)} ({len(sub)})</h2>"
+        sections.append(f"<h3>{html.escape(check)} ({len(sub)})</h3>"
                         + (f"<p class='note'>{html.escape(note)}</p>" if note else "")
                         + _table(sub.sort_values(["iso3", "group"]), ["iso3", "group", "detail"]))
+    for title, df, intro in (
+            ("Handled by the site", handled, "Warnings the site deals with by itself; each line says how."),
+            ("Confirmed after review", confirmed, "Warnings a review found right as published, with the reason.")):
+        sections.append(f"<h2>{title} ({len(df)})</h2><p>{intro}</p>")
+        for check, sub in df.groupby("check"):
+            note = CHECK_NOTES.get(check)
+            sections.append(f"<h3>{html.escape(check)} ({len(sub)})</h3>"
+                            + (f"<p class='note'>{html.escape(note)}</p>" if note else "")
+                            + _table(sub.sort_values(["iso3", "group"]), ["iso3", "group", "detail"]))
     page = f"""<!doctype html><html lang="en"><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1"><title>Data audit</title>
 <style>
@@ -187,8 +200,8 @@ table{{border-collapse:collapse;width:100%;margin:8px 0 24px}}th,td{{border-bott
 th{{background:#f4f4f2;position:sticky;top:0}}.note{{color:#555;max-width:80ch}}.ok{{color:#1e6b45}}.bad{{color:#b84a2a;font-weight:600}}.none{{color:#777}}
 </style>{''.join(sections)}</html>"""
     REPORT.write_text(page, encoding="utf-8")
-    log.info("wrote %s (%d withheld, %d trade flows withheld, %d warnings, %d changes)", REPORT,
-             len(wdf), len(tdf), len(warn), len(chg))
+    log.info("wrote %s (%d withheld, %d trade flows withheld, %d open warnings, %d handled, %d confirmed, "
+             "%d changes)", REPORT, len(wdf), len(tdf), len(warn), len(handled), len(confirmed), len(chg))
 
 
 def snapshot() -> None:

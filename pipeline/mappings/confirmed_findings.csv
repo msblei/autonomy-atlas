@@ -1,0 +1,13 @@
+# Warnings from `atlas validate` that a review found to be right as published (docs/methodology.md,
+# "Checks"): listed on the audit page as confirmed, with the reason, instead of as open warnings.
+# A confirmation matches by check, iso3 and group; review it again when a data release moves the
+# figure a lot.
+check,iso3,group,reviewed,reason
+ssr_extreme,ISL,fish,2026-10-18,"Iceland lands far more fish than its people eat and exports most of it."
+ssr_extreme,MRT,fish,2026-10-18,"Mauritania's waters are fished mostly for export (fishmeal, frozen fish)."
+ssr_extreme,NAM,fish,2026-10-18,"Namibia exports most of its hake and horse-mackerel catch."
+ssr_extreme,ECU,fish,2026-10-18,"Ecuador is a large exporter of shrimp and tuna."
+ssr_extreme,SYC,fish,2026-10-18,"The Seychelles land and can tuna mostly for export."
+ssr_extreme,GHA,stimulants,2026-10-18,"Ghana is the world's second cocoa producer and grinds or exports almost all of it."
+ssr_extreme,NIC,stimulants,2026-10-18,"Nicaragua exports most of its coffee."
+trade_vs_fbs,BWA,all,2026-10-18,"FAO's balance has Botswana re-selling about 230 kt of the 860 kt of maize it buys a year (likely maize meal and feed to its neighbours), which the trade records do not show. Its cereal self-sufficiency is about a tenth either way (12.9% as published, about 9% without those exports)."

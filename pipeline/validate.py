@@ -5,6 +5,8 @@ Each check yields findings with a severity:
     block     the release must not go out (a bug in our pipeline, or inputs that do not fit it)
     withhold  one figure is not shown (already applied in the export, listed here for the record)
     warn      shown, but worth a human look before release (listed in the audit report)
+    handled   a warning the site deals with by itself (see `resolve`)
+    confirmed a warning a review found right (mappings/confirmed_findings.csv)
 
 Findings go to data/processed/validation.parquet and web/public/data/validation.json, which also
 records the sha256 of every published data file: the web build (web/scripts/check-data.mjs)
@@ -31,6 +33,9 @@ from .harmonise import load_products
 log = logging.getLogger(__name__)
 
 BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
+# A warning the site already deals with (handled), or that a review found right (confirmed): listed
+# on the audit page for the record, not as an open question.
+HANDLED, CONFIRMED = "handled", "confirmed"
 PUBLISHED = ["ssr.json", "items.json", "trade.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
@@ -272,8 +277,9 @@ def check_trade(partners: pd.DataFrame, groups: pd.DataFrame) -> list[Finding]:
         if not r.verdict:
             continue
         what = "bought abroad" if r.flow == "imports" else "sold abroad"
+        side = "below" if r.ratio < r.typical else "above"
         detail = (f"trade records {r.trade_kt:.0f} kt {what}, food balance {r.balance_kt:.0f} kt "
-                  f"(ratio {r.ratio:.2f}, typical for {r.group} {r.typical:.2f})")
+                  f"(ratio {r.ratio:.2f}, {side} the typical {r.typical:.2f} for {r.group})")
         out.append(Finding("trade_withheld" if r.verdict == "withhold" else "trade_vs_fbs",
                            WITHHOLD if r.verdict == "withhold" else WARN,
                            detail, r.iso3, r.group, _f(r.ratio)))
@@ -390,6 +396,71 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
 # ------------------------------------------------------------------------------------------------
 
 
+def resolve(findings: list[Finding], ssr: dict | None, items: pd.DataFrame) -> list[Finding]:
+    """Warnings the site deals with by itself become `handled`; reviewed ones `confirmed`.
+
+    trend_spike              the year is drawn apart and named in the year-by-year chart
+    jrc_ratio_dairy          the JRC's own ratio is shown next to ours on the sources page
+    negative_items_in_group  the parts test (compute.group_tonnes) kept both readings within the
+                             withholding threshold, so the figure stands either way
+    usda_gap                 shown on the food's page, or too small to move the group's figure by
+                             export.USDA_GROUP_PP points
+    trade_vs_fbs (below)     the trade page says the records hold under half of the balance
+    """
+    from .export import USDA_GROUP_PP
+
+    shown_usda = set()
+    for iso3, c in (ssr or {}).get("countries", {}).items():
+        for ind in c.get("indicators", {}).values():
+            shown_usda |= {(iso3, d["item"]) for d in ind.get("usda", [])}
+    it = items[items["group"].notna()]
+    supply = it.set_index(["iso3", "item"])["supply"]
+    group_supply = it.groupby(["iso3", "group"])["supply"].sum()
+    group_of = it.drop_duplicates("item").set_index("item")["group"]
+    confirmed = {}
+    path = config.MAPPINGS / "confirmed_findings.csv"
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            import csv
+
+            for r in csv.DictReader(line for line in f if not line.startswith("#")):
+                confirmed[(r["check"], r["iso3"], r["group"])] = f"{r['reason']} (reviewed {r['reviewed']})"
+
+    out = []
+    for f in findings:
+        if f.severity != WARN:
+            out.append(f)
+            continue
+        handled = None
+        if f.check == "trend_spike":
+            handled = "drawn apart and named in the year-by-year chart"
+        elif f.check == "jrc_ratio_dairy":
+            ind = (ssr or {}).get("countries", {}).get(f.iso3, {}).get("indicators", {}).get("dairy", {})
+            if "jrc_published_ssr" in ind:
+                handled = "the Commission's own ratio is shown next to ours on the sources page"
+        elif f.check == "negative_items_in_group":
+            handled = "both readings within the withholding threshold (parts test)"
+        elif f.check == "usda_gap":
+            if (f.iso3, f.group) in shown_usda:
+                handled = "shown on the food's page"
+            else:
+                g = group_of.get(f.group)
+                gs = group_supply.get((f.iso3, g))
+                share = supply.get((f.iso3, f.group), 0) / gs if gs and gs > 0 else 0
+                if f.value is not None and share * abs(f.value) < USDA_GROUP_PP:
+                    handled = f"cannot move the group's figure by {USDA_GROUP_PP:.0f} points"
+        elif f.check == "trade_vs_fbs" and "below" in f.detail and f.group != "all":
+            handled = "the trade page says the records hold under half of the balance"
+        key = (f.check, f.iso3, f.group)
+        if handled:
+            out.append(Finding(f.check, HANDLED, f"{f.detail}; {handled}", f.iso3, f.group, f.value))
+        elif key in confirmed:
+            out.append(Finding(f.check, CONFIRMED, f"{f.detail}; {confirmed[key]}", f.iso3, f.group, f.value))
+        else:
+            out.append(f)
+    return out
+
+
 def _sha(path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
@@ -433,6 +504,8 @@ def run(*, write: bool = True) -> list[Finding]:
     if moot:
         log.info("validation: %d warnings about withheld figures dropped", len(moot))
         findings = [f for f in findings if not (f.severity == WARN and (f.iso3, f.group) in gone)]
+
+    findings = resolve(findings, ssr, items)
 
     # Withholding by the consistency verdicts (checks.py) is applied upstream; count it here.
     counts = pd.Series([f.severity for f in findings]).value_counts().to_dict()

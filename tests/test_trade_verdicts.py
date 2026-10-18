@@ -122,3 +122,20 @@ def test_balance_identity_allows_fao_rounding_but_not_real_gaps():
     assert validate.check_balance_identity(*frames(3.0)) == []  # 3 items x 2.5 kt of rounding
     found = validate.check_balance_identity(*frames(20.0))
     assert [f.check for f in found] == ["balance_identity"] and found[0].severity == validate.WARN
+
+
+def test_resolve_marks_handled_and_confirmed_and_leaves_the_rest_open():
+    from pipeline import validate
+
+    F = validate.Finding
+    items = pd.DataFrame([{"iso3": "AAA", "item": "Oats", "group": "cereals", "supply": 5.0},
+                          {"iso3": "AAA", "item": "Wheat", "group": "cereals", "supply": 95.0}])
+    ssr = {"countries": {"AAA": {"indicators": {"cereals": {}}}}}
+    out = validate.resolve([
+        F("trend_spike", "warn", "2017: 292%", "AAA", "cereals", 292.0),
+        F("usda_gap", "warn", "Oats: FAO 120%, USDA 60%", "AAA", "Oats", 60.0),  # 5% x 60 = 3 points
+        F("usda_gap", "warn", "Oats: FAO 400%, USDA 100%", "AAA", "Oats", 300.0),  # 5% x 300 = 15 points
+        F("ssr_extreme", "warn", "SSR 2043%", "ISL", "fish", 2043.0),  # confirmed in the mapping
+        F("ssr_extreme", "warn", "SSR 5000%", "ZZZ", "fish", 5000.0),
+    ], ssr, items)
+    assert [f.severity for f in out] == ["handled", "handled", "warn", "confirmed", "warn"]

@@ -464,10 +464,13 @@ Guinea palm oil) is exactly a disagreement worth showing. The 10% test divides t
 domestic supply by the sum over the group's items (the published group supply).
 
 **Use.** Nothing is replaced. Pairs with |gap| > max(20 points, 20% of the smaller SSR) and use
-≥ 50 kt (either source) are `usda_gap` warnings in `atlas validate` and listed on the audit page. When such an
-item carries ≥ 10% of its group's domestic supply, the export adds `usda: [{item, fao, usda}]`
-to the group and the food page and "How do we know?" say that another source disagrees, with
-both figures, and note when the two fall on different sides of 100%. 2021–2023: 65 groups.
+≥ 50 kt (either source) are `usda_gap` findings in `atlas validate`. When such an item carries
+≥ 10% of its group's domestic supply, **or** could move the group's figure by 5 points or more
+(its share of the group's domestic supply × |gap| ≥ 5; Uruguay's rice is 4% of its cereals but
+FAO and USDA are 1,015 points apart), the export adds `usda: [{item, fao, usda}]` to the group
+and the food page and "How do we know?" say that another source disagrees, with both figures,
+and note when the two fall on different sides of 100%. A pair below both thresholds cannot move
+the group's figure by 5 points and is listed on the audit page as handled.
 
 ## Checks: how a published number is known to be right
 
@@ -486,7 +489,7 @@ both figures, and note when the two fall on different sides of 100%. 2021–2023
 | Independent recomputation | `verify/recompute.py` | written from this document alone, without reading `pipeline/`; recomputes every published number (≈250,000) from the raw files and must agree on all of them. Its first run found three pipeline bugs (EU27 per-person population, window averaging, EU27 fish kcal IDR) |
 | What the page shows | `web/tests/*.spec.js` (Playwright, installed Chrome) | headline and food-page wording = `calendar.js` of the exported figure; receipt sum = exported ratio; rankings never include a withheld figure and equal the data's top five; no factual figure typed into `main.js` |
 | Second source | `pipeline/usda.py` (section "FAO against USDA") | FAO figures far from USDA's for the same country and commodity: warnings, and a note on the page |
-| Human review | `atlas report` → `data/processed/audit.html` | every withheld figure and warning, and the 50 largest changes since the last release (`atlas release-snapshot` after publishing) |
+| Human review | `atlas report` → `data/processed/audit.html` | every withheld figure and warning, and the 50 largest changes since the last release (`atlas release-snapshot` after publishing). A warning ends one of three ways: **handled** when the site deals with it by itself (`validate.resolve`: unusual years drawn apart; the JRC's own dairy ratio shown next to ours; negative-supply items kept within the withholding threshold by the parts test; a USDA disagreement shown on the page or too small to move the group's figure by 5 points; trade records under half of the balance, which the trade page then says); **confirmed** when a review found it right, with the reason and date in `pipeline/mappings/confirmed_findings.csv`; or fixed or withheld (by a rule or by review). A release should have no open warnings |
 
 ## Pitfalls checklist
 
