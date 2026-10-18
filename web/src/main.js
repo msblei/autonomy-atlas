@@ -1510,9 +1510,12 @@ function compareAll(id) {
   const shorter = rows.filter((r) => r.v < me - 0.5).length;
   return `
     <h3>How does ${id === EU ? "the EU" : nameOf(id)} compare?</h3>
-    <p>Eating as today, with no food standing in for another, its own food would last
-      <strong>${lasts(me, { short: true })}</strong> (${Math.round(me)}%): longer than in
-      <strong>${shorter}</strong> of ${rows.length} countries.</p>
+    <p>Countries are compared on a stricter question: could they eat exactly as today? Then each food
+      counts only up to what is eaten of it, so a surplus of wheat cannot make up for coffee that is not
+      grown${pctFor(id, "all") != null && Math.round(pctFor(id, "all")) !== Math.round(me) ? ` (the map lets it:
+      <strong>${Math.round(pctFor(id, "all"))}%</strong>, ${lasts(pctFor(id, "all"), { short: true })})` : ""}.</p>
+    <p>On that question its own food would last <strong>${lasts(me, { short: true })}</strong>
+      (${Math.round(me)}%): longer than in <strong>${shorter}</strong> of ${rows.length} countries.</p>
     <div class="cols">
       <div><p class="small">Runs out soonest, eating as today</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
       <div><p class="small">Lasts longest, eating as today</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
