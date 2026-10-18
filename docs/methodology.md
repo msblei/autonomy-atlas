@@ -781,10 +781,11 @@ self-sufficiency is left for the animals that live on it.
     animal protein 0.92, former foodstuff 0.51, fish meal 0.30 (non-plant). FAO's SUA lists none
     of these with a feed use. They are mostly of EU origin (0.41 Mt imported): counted in, our
     imported share would be 39.1% instead of 41.9%.
-  - **Different estimates of the same feed: +1.1 Mt net.** Cereal grain +0.8 (FAO records 38 Mt of
+  - **Different estimates of the same feed: +0.4 Mt net.** Cereal grain +0.8 (FAO records 38 Mt of
     wheat fed, DG AGRI 43), starch-industry protein +0.9 (DG AGRI 1.18, our gluten feed and maize
     gluten 0.33), oilseed meals +0.4 (sunflower meal 2.5 against 1.8, soy protein concentrate
-    0.2), pulses +0.2; against brans and germs −0.7 (FAO's brans 2.0, DG AGRI's wheat bran 1.1),
+    0.2), pulses +0.2; against brans and germs −1.0 (FAO's brans, germs and maize cake 2.1,
+    DG AGRI's wheat bran 1.1),
     milk and whey −0.7 (FAO counts liquid milk and whey fed to calves, 0.8 against 0.13),
     whole oilseeds −0.1, roots −0.1.
   - **Items FAO does list as feed but `feed_items.csv` leaves out** (outside the 98.7% of the
