@@ -1,4 +1,5 @@
 import maplibregl from "maplibre-gl";
+import { feature as topoFeature } from "topojson-client";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@fontsource-variable/atkinson-hyperlegible-next";
 import { foodIcon } from "./icons.js";
@@ -206,7 +207,11 @@ function anchorOf(geometry) {
 // Data starts loading straight away, in parallel with the background map (whose demo tile server
 // can take seconds). The panel renders as soon as the data is in; the map is painted once both
 // are ready.
-const geoReady = loadJSON("data/countries.geojson");
+// Borders as TopoJSON (shared borders stored once: ~160 KB compressed instead of ~250 KB), decoded
+// to GeoJSON here; without it (no Node at export time) the GeoJSON itself.
+const geoReady = loadJSON("data/countries.topojson")
+  .then((t) => topoFeature(t, t.objects.countries))
+  .catch(() => loadJSON("data/countries.geojson"));
 // Two steps: ssr_core.json (16 KB compressed: names and each food's headline figure) colours the
 // map and draws the start page; the full ssr.json (≈190 KB) replaces it for the panel. On the start
 // page it is fetched once the borders and the core are in, so on a slow line it does not slow the

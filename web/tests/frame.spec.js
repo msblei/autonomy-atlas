@@ -52,3 +52,15 @@ test("the map and start page come from the small core file; the panel waits for 
   await expect(page.locator("#view .answer")).toBeVisible();
   await expect(page.locator("#card")).toHaveAttribute("aria-busy", "false");
 });
+
+test("borders come as TopoJSON, and the GeoJSON still works when it is missing", async ({ page }) => {
+  const got = [];
+  page.on("response", (r) => { if (/countries\.(topo|geo)json/.test(r.url())) got.push(r.url().split("/").pop()); });
+  await page.goto("./#DEU");
+  await expect(page.locator("#view .answer")).toBeVisible();
+  expect(got).toEqual(["countries.topojson"]);
+  await page.route("**/data/countries.topojson", (route) => route.fulfill({ status: 404, body: "" }));
+  await page.goto("./#FRA");
+  await expect(page.locator("#view .answer")).toBeVisible();
+  await expect(page.locator("#place")).toHaveText("France");
+});

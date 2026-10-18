@@ -2,6 +2,7 @@
 
 Outputs (web/public/data/):
     countries.geojson   country polygons in scope, properties {iso3, iso2, name}
+    countries.topojson  the same as TopoJSON (web/scripts/build-topo.mjs), what the page loads
     ssr.json            {meta, groups[], countries{iso3: {name, region, notes, indicators, trend,
                         trend_unusual?}}}
     ssr_core.json       the subset the first paint needs (names, headline figures, withheld
@@ -606,9 +607,27 @@ def export_seasons() -> None:
     log.info("wrote %s (%.0f KB, %d countries)", dest, dest.stat().st_size / 1024, len(rows))
 
 
+def export_topojson() -> None:
+    """countries.topojson from countries.geojson (web/scripts/build-topo.mjs, Node): shared borders
+    stored once, about 40% smaller compressed. Without Node the page falls back to the GeoJSON."""
+    import shutil
+    import subprocess
+
+    dest = config.WEB_DATA / "countries.topojson"
+    node = shutil.which("node")
+    script = config.ROOT / "web" / "scripts" / "build-topo.mjs"
+    if node is None or not (config.ROOT / "web" / "node_modules" / "topojson-server").exists():
+        log.warning("no Node or topojson-server (cd web && npm install): the page loads countries.geojson")
+        dest.unlink(missing_ok=True)
+        return
+    out = subprocess.run([node, str(script)], cwd=config.ROOT / "web", capture_output=True, text=True, check=True)
+    log.info("%s (%.0f KB)", out.stdout.strip(), dest.stat().st_size / 1024)
+
+
 def run() -> None:
     config.ensure_dirs()
     export_countries_geojson()
+    export_topojson()
     export_ssr()
     export_trade()
     export_seasons()

@@ -13,12 +13,14 @@
   },
   "dependencies": {
     "@fontsource-variable/atkinson-hyperlegible-next": "^5.3.0",
-    "maplibre-gl": "^4.7.0"
+    "maplibre-gl": "^4.7.0",
+    "topojson-client": "^3.1.0"
   },
   "devDependencies": {
     "@axe-core/playwright": "^4.10.2",
     "@mapbox/tiny-sdf": "^2.3.0",
     "@playwright/test": "^1.58.2",
+    "topojson-server": "^3.0.1",
     "vite": "^5.4.0"
   }
 }

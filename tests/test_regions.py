@@ -31,3 +31,16 @@ def test_crop_map_shades_and_transparency():
     v = np.array([np.nan, 0.0, 0.019, 0.02, 0.1, 0.2, 0.35, 0.5, 0.99])
     assert cropmap.shade(v).tolist() == [-1, -1, -1, 0, 1, 2, 3, 4, 4]
     assert len(cropmap.STEPS) == len(cropmap.COLORS)
+
+
+def test_topology_check_catches_a_moved_border():
+    from pipeline import validate
+
+    geo = {"features": [{"properties": {"iso3": "AAA"},
+                         "geometry": {"type": "Polygon", "coordinates": [[[0, 0], [1, 0], [1, 1], [0, 1], [0, 0]]]}}]}
+    topo = {"transform": {"scale": [0.001, 0.001], "translate": [0, 0]},
+            "arcs": [[[0, 0], [1000, 0], [0, 1000], [-1000, 0], [0, -1000]]],
+            "objects": {"countries": {"geometries": [{"properties": {"iso3": "AAA"}, "arcs": [[0]]}]}}}
+    assert validate.check_topology(topo, geo) == []
+    topo["arcs"][0][1] = [1100, 0]  # the east border 0.1 degrees out
+    assert [f.check for f in validate.check_topology(topo, geo)] == ["topology_outline"]

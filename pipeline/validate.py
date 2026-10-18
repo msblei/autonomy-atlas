@@ -36,7 +36,7 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # A warning the site already deals with (handled), or that a review found right (confirmed): listed
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
-PUBLISHED = ["ssr.json", "ssr_core.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
+PUBLISHED = ["countries.topojson", "ssr.json", "ssr_core.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
              "cropmap.json", "scenario.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
@@ -501,6 +501,60 @@ def check_import_months(imo: dict) -> list[Finding]:
     return out
 
 
+TOPO_TOLERANCE = 0.002  # degrees: half a quantization step plus the GeoJSON's own rounding
+
+
+def check_topology(topo: dict, geo: dict) -> list[Finding]:
+    """countries.topojson decodes to the same countries as countries.geojson, each within
+    TOPO_TOLERANCE of its outline's extent (decoded here independently of topojson-client)."""
+    (sx, sy), (tx, ty) = topo["transform"]["scale"], topo["transform"]["translate"]
+    arcs = []
+    for arc in topo["arcs"]:
+        x = y = 0
+        pts = []
+        for dx, dy in arc:
+            x, y = x + dx, y + dy
+            pts.append((x * sx + tx, y * sy + ty))
+        arcs.append(pts)
+
+    def bbox_of_arcs(refs) -> list[float]:
+        xs, ys = [], []
+        for r in refs:
+            for x, y in arcs[r if r >= 0 else ~r]:
+                xs.append(x)
+                ys.append(y)
+        return [min(xs), min(ys), max(xs), max(ys)]
+
+    def flat(a):
+        return [a] if isinstance(a, int) else [r for x in a for r in flat(x)]
+
+    def bbox_of_coords(c) -> list[float]:
+        pts = []
+
+        def walk(v):
+            if isinstance(v[0], (int, float)):
+                pts.append(v)
+            else:
+                for w in v:
+                    walk(w)
+        walk(c)
+        return [min(p[0] for p in pts), min(p[1] for p in pts), max(p[0] for p in pts), max(p[1] for p in pts)]
+
+    out = []
+    geoms = topo["objects"]["countries"]["geometries"]
+    by_id = {f["properties"]["iso3"]: f for f in geo["features"]}
+    if sorted(g["properties"]["iso3"] for g in geoms) != sorted(by_id):
+        out.append(Finding("topology_countries", BLOCK, "countries.topojson has other countries than the GeoJSON"))
+        return out
+    for g in geoms:
+        iso3 = g["properties"]["iso3"]
+        a = bbox_of_arcs(flat(g["arcs"]))
+        b = bbox_of_coords(by_id[iso3]["geometry"]["coordinates"])
+        if max(abs(x - y) for x, y in zip(a, b, strict=True)) > TOPO_TOLERANCE:
+            out.append(Finding("topology_outline", BLOCK, f"extent {a} vs {b}", iso3))
+    return out
+
+
 def check_regions(reg: dict, geo: dict) -> list[Finding]:
     """Regional figures (methodology, "Where it is grown"): shares add up to 100% (rounding),
     coverage at least 90%, every region has an outline, more than one region per country."""
@@ -667,6 +721,10 @@ def run(*, write: bool = True) -> list[Finding]:
     imo = config.WEB_DATA / "import_months.json"
     if imo.exists():
         findings += check_import_months(json.loads(imo.read_text(encoding="utf-8")))
+    topo = config.WEB_DATA / "countries.topojson"
+    if topo.exists():
+        findings += check_topology(json.loads(topo.read_text(encoding="utf-8")),
+                                   json.loads((config.WEB_DATA / "countries.geojson").read_text(encoding="utf-8")))
     reg = config.WEB_DATA / "regions.json"
     if reg.exists():
         findings += check_regions(json.loads(reg.read_text(encoding="utf-8")),
