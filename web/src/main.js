@@ -1624,6 +1624,8 @@ function compareAll(id) {
   return `
     <h3>How does ${id === EU ? "the EU" : nameOf(id)} compare?</h3>
     <p>Its own food lasts longer than in <strong>${shorter}</strong> of ${rows.length} countries.</p>
+    ${rows.slice(0, 5).some((r) => (pctFor(r.id, "sugar") ?? 0) >= 200) ? `<p class="small">Counted in calories,
+      sugar weighs a lot: countries that grow far more sugar cane than they eat lead the list.</p>` : ""}
     <div class="cols">
       <div><p class="small">Runs out soonest</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
       <div><p class="small">Lasts longest</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
