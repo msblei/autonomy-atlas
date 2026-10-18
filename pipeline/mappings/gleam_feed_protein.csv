@@ -1,0 +1,11 @@
+# GLEAM 3 feed categories (dashboard "Dry Matter Intake"): crude protein in % of dry matter, typical
+# values from Feedipedia (INRAE, CIRAD, AFZ, FAO), and whether GLEAM treats the category as traded
+# (GLEAM 3.0 model description, section 3.3: cereals, by-products and concentrates are traded).
+# Used only to weigh the categories against each other (methodology, "Feed", "Cattle, sheep and goats").
+category,protein_pct_dm,traded,note
+Grass and leaves,15,no,"fresh grass and browse; pasture 12-20"
+Fodder crop,10,no,"maize silage about 8, alfalfa hay about 18; mostly maize silage"
+Crop residues,4,no,"straw and stover"
+Grains,11,yes,"barley, maize, wheat"
+By-products,16,yes,"brans 17, beet pulp 9, distillers' grains 30"
+Oil seed cakes,42,yes,"soybean meal 50, rapeseed meal 38, cottonseed meal 44, palm kernel 17"

@@ -271,9 +271,9 @@ test("feed from abroad: the imported share and the feed-adjusted meat as exporte
   const box = view(page);
   await expect(box).toContainText(`${Math.round(f.imported_pct)}% of the protein in Germany's animal feed other than grass and hay`);
   await expect(box).toContainText(`its own meat would last ${forHowLong(f.meat_ssr)}`);
-  await open(page, "DEU/dairy"); // milk is not adjusted, only explained
-  await expect(box).toContainText("cows eat mostly grass");
-  await expect(box).not.toContainText("would last for about");
+  await open(page, "DEU/dairy"); // milk: only for the bought share of the cows' diet (GLEAM)
+  await expect(box).toContainText(`Cattle get about ${Math.round(f.c_cattle)}% of their protein`);
+  await expect(box).toContainText(`its own dairy would last ${forHowLong(f.dairy_ssr)}`);
 });
 
 test("what if: scenarios from the button on the map, a badge while one is on", async ({ page }) => {

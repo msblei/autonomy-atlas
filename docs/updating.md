@@ -55,6 +55,14 @@ page, one value per fiscal year of the window. When the window moves, `atlas exp
 "update it from the source": read the new years off `config.SOURCES["maff_ssr"]["url"]` and
 update `years`, `yearly` and `value` (the mean).
 
+## Third manual step: GLEAM cattle, sheep and goat diets
+
+`mappings/gleam_feed_intake.csv` is GLEAM 3's "Dry Matter Intake" table (reference year 2015) per
+country and species (cattle, buffalo, sheep, goats), read from the dashboard's "Input data" page:
+the page exports one country at a time, so it was read country by country in a browser. GLEAM 3
+does not change between FAO releases; redo it only when FAO publishes a new GLEAM version, and
+then also check the categories against `mappings/gleam_feed_protein.csv`.
+
 ## What to review after a refresh
 
 1. **The audit page** (`data/processed/audit.html`): blocking findings (none allowed), the

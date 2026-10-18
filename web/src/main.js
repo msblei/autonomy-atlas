@@ -1782,6 +1782,8 @@ function viewWhere() {
     <details class="notes"><summary>About these figures</summary>
     <ul class="caveats">
       <li>Harvested ${cropWords()} by region from the EU's crop statistics (Eurostat), ${state.regions.meta.years.replace("-", "–")} averages. They are not FAO's food balance, so only the shares are shown here.</li>
+      ${state.group === "sugar" ? `<li>Counted as beet straight from the field, several times the weight of the sugar made
+        from it: the card above counts sugar.</li>` : ""}
       <li>${level}${fields
         ? `The map shows the fields themselves: how much of the land in each 2 km square was under ${cropWords()} in ${state.cropmap.meta.year}, from the EU's satellite crop map (JRC EUCROPMAP)${state.group === "oilseeds" ? "; it has no sunflower class" : ""}.`
         : "The map shades each region by how much it grows per square kilometre, so large regions do not look important just for their size."}</li>
@@ -1904,8 +1906,10 @@ function regionLegend() {
 function regionTooltip(code) {
   const r = regionsFor()?.regions.find(([c]) => c === code);
   if (!r) return null;
-  const [, kt, share] = r;
-  return `<strong>${state.regions.names[code] ?? code}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)} a year`;
+  const [, kt, share, density] = r;
+  // The colour is tonnes per km² (how densely it grows); the share is of the country's harvest.
+  const dens = density == null ? "" : `<br><span class="small">${density < 10 ? density.toFixed(1) : Math.round(density).toLocaleString("en-GB")} t per km² (the colour)</span>`;
+  return `<strong>${state.regions.names[code] ?? code}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)}${state.group === "sugar" ? " of beet" : ""} a year${dens}`;
 }
 
 // When fruit, vegetables and potatoes come from abroad, month by month (import_months.json,
@@ -1985,19 +1989,17 @@ function feedNote(id) {
   const who = id === EU ? "the EU" : nameOf(id);
   const share = `<strong>${Math.round(f.imported_pct)}%</strong> of the protein in ${id === EU ? "the EU's" : `${who}'s`} animal feed
     other than grass and hay is bought ${id === EU ? "outside the EU" : "abroad"}${f.top.length ? `, mostly ${namesOf(f.top.map(([n]) => feedName(n)))}` : ""}.`;
-  if (state.group === "dairy") {
-    return `<h3>Feed from abroad</h3><p class="small">${share} Milk is not counted again for it: cows eat mostly grass
-      and hay, which no statistic counts as bought or sold. But dairy cows also get bought feed, so some of
-      the milk counted here rests on imports too.</p>`;
-  }
-  const v = state.group === "meat" ? f.meat_ssr : f.eggs_ssr;
-  if (v == null) return "";
+  const v = state.group === "meat" ? f.meat_ssr : state.group === "eggs" ? f.eggs_ssr : f.dairy_ssr;
+  if (v == null) return `<h3>Feed from abroad</h3><p class="small">${share}</p>`;
+  // Cattle: GLEAM's share of their protein from bought feed (grain, meal), the rest grass and silage.
+  const cows = f.c_cattle != null ? ` Cattle get about <strong>${Math.round(f.c_cattle)}%</strong> of their protein
+    from such feed, the rest from grass and silage.` : "";
+  const animals = state.group === "eggs" ? "hens" : state.group === "dairy" ? "cows" : "the animals";
   return `
     <h3>Feed from abroad</h3>
-    <p class="small">${share}</p>
-    <p>Counting ${state.group === "meat" ? "pigs and chickens" : "hens"} only for the feed grown ${id === EU ? "in the EU" : "at home"},
-      ${id === EU ? "the EU's" : "its"} own ${food()} would last <strong>${forHowLong(v)}</strong>.</p>
-    ${state.group === "meat" ? `<p class="small">Cattle and sheep are not counted again: they live mostly on grass, which no statistic counts as bought or sold.</p>` : ""}`;
+    <p class="small">${share}${state.group === "eggs" ? "" : cows}</p>
+    <p>Counting ${animals} only for the feed grown ${id === EU ? "in the EU" : "at home"},
+      ${id === EU ? "the EU's" : "its"} own ${food()} would last <strong>${forHowLong(v)}</strong>.</p>`;
 }
 
 function namesOf(list) {
@@ -2516,7 +2518,8 @@ function receiptAll(id, v) {
       <strong>${Math.round(p.ssr)}%</strong>.` : ""}</p>
     ${f?.imported_pct != null ? `<p>Pigs and chickens live on grain and oilseed meal, not grass. <strong>${Math.round(f.imported_pct)}%</strong>
       of the protein in feed other than grass and hay ${where} comes from abroad, so pork, chicken and eggs count
-      only for the rest. Beef, lamb and milk count in full: cattle and sheep live mostly on grass.
+      only for the rest. Beef, lamb and milk count only for the bought share of the cattle's and sheep's diet,
+      which live mostly on grass.
       That gives <strong>${Math.round(v)}%</strong>.</p>` : ""}
     ${inMonths(id, v)}
     ${country(id)?.indicators?.all?.protein?.feed_ssr != null ? `<p class="small">Counted by protein instead

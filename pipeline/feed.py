@@ -77,13 +77,41 @@ def read_sua(years: tuple[int, int], codes: set[int]) -> pd.DataFrame:
     return d.dropna(subset=["iso3"])[["iso3", "item_code", "element", "year", "t"]]
 
 
-# Leaf items whose production counts only in the home-grown share of the feed (pigs and poultry).
+# Leaf items whose production counts only in the home-grown share of the feed (pigs and poultry),
+# and the ruminants', counted for the traded share of their diet (GLEAM, `traded_share`).
 ADJUSTED_ITEMS = ("Pigmeat", "Poultry Meat", "Eggs")
+CATTLE_ITEMS = ("Bovine Meat",)
+SMALL_ITEMS = ("Mutton & Goat Meat",)
+GLEAM_INTAKE = "gleam_feed_intake.csv"
+GLEAM_PROTEIN = "gleam_feed_protein.csv"
 
 
-def all_food(f: float, items: pd.DataFrame, total: pd.Series) -> dict:
-    """"All food" with SSR_i' = (1 - f) * SSR_i for ADJUSTED_ITEMS, against the same items and
-    weights as compute.overall (its `{w}_den`, reading A: items with an SSR and weight > 0)."""
+def traded_share() -> pd.DataFrame:
+    """iso3 (and EU27) -> c_cattle, c_small: the share of the protein cattle and buffaloes, and
+    sheep and goats, eat as traded feed (grains, by-products, oilseed cakes), from GLEAM 3's dry
+    matter intake weighted by crude protein (methodology, "Feed", "Cattle, sheep and goats")."""
+    def rows(name):
+        with (config.MAPPINGS / name).open(encoding="utf-8") as f:
+            return list(csv.DictReader(x for x in f if not x.startswith("#")))
+    cp = {r["category"]: (float(r["protein_pct_dm"]) / 100, r["traded"] == "yes") for r in rows(GLEAM_PROTEIN)}
+    d = pd.DataFrame(rows(GLEAM_INTAKE))
+    if d.empty:
+        return pd.DataFrame(columns=["c_cattle", "c_small"])
+    d["kind"] = d["kind"].map({"cattle": "cattle", "sheep_goats": "small"})
+    for c in cp:
+        d[c] = pd.to_numeric(d[c], errors="coerce").fillna(0.0)
+    d = pd.concat([d, d[d["iso3"].isin(config.EU27)].assign(iso3="EU27")], ignore_index=True)
+    g = d.groupby(["iso3", "kind"])[list(cp)].sum()
+    prot = sum(g[c] * cp[c][0] for c in cp)
+    traded = sum(g[c] * cp[c][0] for c in cp if cp[c][1])
+    share = (traded / prot.where(prot > 0)).unstack("kind")
+    return share.rename(columns={"cattle": "c_cattle", "small": "c_small"}).reindex(columns=["c_cattle", "c_small"])
+
+
+def all_food(f: float, items: pd.DataFrame, total: pd.Series, cc: float = 0.0, cs: float = 0.0) -> dict:
+    """"All food" with SSR_i' = factor_i * SSR_i: 1 - f for ADJUSTED_ITEMS, 1 - f*c_cattle for beef and
+    dairy (as one food, compute.overall's dairy_*), 1 - f*c_small for mutton and goat meat; against
+    the same items and weights as compute.overall (its `{w}_den`, reading A)."""
     out = {}
     for w in ("protein", "kcal"):
         keys = [f"{w}_feed_ssr", f"{w}_feed_share"]
@@ -91,13 +119,19 @@ def all_food(f: float, items: pd.DataFrame, total: pd.Series) -> dict:
         if str(total.get(f"{w}_flag") or "") != "" or pd.isna(den) or not den > 0 or pd.isna(ssr):
             out.update(dict.fromkeys(keys, np.nan))
             continue
-        a = items[items["item"].isin(ADJUSTED_ITEMS) & items["ssr"].notna() & (items[w] > 0)]
-        d_ssr = (a[w] * f * a["ssr"]).sum() / den
-        d_share = (a[w] * (a["ssr"].clip(upper=100) - ((1 - f) * a["ssr"]).clip(upper=100))).sum() / den
+        a = items[items["ssr"].notna() & (items[w] > 0)]
+        parts = [(a[a["item"].isin(ADJUSTED_ITEMS)], 1 - f), (a[a["item"].isin(CATTLE_ITEMS)], 1 - f * cc),
+                 (a[a["item"].isin(SMALL_ITEMS)], 1 - f * cs)]
+        terms = [(r[w], r["ssr"], k) for sub, k in parts for _, r in sub.iterrows()]
+        dw, ds = total.get(f"dairy_{w}"), total.get("dairy_ssr")
+        if pd.notna(dw) and dw > 0 and pd.notna(ds):
+            terms.append((dw, ds, 1 - f * cc))
+        d_ssr = sum(wi * (1 - k) * si for wi, si, k in terms) / den
+        d_share = sum(wi * (min(si, 100) - min(k * si, 100)) for wi, si, k in terms) / den
         out.update({keys[0]: ssr - d_ssr, keys[1]: share - d_share})
         if w == "kcal":
-            # Calorie balance per person a day: produced = the headline's share of the use; the
-            # pork, chicken and eggs that rest on imported feed count as bought abroad.
+            # Calorie balance per person a day: produced = the headline's share of the use; what
+            # rests on imported feed counts as bought abroad.
             out.update({"kcal_produced": (ssr - d_ssr) * den / 100,
                         "kcal_imports": total.get("kcal_imports") + d_ssr * den / 100,
                         "kcal_exports": total.get("kcal_exports"), "kcal_used": den})
@@ -126,6 +160,7 @@ def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFram
     own = (w["P"] / have.where(have > 0)).fillna(1.0).clip(0, 1)
 
     prod = items_fbs.set_index(["iso3", "item"])["production"]
+    ts = traded_share()
     g = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])
     rows = []
     for iso3, sub in w.groupby(level="iso3"):
@@ -162,13 +197,20 @@ def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFram
                 return np.nan
             return 100 * num / r["supply"]
 
+        cc = float(ts.at[iso3, "c_cattle"]) if iso3 in ts.index and pd.notna(ts.at[iso3, "c_cattle"]) else 0.0
+        cs = float(ts.at[iso3, "c_small"]) if iso3 in ts.index and pd.notna(ts.at[iso3, "c_small"]) else 0.0
         meat = ssr("meat", g.loc[(iso3, "meat"), "production"] - f * (p("Pigmeat") + p("Poultry Meat"))
+                   - f * cc * p("Bovine Meat") - f * cs * p("Mutton & Goat Meat")
                    if (iso3, "meat") in g.index else np.nan)
+        dairy = ssr("dairy", (1 - f * cc) * g.loc[(iso3, "dairy"), "production"]) if (iso3, "dairy") in g.index else np.nan
         eggs = ssr("eggs", (1 - f) * g.loc[(iso3, "eggs"), "production"] if (iso3, "eggs") in g.index else np.nan)
         row = {"iso3": iso3, "imported_pct": 100 * f, "top": json.dumps(top), "meat_ssr": meat, "eggs_ssr": eggs,
+               "dairy_ssr": dairy,
+               "c_cattle": 100 * ts.at[iso3, "c_cattle"] if iso3 in ts.index else np.nan,
+               "c_small": 100 * ts.at[iso3, "c_small"] if iso3 in ts.index else np.nan,
                "items_pct": 100 * fed["F"].sum() / tot_t if tot_t > 0 else np.nan}
         if overall is not None and iso3 in overall.index:
-            row.update(all_food(f, items_fbs[items_fbs["iso3"] == iso3], overall.loc[iso3]))
+            row.update(all_food(f, items_fbs[items_fbs["iso3"] == iso3], overall.loc[iso3], cc, cs))
         rows.append(row)
     return pd.DataFrame(rows)
 

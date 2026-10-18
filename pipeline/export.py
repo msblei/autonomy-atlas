@@ -184,10 +184,10 @@ PER_CAPITA_KEYS = (
 ALL_FOOD = {
     "key": "all",
     "label": "All food",
-    "plain": "Counted in calories. Pork, chicken and eggs count only as far as the animals' feed "
-    "was grown here; beef, lamb and milk count in full, as cattle and sheep live mostly on grass.",
-    "notes": "Calorie-weighted across every FBS commodity, pigs and poultry counted only for "
-    "home-grown feed. The stricter reading caps each food at 100% so a surplus of one food cannot "
+    "plain": "Counted in calories. Meat, milk and eggs count only as far as the animals' feed was "
+    "grown here (for cattle and sheep, the grain and meal they eat besides grass).",
+    "notes": "Calorie-weighted across every FBS commodity, livestock counted only for home-grown "
+    "feed (pigs and poultry for all their feed, cattle, sheep and goats for their traded feed, GLEAM 3). The stricter reading caps each food at 100% so a surplus of one food cannot "
     "hide a shortage of another.",
 }
 EU_ENTRY = {
@@ -352,6 +352,8 @@ def export_ssr() -> None:
             r = feed.loc[iso3]
             entry["feed"] = {"imported_pct": _round(r["imported_pct"]), "top": json.loads(r["top"]),
                              "meat_ssr": _round(r["meat_ssr"]), "eggs_ssr": _round(r["eggs_ssr"]),
+                             "dairy_ssr": _round(r.get("dairy_ssr")), "c_cattle": _round(r.get("c_cattle")),
+                             "c_small": _round(r.get("c_small")),
                              "items_pct": _round(r["items_pct"])}
         entry.update({"view": "eu_bloc" if iso3 == EU_BLOC else "national",
                       "europe": bool(iso3 == EU_BLOC or countries.loc[iso3, "europe"]),

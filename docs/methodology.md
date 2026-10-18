@@ -323,15 +323,15 @@ eggs counting pigs and poultry only for home-grown feed, next to the figures her
 **Feed-adjusted, the headline.** Livestock products above count as home-grown whatever the
 animals ate. The headline takes section "Feed"'s imported share of feed protein `f` (per country;
 the EU as one) off pigs and poultry, as section "Feed" does for the meat and egg groups: for the
-leaf items Pigmeat, Poultry Meat and Eggs, `SSR_i' = (1 − f) · SSR_i`, every other item
-unchanged, then the same two weighted means over the same items:
+leaf items Pigmeat, Poultry Meat and Eggs, `SSR_i' = (1 − f) · SSR_i`; for Bovine Meat and dairy
+(as one food) `SSR_i' = (1 − f · c_cattle) · SSR_i`, for Mutton & Goat Meat
+`(1 − f · c_small)` (section "Feed", "Cattle, sheep and goats"); every other item unchanged, then
+the same two weighted means over the same items:
 
     feed_ssr_w   = Σ_i w_i · SSR_i' / Σ_i w_i
     feed_share_w = Σ_i w_i · min(SSR_i', 100) / Σ_i w_i
 
-Cattle, sheep, goats and milk are not adjusted (section "Feed": grass and hay are not traded, so
-a concentrate-only share would overstate their dependence; dairy cows' concentrate feed is a
-known gap this leaves). A withheld "all food" figure (`*_flag`) has no feed-adjusted figure. A
+A withheld "all food" figure (`*_flag`) has no feed-adjusted figure. A
 country without feed records in FAO's accounts has none either. Exported as `feed_ssr` and
 `feed_share` next to `ssr` and `share` for both bases.
 
@@ -340,7 +340,7 @@ items: each food's calories split by the shares of its use that are produced, bo
 
     used     = Σ_i k_i                          (k = kcal/cap/day; = kcal_den)
     produced = feed_ssr_kcal × used / 100        (Σ_i k_i · SSR_i' / 100)
-    imports  = Σ_i k_i · M_i / D_i  +  Σ_{pigs, poultry, eggs} k_i · f · SSR_i / 100
+    imports  = Σ_i k_i · M_i / D_i  +  Σ_i k_i · (SSR_i − SSR_i') / 100
     exports  = Σ_i k_i · X_i / D_i
 
 Dairy as one food uses its group's milk-equivalent M, X and D. The calories of pork, chicken and
@@ -927,11 +927,26 @@ self-sufficiency is left for the animals that live on it.
 - **Feed-adjusted self-sufficiency** (tonnes basis): pigs and poultry live on concentrate feed,
   so their meat counts as home-grown only in the home-grown share of the feed:
   `meat: (P_meat − f · (P_pigmeat + P_poultry)) / D_meat`, `eggs: (1 − f) · P_eggs / D_eggs`, with
-  the group figures as published. Cattle, sheep, goats and milk are not adjusted: they live
-  largely on grass and hay, which no statistic counts as traded, so a concentrate-only share would
-  overstate their dependence. Withheld groups get no adjusted figure.
+  the group figures as published. Withheld groups get no adjusted figure.
+- **Cattle, sheep and goats** live mostly on grass, hay and silage, which no statistic counts as
+  traded, so `f` alone would overstate their dependence. FAO's livestock model GLEAM 3 (reference
+  year 2015) gives per country and species the dry matter they eat by feed category
+  (`mappings/gleam_feed_intake.csv`, read from the GLEAM 3 dashboard's "Input data", table "Dry
+  Matter Intake", both production systems summed). GLEAM counts grains, by-products and oilseed
+  cakes as traded and grass, fodder crops and crop residues as local. Weighted by typical crude
+  protein per kg of dry matter (`mappings/gleam_feed_protein.csv`, Feedipedia), the **traded share
+  of their protein** is `c = Σ_traded DM · CP / Σ_all DM · CP`: `c_cattle` from cattle and
+  buffaloes, `c_small` from sheep and goats. Those traded feeds are taken to be imported in the
+  same share `f` as all of the country's non-grass feed. Then
+  `meat: (P_meat − f · (P_pig + P_poultry) − f · c_cattle · P_bovine − f · c_small · P_mutton) / D_meat`,
+  `dairy: (1 − f · c_cattle) · P_dairy / D_dairy` (all milk, as from cattle and buffaloes; milk
+  equivalent). A country GLEAM has no figures for keeps those animals unadjusted (`c` = 0).
+  Approximations: one diet for dairy and beef cattle (GLEAM's public tables do not split them);
+  2015 diets with the window's `f`; the country's average `f` for cattle concentrates, although
+  pigs and poultry may eat more of the imported soy.
 - **Export:** `ssr.json` country `feed`: `{imported_pct, top: [[item, % of imported protein] × ≤3],
-  meat_ssr, eggs_ssr, items_pct}` (`items_pct` = share of the feed tonnage the table covers).
+  meat_ssr, eggs_ssr, dairy_ssr, c_cattle, c_small, items_pct}` (`items_pct` = share of the feed
+  tonnage the table covers; `c_*` in %).
 - **Second opinion (EU):** DG AGRI's *EU feed protein balance sheet* (`pipeline/feedcheck.py`)
   gives per marketing year and protein source the EU's feed use in crude protein (column H) and
   the part of EU origin (I), counting meal from imported beans as not of EU origin, as here.

@@ -78,6 +78,12 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence_url": "https://commission.europa.eu/legal-notice_en",
         "doi": "https://doi.org/10.2905/JRC.EBBTB0G",
     },
+    "gleam3": {
+        "title": "GLEAM 3, Global Livestock Environmental Assessment Model: input data (dry matter intake)",
+        "publisher": "Food and Agriculture Organization of the United Nations (FAO)",
+        "url": "https://foodandagricultureorganization.shinyapps.io/GLEAMV3_Public/",
+        "licence": "© FAO 2022, reuse for non-commercial purposes with attribution",
+    },
     "maff_ssr": {
         "title": "Food self-sufficiency ratio (calorie basis)",
         "publisher": "Ministry of Agriculture, Forestry and Fisheries of Japan (MAFF)",

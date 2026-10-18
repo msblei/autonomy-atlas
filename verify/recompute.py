@@ -633,8 +633,30 @@ def cropmap_check(cm, n=4000):
     return out
 
 
+def ruminant_shares():
+    """Methodology "Feed", "Cattle, sheep and goats": {iso: (c_cattle, c_small)} as fractions, the
+    traded share of the protein in the diet from GLEAM's dry matter intake."""
+    cp = {r["category"]: (float(r["protein_pct_dm"]) / 100, r["traded"] == "yes")
+          for r in read_csv_comments(MAP / "gleam_feed_protein.csv")}
+    acc = defaultdict(lambda: [0.0, 0.0])  # (iso, kind) -> [traded protein, all protein]
+    for r in read_csv_comments(MAP / "gleam_feed_intake.csv"):
+        kind = {"cattle": "cattle", "sheep_goats": "small"}[r["kind"]]
+        for iso in [r["iso3"]] + (["EU27"] if r["iso3"] in EU else []):
+            for cat, (pr, traded) in cp.items():
+                v = float(r[cat] or 0) * pr
+                acc[(iso, kind)][1] += v
+                if traded:
+                    acc[(iso, kind)][0] += v
+    out = defaultdict(lambda: [math.nan, math.nan])
+    for (iso, kind), (t_, a_) in acc.items():
+        out[iso][0 if kind == "cattle" else 1] = t_ / a_ if a_ > 0 else math.nan
+    return dict(out)
+
+
 def feed_rows(res, D):
-    """Methodology "Feed": {iso: (imported %, top [[item, %]], meat SSR, eggs SSR, items %)}."""
+    """Methodology "Feed": {iso: (imported %, top [[item, %]], meat SSR, eggs SSR, items %, dairy SSR,
+    c_cattle, c_small)}."""
+    rum = ruminant_shares()
     items = {int(r["item_code"]): (r["item"], float(r["protein_pct"]) / 100, int(r["parent"]) if r["parent"] else None)
              for r in read_csv_comments(MAP / "feed_items.csv")}
     codes = set(items) | {v[2] for v in items.values() if v[2]}
@@ -700,10 +722,15 @@ def feed_rows(res, D):
             if not x or x["reason"] or not x["comp"]["D"] > 0:
                 return math.nan
             return 100 * num / x["comp"]["D"]
-        meat = ssr("meat", nz(gr["meat"]["comp"]["P"]) - f * (p_item("Pigmeat") + p_item("Poultry Meat"))) \
+        cc_, cs_ = rum.get(iso, (math.nan, math.nan))
+        cc, cs = (0.0 if isnan(cc_) else cc_), (0.0 if isnan(cs_) else cs_)
+        meat = ssr("meat", nz(gr["meat"]["comp"]["P"]) - f * (p_item("Pigmeat") + p_item("Poultry Meat"))
+                   - f * cc * p_item("Bovine Meat") - f * cs * p_item("Mutton & Goat Meat")) \
             if "meat" in gr else math.nan
         eggs = ssr("eggs", (1 - f) * nz(gr["eggs"]["comp"]["P"])) if "eggs" in gr else math.nan
-        out[iso] = (100 * f, top, meat, eggs, 100 * sum(sub.at[c, "F"] for c in fed) / tot_t if tot_t > 0 else math.nan)
+        dairy = ssr("dairy", (1 - f * cc) * nz(gr["dairy"]["comp"]["P"])) if "dairy" in gr else math.nan
+        out[iso] = (100 * f, top, meat, eggs, 100 * sum(sub.at[c, "F"] for c in fed) / tot_t if tot_t > 0 else math.nan,
+                    dairy, 100 * cc_, 100 * cs_)
     return out
 
 
@@ -2105,7 +2132,8 @@ def main():
             continue
         def off(a, b):
             return (a is None) != (b is None or isnan(b)) or (a is not None and abs(a - b) > 0.05 + 1e-9)
-        for k, mv in (("imported_pct", m_[0]), ("meat_ssr", m_[2]), ("eggs_ssr", m_[3]), ("items_pct", m_[4])):
+        for k, mv in (("imported_pct", m_[0]), ("meat_ssr", m_[2]), ("eggs_ssr", m_[3]), ("items_pct", m_[4]),
+                      ("dairy_ssr", m_[5]), ("c_cattle", m_[6]), ("c_small", m_[7])):
             if off(e.get(k), mv):
                 record("feed", {**w, "field": f"feed.{k}"}, e.get(k), None if isnan(mv) else round(mv, 1))
         counts["feed_top"] += 1
@@ -2128,8 +2156,14 @@ def main():
                        a_exp["kcal"]["balance"], None)
             if m_ is not None and not r["all"][b]["reason"]:
                 f = m_[0] / 100
-                foods = [(fd[0] * (1 - f) if D.item_names.get(code) in adj_names else fd[0], fd[wi])
-                         for code, fd, _ in r["all"]["foods_a"]]
+                cc = 0.0 if isnan(m_[6]) else m_[6] / 100
+                cs = 0.0 if isnan(m_[7]) else m_[7] / 100
+
+                def factor(code):  # methodology '"All food" coverage': which food rests on which feed
+                    nm = D.item_names.get(code) if code is not None else "dairy"
+                    return (1 - f if nm in adj_names else 1 - f * cc if nm in ("Bovine Meat", "dairy")
+                            else 1 - f * cs if nm == "Mutton & Goat Meat" else 1.0)
+                foods = [(fd[0] * factor(code), fd[wi]) for code, fd, _ in r["all"]["foods_a"]]
                 den = sum(w_ for _, w_ in foods)
                 if den > 0:
                     mine["feed_ssr"] = sum(v * w_ for v, w_ in foods) / den
@@ -2137,7 +2171,7 @@ def main():
                 if den > 0 and b == "kcal":
                     # methodology: the calorie balance, kcal per person a day
                     fa = r["all"]["foods_a"]
-                    fed_kcal = sum(f * fd[0] * fd[2] / 100 for code, fd, _ in fa if D.item_names.get(code) in adj_names)
+                    fed_kcal = sum((1 - factor(code)) * fd[0] * fd[2] / 100 for code, fd, _ in fa)
                     bal = {"produced": sum(v * w_ for v, w_ in foods) / 100,
                            "imports": sum(fd[2] * nz(t[0]) / 100 for _, fd, t in fa) + fed_kcal,
                            "exports": sum(fd[2] * nz(t[1]) / 100 for _, fd, t in fa), "used": den}

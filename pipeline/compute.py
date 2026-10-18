@@ -445,6 +445,11 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
         row = {"iso3": iso3, "years": years,
                "n_foods": int((ok["protein"].fillna(0) > 0).sum()),
                "n_withheld": int(((sub["protein"].fillna(0) > 0) & sub["ssr"].isna()).sum())}
+        # dairy as one food, as counted here (feed.py adjusts it for imported cattle feed)
+        dr = ok[ok["item"].isin([JRC_DAIRY_ITEM, FAO_DAIRY_ITEM])]
+        row["dairy_ssr"] = float(dr["ssr"].iloc[0]) if len(dr) else np.nan
+        for w_ in PER_CAPITA_ELEMENTS:
+            row[f"dairy_{w_}"] = float(dr[w_].iloc[0]) if len(dr) else np.nan
         for w in PER_CAPITA_ELEMENTS:
             depends = False
             allw = sub[w].where(sub[w] > 0).sum()
@@ -477,7 +482,7 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
             row[f"{w}_flag"] = checks.PARTS_CONTRADICT if depends else ""
         rows.append(row)
     cols = ["iso3", "years", "n_foods", "n_withheld", "protein_flag", "kcal_flag", "protein_den", "kcal_den",
-            "kcal_imports", "kcal_exports"] + [
+            "kcal_imports", "kcal_exports", "dairy_ssr", "dairy_kcal", "dairy_protein"] + [
         f"{w}{suffix}{b}" for w in PER_CAPITA_ELEMENTS for suffix in ("", "_share", "_ssr")
         for b in (("",) if suffix == "" else ("", "_low", "_high"))]
     return pd.DataFrame(rows, columns=cols)
