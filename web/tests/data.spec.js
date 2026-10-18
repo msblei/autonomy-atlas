@@ -388,3 +388,12 @@ test("every page links the legal notice, the privacy policy and an error report"
   await expect(view(page)).toContainText("built with the help of an AI system");
   await expect(page.locator("#frame")).toBeHidden();
 });
+
+test("what if one country stopped selling: from its sales page, figures as exported", async ({ page }) => {
+  const bra = JSON.parse(readFileSync(new URL("../public/data/whatif/BRA.json", import.meta.url), "utf8"));
+  await open(page, "BRA/stimulants/sells");
+  await page.locator(".whatif-go").click();
+  await expect(page.locator("#whatif .badge")).toContainText("Brazil stops selling");
+  await open(page, "DEU/stimulants");
+  await expect(view(page)).toContainText(`${Math.round(bra.DEU.stimulants)}% of the coffee, cocoa, tea it uses would be missing`);
+});

@@ -114,8 +114,8 @@ make serve       # cd web && npm run dev
    as imported when their beans were), meat and eggs counting pigs and poultry only for home-grown
    feed ("Feed from abroad" on the food page; cattle, sheep and milk not adjusted: grass).
    Calorie-weighted composite: the "all food" kcal coverage already is one. Scenarios "What if
-   … stopped selling?" (Russia and Ukraine, South America, the US and Canada;
-   `mappings/scenarios.yaml`): a "What if?" button on the map and a badge while one is on, the
+   … stopped selling?" (nine predefined in `mappings/scenarios.yaml`, plus every country on its
+   own from its sales page, `whatif/<ISO3>.json`): a "What if?" button on the map and a badge while one is on, the
    share of use grown there (traced), even-mix over production + imports so transit does not
    count (`pipeline/scenario.py`).
 

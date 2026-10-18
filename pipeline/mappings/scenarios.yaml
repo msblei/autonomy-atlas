@@ -1,16 +1,44 @@
 # "What if …?" scenarios: a group of countries stops selling food, and nothing takes its place
-# (methodology, "Scenarios: what if some countries stopped selling"). `sellers` are ISO3 codes;
-# a country in the group gets no figure. `label` is what the map's scenario button says.
+# (methodology, "Scenarios: what if some countries stopped selling"). `sellers` are ISO3 codes,
+# or one of the rules `eu27` (the 27 EU members; the EU as one counts as a seller too) and
+# `outside_europe` (every country not in countries.yaml). A seller gets no figure. `label` is the
+# menu's line, `note` its small second line (no figures: those belong in the pipeline).
+# Besides these, every country is a scenario of its own ("What if Brazil stopped selling?", from
+# its trade page): scenario.export writes one small file per seller.
 scenarios:
   ru_ua:
     label: Russia and Ukraine stop selling
-    short: Russia and Ukraine
+    note: Two of the largest grain and sunflower-oil sellers, at war since 2022
     sellers: [RUS, UKR]
+  india:
+    label: India stops selling
+    note: As with its bans on wheat (2022) and rice (2023) exports
+    sellers: [IND]
+  palm_oil:
+    label: Indonesia and Malaysia stop selling
+    note: Most of the world's palm oil; Indonesia halted its exports in 2022
+    sellers: [IDN, MYS]
+  cocoa:
+    label: Côte d'Ivoire and Ghana stop selling
+    note: Most of the world's cocoa
+    sellers: [CIV, GHA]
   south_america:
     label: South America stops selling
-    short: South America
+    note: Soy, beef, coffee, fruit
     sellers: [ARG, BOL, BRA, CHL, COL, ECU, GUY, PRY, PER, SUR, URY, VEN]
   north_america:
     label: The United States and Canada stop selling
-    short: the United States and Canada
+    note: Grain, soy, oilseeds
     sellers: [USA, CAN]
+  china:
+    label: China stops selling
+    note: Vegetables, fruit, fish
+    sellers: [CHN]
+  eu_out:
+    label: The EU stops selling to the world
+    note: Who depends on Europe's grain, milk and meat
+    sellers: eu27
+  fortress_europe:
+    label: The rest of the world stops selling to Europe
+    note: Europe as on this map, Russia and Türkiye included
+    sellers: outside_europe

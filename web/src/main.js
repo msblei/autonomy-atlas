@@ -604,41 +604,92 @@ function valueFor(id, indicator = tableIndicator(), basis = tableBasis()) {
 }
 
 function mapValue(id) {
-  if (scenarioOn()) return scenCountries()[id]?.[state.group] ?? null;
+  if (scenarioOn()) return isSeller(id) ? -1 : scenValue(id);
   return state.level === "table" ? valueFor(id) : pctFor(id) ?? robustPct(id);
 }
 
 // ---- What if some countries stopped selling? (scenario.json, methodology "Scenarios") ----
+// state.scenario: a predefined key ("ru_ua") or "seller:BRA", every country being a scenario of its
+// own (whatif/BRA.json, fetched when chosen). Files keep figures from meta.min_lack on; below that
+// a food in meta.cover is 0, one outside it has no figure.
 let scenLoading = null;
 function loadScenario() {
   scenLoading ??= loadJSON("data/scenario.json")
     .then((d) => { state.scen = d; render(); })
     .catch((e) => console.error(e));
+  return scenLoading;
 }
+const sellerFiles = {};
+function loadSeller(iso3) {
+  sellerFiles[iso3] ??= loadJSON(`data/whatif/${iso3}.json`)
+    .then((d) => { (state.sellerData ??= {})[iso3] = d; render(); })
+    .catch((e) => console.error(e));
+  return sellerFiles[iso3];
+}
+const sellerOf = (key = state.scenario) => (key?.startsWith("seller:") ? key.slice(7) : null);
 // Only where the map shows the main measure (not trade, regions or the expert table).
-const scenarioOn = () => !!state.scenario && !!state.scen && !["trade", "where", "table"].includes(state.level);
-const scenInfo = (key = state.scenario) => state.scen?.meta?.scenarios?.find((x) => x.key === key) ?? null;
-const scenCountries = () => state.scen?.scenarios?.[state.scenario] ?? {};
+const scenarioOn = () => !!state.scenario && !!state.scen && !["trade", "where", "table"].includes(state.level)
+  && (!sellerOf() || !!state.sellerData?.[sellerOf()]);
+function scenInfo(key = state.scenario) {
+  const c = sellerOf(key);
+  if (c) return { key, label: `${nameOf(c)} stops selling`, sellers: [c] };
+  return state.scen?.meta?.scenarios?.find((x) => x.key === key) ?? null;
+}
+const scenFigures = () => (sellerOf() ? state.sellerData?.[sellerOf()] : state.scen?.scenarios?.[state.scenario]) ?? {};
+// The countries that stop selling get no figure.
+function isSeller(id) {
+  const s = scenInfo()?.sellers;
+  const eu = state.scen?.meta?.eu27 ?? [];
+  if (s === "eu27") return id === EU || eu.includes(id);
+  if (s === "outside_europe") return id !== EU && !country(id)?.europe;
+  return Array.isArray(s) && (s.includes(id) || (id === EU && eu.every((m) => s.includes(m))));
+}
+function scenValue(id, group = state.group) {
+  if (isSeller(id)) return null;
+  const v = scenFigures()[id]?.[group];
+  if (v != null) return v;
+  return state.scen?.meta?.cover?.[id]?.includes(group) ? 0 : null;
+}
+const SELLER_COLOR = "#8c8577"; // the countries that stop selling, on the scenario map
 const LACK = [{ max: 1, color: "#f3ead8", label: "<1%" }, { max: 5, color: "#ecc98f", label: "1–5%" },
   { max: 10, color: "#e09a55", label: "5–10%" }, { max: 25, color: "#c8642f", label: "10–25%" },
   { max: 50, color: "#9e3d1f", label: "25–50%" }, { max: Infinity, color: "#6b2412", label: "50%+" }];
 
-// The country's share, one line, only while a scenario is on (the badge on the map says which).
+// While a scenario is on: the country's share, and who would miss the food most (one short list).
 function lackLine(id) {
   if (!scenarioOn()) return "";
-  const v = scenCountries()[id]?.[state.group];
+  const v = scenValue(id);
   const who = id === EU ? "the EU" : nameOf(id);
-  if (v == null) return "";
   const what = state.group === "all" ? "of the calories in its food" : `of the ${food()} it uses`;
-  return `<p class="lack"><strong>${v < 1 ? "Under 1" : Math.round(v)}%</strong> ${what} would be missing
-    for ${who}.</p>`;
+  const top = rankable().map((r) => ({ ...r, v: scenValue(r.id) })).filter((r) => r.v != null && r.v >= 1)
+    .sort((a, b) => b.v - a.v).slice(0, 5);
+  return `${v != null ? `<p class="lack"><strong>${v < 1 ? "Under 1" : Math.round(v)}%</strong> ${what} would be missing
+    for ${who}.</p>` : ""}
+    ${top.length ? `<p class="small">Would miss ${state.group === "all" ? "it" : food()} most</p>${rankList(top, (x) => `${Math.round(x)}%`)}` : ""}`;
 }
 
 // The "What if?" control on the map: a button that opens the scenarios; while one is on, a badge
 // with its name and a close button. Hidden where the map shows something else (trade, regions).
-const ICON_WHATIF = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M7 4v6a5 5 0 0 0 10 0V4M5 4h14M9 20h6M12 15v5" /></svg>`;
+// Signpost: one road, two ways.
+const ICON_WHATIF = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v18M12 5h6.5l2 2.5-2 2.5H12M12 12H5.5l-2 2.5 2 2.5H12" /></svg>`;
 const ICON_CLOSE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>`;
 let whatIfOpen = false;
+let shownBadge = null; // the scenario the badge last showed, so it pops in only when it changes
+const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
+// Leave with a short fade before the change (the menu folding up, the badge going).
+function leave(sel, then) {
+  const el = document.querySelector(sel);
+  if (!el || calm()) { then(); return; }
+  el.classList.add("leaving");
+  setTimeout(then, 140);
+}
+function setScenario(key) {
+  const c = sellerOf(key);
+  if (c) loadSeller(c);
+  state.scenario = key;
+  whatIfOpen = false;
+  render();
+}
 function renderWhatIf() {
   const el = document.getElementById("whatif");
   if (!el) return;
@@ -646,32 +697,39 @@ function renderWhatIf() {
   el.hidden = off;
   if (off) return;
   const on = scenarioOn() ? scenInfo() : null;
-  const menu = whatIfOpen && state.scen ? `<ul class="menu" role="menu">${state.scen.meta.scenarios.map((x) => `
-      <li role="none"><button type="button" role="menuitemradio" aria-checked="${x.key === state.scenario}"
-        data-pick="${x.key}">${x.label}</button></li>`).join("")}</ul>` : "";
+  const list = state.scen?.meta?.scenarios ?? [];
+  const items = (sellerOf() ? [scenInfo()] : []).concat(list);
+  const menu = whatIfOpen && state.scen ? `<ul class="menu" role="menu">${items.map((x, i) => `
+      <li role="none" style="--i:${i}"><button type="button" role="menuitemradio" aria-checked="${x.key === state.scenario}"
+        data-pick="${x.key}"><span>${x.label}</span>${x.note ? `<small>${x.note}</small>` : ""}</button></li>`).join("")}</ul>` : "";
+  const pop = on && shownBadge !== state.scenario ? " pop" : "";
+  shownBadge = on ? state.scenario : null;
   el.innerHTML = on
-    ? `<div class="badge"><button type="button" class="name" data-open aria-expanded="${whatIfOpen}">${ICON_WHATIF}
+    ? `<div class="badge${pop}"><button type="button" class="name" data-open aria-expanded="${whatIfOpen}">${ICON_WHATIF}
         <span>What if: <b>${on.label}</b></span></button>
         <button type="button" class="x" data-end aria-label="End the scenario">${ICON_CLOSE}</button></div>${menu}`
     : `<button type="button" class="open" data-open aria-expanded="${whatIfOpen}">${ICON_WHATIF}<span>What if…?</span></button>${menu}`;
   for (const b of el.querySelectorAll("[data-open]")) {
     b.onclick = (e) => {
       e.stopPropagation(); // the click-outside listener below would close it again at once
-      whatIfOpen = !whatIfOpen; if (whatIfOpen) loadScenario(); renderWhatIf();
+      if (whatIfOpen) { leave("#whatif .menu", () => { whatIfOpen = false; renderWhatIf(); }); return; }
+      whatIfOpen = true; loadScenario(); renderWhatIf();
       document.querySelector("#whatif [data-open]")?.focus();
     };
   }
   for (const b of el.querySelectorAll("[data-pick]")) {
-    b.onclick = () => { state.scenario = b.dataset.pick; whatIfOpen = false; render(); };
+    b.onclick = () => leave("#whatif .menu", () => setScenario(b.dataset.pick));
   }
   const end = el.querySelector("[data-end]");
-  if (end) end.onclick = () => { state.scenario = null; whatIfOpen = false; render(); };
+  if (end) end.onclick = () => leave("#whatif .badge", () => setScenario(null));
 }
 document.addEventListener("keydown", (e) => {
-  if (e.key === "Escape" && whatIfOpen) { whatIfOpen = false; renderWhatIf(); document.querySelector("#whatif [data-open]")?.focus(); }
+  if (e.key === "Escape" && whatIfOpen) {
+    leave("#whatif .menu", () => { whatIfOpen = false; renderWhatIf(); document.querySelector("#whatif [data-open]")?.focus(); });
+  }
 });
 document.addEventListener("click", (e) => {
-  if (whatIfOpen && !e.target.closest("#whatif")) { whatIfOpen = false; renderWhatIf(); }
+  if (whatIfOpen && !e.target.closest("#whatif")) leave("#whatif .menu", () => { whatIfOpen = false; renderWhatIf(); });
 });
 
 // kg/person/year from 1000 t and 1000 persons: kt * 1000 / population_k.
@@ -867,6 +925,7 @@ function tooltip(iso3) {
   const v = mapValue(id);
   const contradicts = state.group === "all"
     ? country(id)?.indicators?.all?.kcal?.withheld : withheld(id);
+  if (scenarioOn() && isSeller(id)) return `<strong>${nameOf(id)}</strong><span class="v">Stops selling</span>`;
   if (v == null) {
     return `<strong>${nameOf(id)}</strong><span class="v"><i class="hatch"></i>${contradicts
       ? "No reliable data from FAO" : "No data from FAO"}</span>`;
@@ -1061,8 +1120,9 @@ function paintMap() {
     paint = ["interpolate", ["linear"], ["feature-state", "v"]];
     stops.forEach((s, i) => paint.push(s, colors[i]));
   } else if (scenarioOn()) {
-    paint = ["step", ["feature-state", "v"], LACK[0].color];
-    LACK.slice(0, -1).forEach((s, i) => paint.push(s.max, LACK[i + 1].color));
+    const step = ["step", ["feature-state", "v"], LACK[0].color];
+    LACK.slice(0, -1).forEach((s, i) => step.push(s.max, LACK[i + 1].color));
+    paint = ["case", ["<", ["feature-state", "v"], 0], SELLER_COLOR, step]; // -1: stops selling
   } else {
     paint = ["step", ["feature-state", "v"], SEASONS[0].color];
     SEASONS.slice(1).forEach((s, i) => paint.push(SEASONS[i].max, s.color));
@@ -1127,7 +1187,7 @@ function renderLegend() {
   const toggle = "";
   if (scenarioOn()) {
     el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the calories in food</b>" : `the <b>${food()}</b> used`} that would be missing</p>
-      ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
+      ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })).concat([{ color: SELLER_COLOR, label: "seller" }]))}${toggle}`;
   } else {
     el.innerHTML = `<p class="title">${state.group === "all" ? "Months <b>its own food</b> would last, counted in calories"
       : `How long <b>its own ${food()}</b> would last, in months`}</p>${seasonScale()}${toggle}`;
@@ -1400,6 +1460,13 @@ function wire(el) {
       state.grown = b.dataset.grown === "1";
       if (state.grown) state.byValue = false;
       render(); fitTrade();
+    };
+  }
+  for (const b of el.querySelectorAll("[data-seller]")) {
+    b.onclick = () => {
+      const c = b.dataset.seller;
+      setScenario(`seller:${c}`);
+      location.hash = hashFor({ iso3: c, group: state.group, level: state.group === "all" ? "country" : "food" });
     };
   }
   for (const b of el.querySelectorAll("[data-fields]")) {
@@ -2717,6 +2784,7 @@ function viewTrade() {
   const g = groupInfo();
   const head = "";
   if (!state.trade) { loadTrade(); return `<p class="hint" data-loading>Loading…</p>`; }
+  if (state.flow === "exports" && !state.scen) loadScenario(); // for "What if … stopped selling?"
   const value = tradeBasis() === "value";
   const wh = !value && tradeWithheld(id);
   if (!wh && state.group === "fish" && !tradeFor(id, state.group, state.flow, "weight")) {
@@ -2774,6 +2842,8 @@ function viewTrade() {
     ${value ? `<p class="small">${imports ? "Paid abroad" : "Earned abroad"}: <strong>${euros(t[0])}</strong> a year</p>` : partial(t, fbsTotal)}
     ${fromEu != null && fromEu >= 1 ? `<p class="small">${grown ? "Grown in" : imports ? "From" : "To"} other EU countries: <strong>${Math.round(fromEu)}%</strong></p>` : ""}
     ${fromWar != null && fromWar >= 1 ? `<p class="small">${grown ? "Grown in" : "From"} Russia and Ukraine: <strong>${Math.round(fromWar)}%</strong></p>` : ""}
+    ${!imports && state.scen?.meta?.sellers?.includes(id) ? `<button type="button" class="whatif-go" data-seller="${id}">${ICON_WHATIF}
+      <span>What if ${id === EU ? "the EU" : nameOf(id)} stopped selling?</span></button>` : ""}
     ${hubs.length && imports ? `<p class="aside">Much of what comes from ${namesList(hubs.map((r) => r.id))} only passes
       through the port of ${hubs.map((r) => PORTS[r.id]).join(" or ")}.
       <button type="button" class="linkish" data-grown="1">Where was it grown? ›</button></p>` : ""}

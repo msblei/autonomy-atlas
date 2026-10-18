@@ -31,8 +31,20 @@ def load_scenarios() -> dict:
     return yaml.safe_load((config.MAPPINGS / "scenarios.yaml").read_text(encoding="utf-8"))["scenarios"]
 
 
-def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, products: dict,
-            sellers: tuple = ("RUS", "UKR")) -> pd.DataFrame:
+def resolve(sellers, partners: pd.DataFrame) -> set:
+    """A scenario's `sellers`: a list of ISO3 codes, or a rule (scenarios.yaml)."""
+    if sellers == "eu27":
+        return set(config.EU27)
+    if sellers == "outside_europe":
+        from .harmonise import load_countries
+
+        europe = set(load_countries().query("europe")["iso3"])
+        return set(partners["partner"].dropna()) - europe
+    return set(sellers)
+
+
+def _prepare(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, products: dict) -> dict:
+    """What every seller's figures share: the balances, the traced origins, the weights."""
     g = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])
     v = checks.trade_verdicts(partners, groups)
     held = set(zip(v.loc[(v["verdict"] == "withhold") & (v["flow"] == "imports"), "iso3"],
@@ -40,11 +52,26 @@ def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, p
     flow = np.where(partners["group"] == "fish", "imports", "grown")
     p = partners[partners["flow"] == flow]
     tot = p.groupby(["iso3", "group"])["tonnes"].sum()
-    ru = p[p["partner"].isin(sellers)].groupby(["iso3", "group"])["tonnes"].sum()
+    by_origin = p.groupby(["partner", "iso3", "group"])["tonnes"].sum()
+    item_group = {i: k for k, v in products["groups"].items() for i in v["items"]}
+    it = items.assign(group=items["item"].map(item_group)).dropna(subset=["group"])
+    kcal = it[it["kcal"] > 0].groupby(["iso3", "group"])["kcal"].sum()
+    return {"g": g, "held": held, "tot": tot, "by_origin": by_origin, "kcal": kcal,
+            "origins": sorted(set(p["partner"].dropna()))}
+
+
+def _lack(ctx: dict, sellers: set) -> pd.DataFrame:
+    g, held, tot = ctx["g"], ctx["held"], ctx["tot"]
+    bo = ctx["by_origin"]
+    sel = bo[bo.index.get_level_values("partner").isin(sellers)]
+    ru = sel.groupby(level=["iso3", "group"]).sum()
     share = (ru.reindex(tot.index).fillna(0.0) / tot).where(tot > 0)
+    # the EU as one is a seller when all its members are
+    bloc_sells = set(config.EU27) <= sellers
     rows = []
     for (iso3, group), r in g.iterrows():
-        if iso3 in sellers or group == "all" or str(r.get("flag") or "") != "" or (iso3, group) in held:
+        if iso3 in sellers or (iso3 == EU_BLOC and bloc_sells) or group == "all" \
+                or str(r.get("flag") or "") != "" or (iso3, group) in held:
             continue
         m, d = r["imports"], r["supply"]
         prod = 0.0 if pd.isna(r["production"]) else max(float(r["production"]), 0.0)
@@ -63,9 +90,7 @@ def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, p
     if out.empty:
         return out
     # all food: weighted by calories per person (FBS items in the groups), as the headline
-    item_group = {i: k for k, v in products["groups"].items() for i in v["items"]}
-    it = items.assign(group=items["item"].map(item_group)).dropna(subset=["group"])
-    kcal = it[it["kcal"] > 0].groupby(["iso3", "group"])["kcal"].sum()
+    kcal = ctx["kcal"]
     w = out.assign(p=[kcal.get((i, gr), np.nan) for i, gr in zip(out["iso3"], out["group"], strict=True)])
     w = w[w["p"] > 0]
     allf = (w.assign(x=w["lack"] * w["p"]).groupby("iso3")[["x", "p"]].sum())
@@ -75,6 +100,15 @@ def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, p
     allf = allf[allf["p"] >= ALL_MIN_KCAL * total.reindex(allf.index)]
     allf = (allf["x"] / allf["p"]).rename("lack").reset_index().assign(group="all")
     return pd.concat([out, allf], ignore_index=True)
+
+
+def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, products: dict,
+            sellers=("RUS", "UKR")) -> pd.DataFrame:
+    return _lack(_prepare(partners, groups, items, products), resolve(list(sellers), partners))
+
+
+SELLERS = "scenario_sellers.parquet"  # every country as a scenario of its own
+MIN_LACK = 0.05  # per-seller files keep figures from this on; below it, "covered" means 0
 
 
 def run() -> None:
@@ -91,15 +125,27 @@ def run() -> None:
     if "basis" in items:
         items = items[items["basis"] == "tonnes"]
     partners, products = pd.read_parquet(src), load_products()
-    out = pd.concat([compute(partners, groups, items, products, tuple(sc["sellers"])).assign(scenario=key)
+    ctx = _prepare(partners, groups, items, products)
+    out = pd.concat([_lack(ctx, resolve(sc["sellers"], partners)).assign(scenario=key)
                      for key, sc in load_scenarios().items()], ignore_index=True)
     y0, y1 = fbs_window()
     out.assign(years=f"{y0}-{y1}").to_parquet(dest, index=False)
-    log.info("wrote %s (%d scenarios)", dest, out["scenario"].nunique())
+    # one scenario per seller; "cover" (no seller at all) says where a figure exists
+    per = [_lack(ctx, set()).assign(seller="")]
+    for c in ctx["origins"]:
+        d = _lack(ctx, {c})
+        per.append(d[d["lack"] >= MIN_LACK].assign(seller=c))
+    pd.concat(per, ignore_index=True).to_parquet(config.PROCESSED / SELLERS, index=False)
+    log.info("wrote %s (%d scenarios) and %s (%d sellers)", dest, out["scenario"].nunique(), SELLERS,
+             len(ctx["origins"]))
+
+
+SELLER_DIR = "whatif"  # web/public/data/whatif/<ISO3>.json, fetched when that scenario is chosen
 
 
 def export() -> None:
     src, dest = config.PROCESSED / OUT, config.WEB_DATA / "scenario.json"
+    out_dir = config.WEB_DATA / SELLER_DIR
     if not src.exists():
         dest.unlink(missing_ok=True)
         return
@@ -107,13 +153,34 @@ def export() -> None:
     scen = load_scenarios()
     by: dict = {k: {} for k in scen}
     for r in s.itertuples():
-        by[r.scenario].setdefault(r.iso3, {})[r.group] = round(float(r.lack), 1)
+        if r.lack >= MIN_LACK:  # below: 0 where "cover" has the food (as for single sellers)
+            by[r.scenario].setdefault(r.iso3, {})[r.group] = round(float(r.lack), 1)
+    # every country as a seller: one file each, figures from MIN_LACK on; "cover" lists where a
+    # figure exists at all (0 where a country is covered but missing from a seller's file)
+    per = pd.read_parquet(config.PROCESSED / SELLERS)
+    cover: dict = {}
+    for r in per[per["seller"] == ""].itertuples():
+        cover.setdefault(r.iso3, []).append(r.group)
+    out_dir.mkdir(parents=True, exist_ok=True)
+    for f in out_dir.glob("*.json"):
+        f.unlink()
+    sellers = []
+    for c, d in per[per["seller"] != ""].groupby("seller"):
+        figs: dict = {}
+        for r in d.itertuples():
+            figs.setdefault(r.iso3, {})[r.group] = round(float(r.lack), 1)
+        (out_dir / f"{c}.json").write_text(json.dumps(figs, separators=(",", ":")), encoding="utf-8")
+        sellers.append(c)
     out = {"meta": {"years": s["years"].iloc[0],
                     "basis": "% of domestic supply (tonnes; all food: calorie-weighted) grown in the "
                              "sellers (bought from them for fish); nothing replaces it",
-                    "eu_bloc": EU_BLOC,
-                    "scenarios": [{"key": k, "label": v["label"], "short": v["short"], "sellers": v["sellers"]}
-                                  for k, v in scen.items()]},
+                    "eu_bloc": EU_BLOC, "eu27": list(config.EU27), "min_lack": MIN_LACK,
+                    # sellers: ISO3 codes, or the rule ("eu27", "outside_europe") as in scenarios.yaml
+                    "scenarios": [{"key": k, "label": v["label"], "note": v.get("note"), "sellers": v["sellers"]}
+                                  for k, v in scen.items()],
+                    "sellers": sellers, "cover": cover},
            "scenarios": by}
     dest.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")
-    log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)
+    size = sum(f.stat().st_size for f in out_dir.glob("*.json"))
+    log.info("wrote %s (%.0f KB) and %d seller files (%.0f KB)", dest, dest.stat().st_size / 1024,
+             len(sellers), size / 1024)

@@ -715,7 +715,8 @@ def scenario_rows(res, D, trade, hidden, sellers=("RUS", "UKR")):
     for c, nm in D.item_names.items():
         code_of.setdefault(nm, c)
     for iso, r in res.items():
-        if iso in sellers or "groups" not in r:
+        # the EU as one sells when all its members do (methodology, "Scenarios")
+        if iso in sellers or (iso == "EU27" and set(EU) <= set(sellers)) or "groups" not in r:
             continue
         rows = {}
         for g, gr in r["groups"].items():
@@ -2039,20 +2040,57 @@ def main():
                                          "field": "concentration"}, e, mine)
 
     # ---- scenario (methodology "Scenario") ----
-    sc_all = json.load(open(OUT_DIR / "scenario.json"))["scenarios"]
+    scj = json.load(open(OUT_DIR / "scenario.json"))
+    sc_all, smeta = scj["scenarios"], scj["meta"]
     scen_def = yaml.safe_load(open(MAP / "scenarios.yaml"))["scenarios"]
+    europe = {e["iso3"] for e in EUROPE}
+    origins = sorted({p_ for gs in trade.values() for g, fl in gs.items()
+                      for p_ in fl.get("imports" if g == "fish" else "grown", {})} - {"EU27"})
+
+    def sellers_of(rule):
+        if rule == "eu27":
+            return set(EU)
+        if rule == "outside_europe":
+            return {p_ for gs in trade.values() for fl in gs.values() for f_ in fl.values() for p_ in f_} - europe
+        return set(rule)
+
+    # where a figure exists at all: nobody stops selling (methodology: below 0.05% a covered food is 0)
+    cover = scenario_rows(res, D, trade, hidden, ())
+    exp_cover = {i: set(g) for i, g in smeta.get("cover", {}).items()}
+    for iso in sorted(set(cover) | set(exp_cover)):
+        counts["scenario_cover"] += 1
+        if set(cover.get(iso, {})) != exp_cover.get(iso, set()):
+            record("scenario_cover", {"file": "scenario.json", "country": iso, "field": "meta.cover"},
+                   sorted(exp_cover.get(iso, set())), sorted(cover.get(iso, {})))
+
+    def compare(name, exported, mine_sc, where):
+        for iso in sorted(set(exported) | set(mine_sc)):
+            for g in sorted(set(exported.get(iso, {})) | set(mine_sc.get(iso, {}))):
+                e, m_ = exported.get(iso, {}).get(g), mine_sc.get(iso, {}).get(g)
+                counts[name] += 1
+                if m_ is not None and m_ < 0.05:
+                    ok = e is None and g in cover.get(iso, {})
+                else:
+                    ok = e is not None and m_ is not None and abs(e - m_) <= 0.05 + 1e-9
+                if not ok:
+                    record(name, {**where, "country": iso, "group": g, "field": "lack"},
+                           e, None if m_ is None else round(m_, 1))
+
     if sorted(sc_all) != sorted(scen_def):
         record("scenario", {"file": "scenario.json", "field": "scenarios"}, sorted(sc_all), sorted(scen_def))
     for key, sdef in scen_def.items():
-        sc = sc_all.get(key, {})
-        mine_sc = scenario_rows(res, D, trade, hidden, tuple(sdef["sellers"]))
-        for iso in sorted(set(sc) | set(mine_sc)):
-            for g in sorted(set(sc.get(iso, {})) | set(mine_sc.get(iso, {}))):
-                e, m_ = sc.get(iso, {}).get(g), mine_sc.get(iso, {}).get(g)
-                counts["scenario"] += 1
-                if e is None or m_ is None or abs(e - m_) > 0.05 + 1e-9:
-                    record("scenario", {"file": "scenario.json", "scenario": key, "country": iso, "group": g,
-                                        "field": "lack"}, e, None if m_ is None else round(m_, 1))
+        compare("scenario", sc_all.get(key, {}), scenario_rows(res, D, trade, hidden, tuple(sellers_of(sdef["sellers"]))),
+                {"file": "scenario.json", "scenario": key})
+    # every country as a seller of its own (whatif/<ISO3>.json)
+    files = {f.stem for f in (OUT_DIR / "whatif").glob("*.json")}
+    for c in sorted(set(origins) | files):
+        mine_c = scenario_rows(res, D, trade, hidden, (c,))
+        if not any(v >= 0.05 for gs in mine_c.values() for v in gs.values()):
+            if c in files:
+                record("scenario_seller", {"file": f"whatif/{c}.json", "field": "file"}, True, False)
+            continue
+        exported = json.load(open(OUT_DIR / "whatif" / f"{c}.json")) if c in files else {}
+        compare("scenario_seller", exported, mine_c, {"file": f"whatif/{c}.json"})
 
     # ---- feed (methodology "Feed") ----
     mine_f = feed_rows(res, D)

@@ -473,8 +473,22 @@ def check_scenario(sc: dict, ssr: dict) -> list[Finding]:
     """Scenario (methodology, "Scenario"): a share of use (0-100%), none for Russia and Ukraine
     themselves, none for a withheld food."""
     out = []
-    sellers = {s["key"]: set(s["sellers"]) for s in sc.get("meta", {}).get("scenarios", [])}
-    for key, countries in sc.get("scenarios", {}).items():
+    meta = sc.get("meta", {})
+    sellers = {}
+    for s in meta.get("scenarios", []):
+        rule = s["sellers"]
+        sellers[s["key"]] = (set(meta.get("eu27", [])) | {"EU27"} if rule == "eu27"
+                             else {i for i, c in ssr["countries"].items() if not c.get("europe")} if rule == "outside_europe"
+                             else set(rule))
+    figs = dict(sc.get("scenarios", {}))
+    for c in meta.get("sellers", []):  # every country as a seller (whatif/<ISO3>.json)
+        f = config.WEB_DATA / "whatif" / f"{c}.json"
+        if not f.exists():
+            out.append(Finding("scenario_file", BLOCK, f"whatif/{c}.json missing", c))
+            continue
+        figs[f"seller:{c}"] = json.loads(f.read_text(encoding="utf-8"))
+        sellers[f"seller:{c}"] = {c}
+    for key, countries in figs.items():
         for iso3, gs in countries.items():
             if iso3 in sellers.get(key, set()):
                 out.append(Finding("scenario_scope", BLOCK, f"{key}: figure for one of the sellers", iso3))

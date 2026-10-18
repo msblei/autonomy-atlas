@@ -970,9 +970,12 @@ self-sufficiency is left for the animals that live on it.
 
 What a country would lack if a group of countries stopped selling food, and nothing took their
 place (`pipeline/scenario.py`, `web/public/data/scenario.json`). The groups are in
-`mappings/scenarios.yaml`: Russia and Ukraine (two of the largest grain and sunflower-oil sellers,
-whose sales the 2022 war put at risk), South America, and the United States and Canada. Below,
-"Russia and Ukraine" stands for any group; a country in the group gets no figure.
+`mappings/scenarios.yaml`: Russia and Ukraine, India, Indonesia and Malaysia, Côte d'Ivoire and
+Ghana, South America, the United States and Canada, China, the EU (rule `eu27`: the 27 members,
+and the EU as one counts as a seller too) and the rest of the world selling to Europe (rule
+`outside_europe`: every trade partner not in `countries.yaml`). Besides these, **every country is
+a scenario of its own** ("What if Brazil stopped selling?", from its sales page). Below, "Russia
+and Ukraine" stands for any group; a country in the group gets no figure.
 
 - **Per country and food:** `lack = 100 × M × s / (P + M)` (% of what it uses), with P and M the
   food balance's production and imports as published (`components_kt`), and `s` the share of its
@@ -994,8 +997,12 @@ whose sales the 2022 war put at risk), South America, and the United States and 
 - **What it does not say:** that the food would be missing for long (other sellers step in, at a
   price), or what animals would lack in feed (sunflower meal from Ukraine is feed, not a food
   group here). The page says so.
-- **Export:** `scenario.json` `{meta: {years, basis, eu_bloc, scenarios: [{key, label, short,
-  sellers}]}, scenarios: {key: {iso3: {group: lack %}}}}`; chosen with the "What if?" button on
+- **Small figures:** files keep figures from 0.05% on. `meta.cover` `{iso3: [group]}` lists where
+  a figure exists at all (the figures with no seller): a covered food missing from a file is 0, one
+  outside the cover has none.
+- **Export:** `scenario.json` `{meta: {years, basis, eu_bloc, eu27, min_lack, scenarios: [{key,
+  label, note, sellers}], sellers: [iso3 with a file], cover}, scenarios: {key: {iso3: {group:
+  lack %}}}}`, and per seller `whatif/<ISO3>.json` `{iso3: {group: lack %}}`; chosen with the "What if?" button on
   the map, shown as that map for the chosen food (a badge on the map says which scenario is on) and
   a line on the country's and food's page while it is on.
 
