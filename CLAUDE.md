@@ -1,4 +1,4 @@
-# Autonomy Atlas — project brief for Claude Code
+# Food Autonomy Atlas — project brief for Claude Code
 
 Interactive map of European agriculture: what is grown where and when, who imports and exports
 what, and how self-sufficient each country really is. The goal is a pan-European, product-by-product
@@ -29,6 +29,11 @@ Updating the data (what changes when, the manual JRC step, versions, review list
 - **Default time window:** 3-year average (latest three FBS years). Average the *components*
   (production, imports, exports, supply) over the window, then compute the ratio — never average
   ratios.
+- **Headline ("all food"):** calories, counting pork, chicken and eggs only for home-grown feed
+  (`kcal.feed_ssr`; comparisons on the capped `kcal.feed_share`). Protein and the unadjusted
+  figures stay on "All the numbers". (Changed from uncapped protein on 2026-10-18 after an
+  expert review: protein hid imported soy feed and vegetable oil.) It measures land and harvests,
+  not food security; the UI says so.
 - **Two autonomy views, always both:** `national` (all imports count, including from other EU
   states) and `eu_bloc` (only extra-EU imports count, EU treated as one unit). They can tell
   opposite stories; the UI must let the user toggle.
@@ -125,6 +130,7 @@ make serve       # cd web && npm run dev
 | Fish live-weight factors | EUMOFA, Metadata 2 Annex 7 "Conversion factors by CN-8 code" | `https://fishery-aquaculture-market-observatory.ec.europa.eu/en/data/metadata` | EC reuse notice (attribution). Per CN8 code and year, 2011– |
 | Bilateral trade (HS6, reconciled) | CEPII BACI, HS 2017 edition, release 202601 | `https://www.cepii.fr/DATA_DOWNLOAD/baci/data/BACI_HS17_V202601.zip` (`atlas download --source baci`, 795 MB, kept zipped) | Etalab 2.0, cite Gaulier & Zignago (2010). ~1-year lag. Fish partners outside the EU (live weight with the EU's EUMOFA mix per HS6); other foods only compared with the FAO matrix (`pipeline/baci.py`). A new release renames the file: update `config.SOURCES` and `baci.RELEASE` |
 | EU balances (dairy, tomatoes, olive oil, wine) | DG AGRI–JRC "EU estimated agricultural balance sheets" | browser download only (`atlas download --source jrc` prints steps) → `data/raw/jrc/` | EC reuse notice (attribution). Intra-EU trade counted once, processed goods converted back; replaces FAO for EU dairy, tomatoes, olive oil, wine (`pipeline/jrc.py`, comparison in methodology) |
+| Countries without an FBS (Japan) | MAFF food self-sufficiency ratio, calorie basis | `mappings/national_stats.csv`, typed from `https://www.maff.go.jp/j/zyukyu/zikyu_ritu/012.html` (docs/updating.md) | Government of Japan Standard Terms of Use 2.0 (CC BY 4.0 compatible). Shown in place of a blank, never ranked with FAO-based figures |
 | Second opinion on FBS (cereals, oilseeds, oils, sugar, meat, butter, coffee) | USDA FAS PSD | `https://apps.fas.usda.gov/psdonline/downloads/psd_alldata_csv.zip` (`atlas download --source usda`) | US government work, public domain. EU only as a bloc. Compared, never substituted: `pipeline/usda.py`; large gaps shown next to FAO's figure |
 | Second opinion on imported feed protein (EU) | DG AGRI "EU feed protein balance sheet" | `https://agriculture.ec.europa.eu/document/download/67d303ed-196f-47df-905f-0ac3866610e5_en?filename=eu-feed-protein-balance-sheet_en.xlsx` (`atlas download --source dgagri`) | Commission reuse notice (attribution). One sheet per marketing year (July–June); compared, never substituted, without roughage (FAO has none): `pipeline/feedcheck.py`, audit page; a gap over 10 points is a warning |
 | Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | CC BY 4.0. NUTS2 (Germany NUTS1), 2000–2024; codes from several NUTS versions: matched to GISCO NUTS 2024, else 2021 (both downloaded with `boundaries`) |

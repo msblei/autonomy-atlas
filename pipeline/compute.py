@@ -452,6 +452,8 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
                     tot = s[w].sum()
                     v = s[col].clip(upper=cap) if cap else s[col]
                     vals[name] = (s[w] * v).sum() / tot if tot > 0 else np.nan
+                    if name == "a":
+                        row[f"{w}_den"] = tot  # the weight divided by (feed.py adjusts against it)
                 row[f"{w}{suffix}"] = vals["a"]
                 both = pd.Series([vals["a"], vals["b"]], dtype=float)
                 lo, hi = both.min(), both.max()
@@ -462,7 +464,7 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
                     depends = True
             row[f"{w}_flag"] = checks.PARTS_CONTRADICT if depends else ""
         rows.append(row)
-    cols = ["iso3", "years", "n_foods", "n_withheld", "protein_flag", "kcal_flag"] + [
+    cols = ["iso3", "years", "n_foods", "n_withheld", "protein_flag", "kcal_flag", "protein_den", "kcal_den"] + [
         f"{w}{suffix}{b}" for w in PER_CAPITA_ELEMENTS for suffix in ("", "_share", "_ssr")
         for b in (("",) if suffix == "" else ("", "_low", "_high"))]
     return pd.DataFrame(rows, columns=cols)

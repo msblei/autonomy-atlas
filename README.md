@@ -1,4 +1,4 @@
-# Autonomy Atlas
+# Food Autonomy Atlas
 
 Interactive map of European agriculture: what's grown where and when, who imports and exports
 what, and how self-sufficient each country really is.
@@ -8,7 +8,7 @@ what, and how self-sufficient each country really is.
 Europe's food dependence is discussed constantly but mapped almost nowhere. The European Commission
 publishes self-sufficiency rates, but only for EU members, only as charts, and with no API. Global
 trade explorers show flows but not whether a country could feed itself; crop calendars show seasons
-but not trade. Autonomy Atlas puts those layers on one map, for the whole continent, product by
+but not trade. Food Autonomy Atlas puts those layers on one map, for the whole continent, product by
 product, with every number traceable to its source.
 
 ## Status

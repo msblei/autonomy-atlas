@@ -7,7 +7,7 @@
 # Kosovo (XKX) is deliberately absent: FAO merges it into Serbia. Show a note on the map.
 
 - { iso3: AUT, name: Austria,                m49: "040", eurostat: AT, group: EU27 }
-- { iso3: BEL, name: Belgium,                m49: "056", eurostat: BE, group: EU27, notes: "Antwerp re-export hub; raw import figures overstate dependence" }
+- { iso3: BEL, name: Belgium,                m49: "056", eurostat: BE, group: EU27, notes: "Much of what Belgium buys abroad passes through the port of Antwerp and is sold on, so its purchases look larger than what it uses." }
 - { iso3: BGR, name: Bulgaria,               m49: "100", eurostat: BG, group: EU27 }
 - { iso3: HRV, name: Croatia,                m49: "191", eurostat: HR, group: EU27 }
 - { iso3: CYP, name: Cyprus,                 m49: "196", eurostat: CY, group: EU27 }
@@ -16,7 +16,7 @@
 - { iso3: EST, name: Estonia,                m49: "233", eurostat: EE, group: EU27 }
 - { iso3: FIN, name: Finland,                m49: "246", eurostat: FI, group: EU27 }
 - { iso3: FRA, name: France,                 m49: "250", eurostat: FR, group: EU27 }
-- { iso3: DEU, name: Germany,                m49: "276", eurostat: DE, group: EU27, notes: "Eurostat regional crops only at NUTS1" }
+- { iso3: DEU, name: Germany,                m49: "276", eurostat: DE, group: EU27 }  # Eurostat regional crops only at NUTS1
 - { iso3: GRC, name: Greece,                 m49: "300", eurostat: EL, group: EU27 }
 - { iso3: HUN, name: Hungary,                m49: "348", eurostat: HU, group: EU27 }
 - { iso3: IRL, name: Ireland,                m49: "372", eurostat: IE, group: EU27 }
@@ -25,7 +25,7 @@
 - { iso3: LTU, name: Lithuania,              m49: "440", eurostat: LT, group: EU27 }
 - { iso3: LUX, name: Luxembourg,             m49: "442", eurostat: LU, group: EU27 }
 - { iso3: MLT, name: Malta,                  m49: "470", eurostat: MT, group: EU27 }
-- { iso3: NLD, name: Netherlands,            m49: "528", eurostat: NL, group: EU27, notes: "Rotterdam re-export hub; raw import figures overstate dependence. FAOSTAT name 'Netherlands (Kingdom of the)' since 2023" }
+- { iso3: NLD, name: Netherlands,            m49: "528", eurostat: NL, group: EU27, notes: "Much of what the Netherlands buys abroad passes through the port of Rotterdam and is sold on, so its purchases look larger than what it uses." }  # FAOSTAT name 'Netherlands (Kingdom of the)' since 2023
 - { iso3: POL, name: Poland,                 m49: "616", eurostat: PL, group: EU27 }
 - { iso3: PRT, name: Portugal,               m49: "620", eurostat: PT, group: EU27 }
 - { iso3: ROU, name: Romania,                m49: "642", eurostat: RO, group: EU27 }
@@ -34,7 +34,7 @@
 - { iso3: ESP, name: Spain,                  m49: "724", eurostat: ES, group: EU27 }
 - { iso3: SWE, name: Sweden,                 m49: "752", eurostat: SE, group: EU27 }
 
-- { iso3: GBR, name: United Kingdom,         m49: "826", eurostat: UK, group: UK, notes: "Not a Comext reporter since 2021; use BACI / FAO trade matrix" }
+- { iso3: GBR, name: United Kingdom,         m49: "826", eurostat: UK, group: UK }  # not a Comext reporter since 2021: BACI / FAO trade matrix
 
 - { iso3: NOR, name: Norway,                 m49: "578", eurostat: NO, group: EFTA }
 - { iso3: CHE, name: Switzerland,            m49: "756", eurostat: CH, group: EFTA }
@@ -44,10 +44,10 @@
 - { iso3: BIH, name: Bosnia and Herzegovina, m49: "070", eurostat: BA, group: Balkans }
 - { iso3: MNE, name: Montenegro,             m49: "499", eurostat: ME, group: Balkans }
 - { iso3: MKD, name: North Macedonia,        m49: "807", eurostat: MK, group: Balkans }
-- { iso3: SRB, name: Serbia,                 m49: "688", eurostat: RS, group: Balkans, notes: "FAO figures include Kosovo" }
+- { iso3: SRB, name: Serbia,                 m49: "688", eurostat: RS, group: Balkans, notes: "FAO's figures for Serbia include Kosovo." }
 
-- { iso3: UKR, name: Ukraine,                m49: "804", eurostat: UA, group: East, notes: "2022-2025 statistics suspended and backfilled from Dec 2025; excludes occupied territories; treat as provisional" }
+- { iso3: UKR, name: Ukraine,                m49: "804", eurostat: UA, group: East, notes: "Ukraine suspended much of its statistics in 2022; FAO's figures for 2022 and 2023 rest largely on estimates. Treat them as provisional." }  # backfilled from Dec 2025; excludes occupied territories
 - { iso3: MDA, name: Moldova,                m49: "498", eurostat: MD, group: East }
-- { iso3: BLR, name: Belarus,                m49: "112", eurostat: BY, group: East, notes: "Trade reporting patchy since 2022; use mirror flows" }
-- { iso3: RUS, name: Russia,                 m49: "643", eurostat: RU, group: East, notes: "Trade reporting patchy since 2022; use mirror flows" }
+- { iso3: BLR, name: Belarus,                m49: "112", eurostat: BY, group: East, notes: "Its own trade reports are patchy since 2022; where they are missing, its trade partners' reports are used." }  # mirror flows
+- { iso3: RUS, name: Russia,                 m49: "643", eurostat: RU, group: East, notes: "Its own trade reports are patchy since 2022; where they are missing, its trade partners' reports are used." }  # mirror flows
 - { iso3: TUR, name: Türkiye,                m49: "792", eurostat: TR, group: Other }

@@ -78,6 +78,12 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence_url": "https://commission.europa.eu/legal-notice_en",
         "doi": "https://doi.org/10.2905/JRC.EBBTB0G",
     },
+    "maff_ssr": {
+        "title": "Food self-sufficiency ratio (calorie basis)",
+        "publisher": "Ministry of Agriculture, Forestry and Fisheries of Japan (MAFF)",
+        "url": "https://www.maff.go.jp/j/zyukyu/zikyu_ritu/012.html",
+        "licence": "Government of Japan Standard Terms of Use 2.0 (compatible with CC BY 4.0)",
+    },
     "usda_psd": {
         "title": "Production, Supply and Distribution (PSD)",
         "publisher": "U.S. Department of Agriculture, Foreign Agricultural Service",

@@ -24,10 +24,11 @@ async function open(page, hash) {
   }, `#${hash}`);
 }
 
-test("headline per country is the protein figure, worded by calendar.js", async ({ page }) => {
+test("headline per country is the feed-adjusted calorie figure, worded by calendar.js", async ({ page }) => {
   for (const id of SAMPLE) {
     await open(page, id);
-    const p = C[id].indicators?.all?.protein ?? {};
+    const k = C[id].indicators?.all?.kcal ?? {};
+    const p = { ssr: k.feed_ssr, withheld: k.withheld };
     const answer = view(page).locator(".answer");
     if (p.ssr == null) {
       await expect(answer).toHaveCount(0);
@@ -267,10 +268,10 @@ test("feed from abroad: the imported share and the feed-adjusted meat as exporte
   const f = C.DEU.feed;
   await open(page, "DEU/meat");
   const box = view(page);
-  await expect(box).toContainText(`${Math.round(f.imported_pct)}% of the protein in Germany's animal feed`);
+  await expect(box).toContainText(`${Math.round(f.imported_pct)}% of the protein in Germany's animal feed other than grass and hay`);
   await expect(box).toContainText(`its own meat would last ${forHowLong(f.meat_ssr)}`);
   await open(page, "DEU/dairy"); // milk is not adjusted, only explained
-  await expect(box).toContainText("cows live mostly on grass");
+  await expect(box).toContainText("cows eat mostly grass");
   await expect(box).not.toContainText("would last for about");
 });
 
@@ -309,7 +310,7 @@ test("all food: countries are compared on today's menu (capped), not on the head
   await open(page, "DEU");
   const cmp = view(page).locator("h3", { hasText: "compare?" }).locator("xpath=following-sibling::div[1]");
   const top = await cmp.locator("ol.rank").nth(1).locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href").slice(1)));
-  const menu = (id) => C[id].indicators?.all?.protein?.share;
+  const menu = (id) => C[id].indicators?.all?.kcal?.feed_share;
   const pool = Object.keys(C).filter((id) => id !== "EU27" && menu(id) != null).sort((a, b) => menu(b) - menu(a));
   expect(top).toEqual(pool.slice(0, 5));
 });
@@ -335,4 +336,26 @@ test("the crop map says which countries it leaves blank, with both areas", async
   await view(page).locator('[data-fields="1"]').click();
   await view(page).locator("details.notes summary").last().click();
   await expect(view(page)).toContainText("Poland");
+});
+
+test("a withheld food shows its band when every reading agrees, never a figure", async ({ page }) => {
+  // Ireland's dairy: both readings of FAO's figures are far above what it uses.
+  const r = C.IRL.indicators.dairy.withheld.range;
+  expect(r[0]).toBeGreaterThan(104.17);
+  await open(page, "IRL");
+  const row = view(page).locator(".foodlist li", { hasText: "Dairy" });
+  await expect(row).toContainText("more than a year");
+});
+
+test("no FAO balance: Japan shows its own statistic, with its source", async ({ page }) => {
+  const nat = (await (await page.request.get("/data/ssr.json")).json()).meta.national.JPN;
+  await open(page, "JPN");
+  await expect(view(page).locator(".answer")).toHaveText(`${forHowLong(nat.value)}.`);
+  await expect(view(page)).toContainText("Ministry of Agriculture, Forestry and Fisheries of Japan");
+});
+
+test("all food: shipments are labelled as weight shipped, not a balance", async ({ page }) => {
+  await open(page, "NLD");
+  await expect(page.locator("#card")).toContainText("Shipped in");
+  await expect(page.locator("#card .sum-row[data-row=imports]")).toHaveAttribute("title", /by weight as shipped/);
 });

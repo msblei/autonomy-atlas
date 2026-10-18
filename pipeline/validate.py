@@ -384,7 +384,7 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
             if group == "all":
                 for basis in ("protein", "kcal"):
                     b = ind.get(basis, {})
-                    if "withheld" in b and (b.get("ssr") is not None or b.get("share") is not None):
+                    if "withheld" in b and any(b.get(k) is not None for k in ("ssr", "share", "feed_ssr", "feed_share")):
                         out.append(Finding("withheld_leak", BLOCK, f"all/{basis} withheld but "
                                            "exports a share", iso3, group))
                     if "withheld" in b:

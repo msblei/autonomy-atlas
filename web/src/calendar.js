@@ -14,7 +14,7 @@ export const SEASONS = [
   { max: 91.67, color: "#e6d49a", label: "9 to 11 months" },
   { max: 99.5, color: "#b5cf8c", label: "11 to 12 months" },
   { max: 104.17, color: "#6fae80", label: "the whole year" }, // < half a month spare
-  { max: Infinity, color: "#2f6f4e", label: "more than enough" },
+  { max: Infinity, color: "#245a3f", label: "more than enough" },
 ];
 
 export function season(pct) {

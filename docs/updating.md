@@ -48,6 +48,13 @@ agricultural balance sheets (EU-27)", save it as
 `data/raw/jrc/bal/`. Then `atlas manifest` to record it. Without it, EU dairy, tomatoes, olive oil
 and wine fall back to FAO's figures (`pipeline/jrc.py`).
 
+## Second manual step: national statistics where FAO has no balance
+
+`mappings/national_stats.csv` holds Japan's own calorie figure (MAFF), typed from the ministry's
+page, one value per fiscal year of the window. When the window moves, `atlas export` stops with
+"update it from the source": read the new years off `config.SOURCES["maff_ssr"]["url"]` and
+update `years`, `yearly` and `value` (the mean).
+
 ## What to review after a refresh
 
 1. **The audit page** (`data/processed/audit.html`): blocking findings (none allowed), the

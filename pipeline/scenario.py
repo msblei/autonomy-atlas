@@ -2,7 +2,7 @@
 
 Per country and food: imports × the share grown in Russia or Ukraine (bought from them for fish)
 ÷ (production + imports), in %: the share of its use, what it has being an even mix; all food
-weighted by protein per person.
+weighted by calories per person.
 
 Output data/processed/scenario.parquet: iso3, group, lack; web/public/data/scenario.json.
 """
@@ -21,7 +21,7 @@ from .compute import EU_BLOC
 log = logging.getLogger(__name__)
 
 PARTNERS = ("RUS", "UKR")
-ALL_MIN_PROTEIN = 0.9  # "all food" needs figures for foods carrying 90% of the groups' protein
+ALL_MIN_KCAL = 0.9  # "all food" needs figures for foods carrying 90% of the groups' calories
 OUT = "scenario.parquet"
 
 
@@ -55,17 +55,17 @@ def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, p
     out = pd.DataFrame(rows, columns=["iso3", "group", "lack"])
     if out.empty:
         return out
-    # all food: weighted by protein per person (FBS items in the groups)
+    # all food: weighted by calories per person (FBS items in the groups), as the headline
     item_group = {i: k for k, v in products["groups"].items() for i in v["items"]}
     it = items.assign(group=items["item"].map(item_group)).dropna(subset=["group"])
-    prot = it.groupby(["iso3", "group"])["protein"].sum()
-    w = out.assign(p=[prot.get((i, gr), np.nan) for i, gr in zip(out["iso3"], out["group"], strict=True)])
+    kcal = it[it["kcal"] > 0].groupby(["iso3", "group"])["kcal"].sum()
+    w = out.assign(p=[kcal.get((i, gr), np.nan) for i, gr in zip(out["iso3"], out["group"], strict=True)])
     w = w[w["p"] > 0]
     allf = (w.assign(x=w["lack"] * w["p"]).groupby("iso3")[["x", "p"]].sum())
-    # Only where the foods with a figure carry most of the protein: without Turkey's withheld
+    # Only where the foods with a figure carry most of the calories: without Turkey's withheld
     # cereals its "all food" fell from 17% to 3%, the foods it buys most from Russia left out.
-    total = prot[prot > 0].groupby(level="iso3").sum()
-    allf = allf[allf["p"] >= ALL_MIN_PROTEIN * total.reindex(allf.index)]
+    total = kcal.groupby(level="iso3").sum()
+    allf = allf[allf["p"] >= ALL_MIN_KCAL * total.reindex(allf.index)]
     allf = (allf["x"] / allf["p"]).rename("lack").reset_index().assign(group="all")
     return pd.concat([out, allf], ignore_index=True)
 
@@ -99,7 +99,7 @@ def export() -> None:
     for r in s.itertuples():
         countries.setdefault(r.iso3, {})[r.group] = round(float(r.lack), 1)
     out = {"meta": {"partners": list(PARTNERS), "years": s["years"].iloc[0],
-                    "basis": "% of domestic supply (tonnes; all food: protein-weighted) grown in Russia or "
+                    "basis": "% of domestic supply (tonnes; all food: calorie-weighted) grown in Russia or "
                              "Ukraine (bought from them for fish); nothing replaces it",
                     "eu_bloc": EU_BLOC},
            "countries": countries}

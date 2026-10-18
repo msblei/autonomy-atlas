@@ -1,0 +1,5 @@
+# Countries without an FAO food balance: their own national figure for "all food", shown instead
+# of a blank (methodology, "National statistics where FAO has no balance"). Calories only, the
+# headline's basis. One row per country; value = mean of the official yearly figures in `years`.
+iso3,basis,years,value,yearly,source,note
+JPN,kcal,2021-2023,38,"38;38;38",maff_ssr,"Calorie-based food self-sufficiency ratio, fiscal years (April-March). Livestock count only for home-grown feed, for cattle too."

@@ -708,7 +708,7 @@ def feed_rows(res, D):
 
 
 def scenario_rows(res, D, trade, hidden):
-    """Methodology "Scenario": {iso: {group: lack %}}; all = protein-weighted."""
+    """Methodology "Scenario": {iso: {group: lack %}}; all = calorie-weighted."""
     out = {}
     code_of = {}
     for c, nm in D.item_names.items():
@@ -734,15 +734,14 @@ def scenario_rows(res, D, trade, hidden):
             rows[g] = 100 * M * s_ / (max(nz(P), 0.0) + M)
         bal = r.get("item_bal") or {}
         num = den = 0.0
+        def kc(nm):
+            return nz(bal[code_of[nm]]["kcal"]) if nm in code_of and code_of[nm] in bal else 0.0
         for g, v in rows.items():
-            pr = sum(nz(bal[code_of[nm]]["protein"]) for nm in PRODUCTS[g]["items"]
-                     if nm in code_of and code_of[nm] in bal)
+            pr = sum(kc(nm) for nm in PRODUCTS[g]["items"] if kc(nm) > 0)
             if pr > 0:
                 num, den = num + v * pr, den + pr
-        total = sum(sum(nz(bal[code_of[nm]]["protein"]) for nm in PRODUCTS[g]["items"]
-                        if nm in code_of and code_of[nm] in bal and nz(bal[code_of[nm]]["protein"]) > 0)
-                    for g in PRODUCTS)
-        if den > 0 and den >= 0.9 * total:  # foods with a figure carry >= 90% of the protein
+        total = sum(kc(nm) for g in PRODUCTS for nm in PRODUCTS[g]["items"] if kc(nm) > 0)
+        if den > 0 and den >= 0.9 * total:  # foods with a figure carry >= 90% of the calories
             rows["all"] = num / den
         if rows:
             out[iso] = rows
@@ -1221,6 +1220,7 @@ def compute_balances(D, opts, plaus=None):
 
     def all_food(items, dairy):
         A, B = [], []  # (ssr, protein, kcal)
+        A_codes = []  # item code per entry of A (None for dairy as one food)
         n_withheld = 0
         for c, r in items.items():
             if c in DAIRY:  # dairy counts as one food (below)
@@ -1229,6 +1229,7 @@ def compute_balances(D, opts, plaus=None):
             w = (nz(r["protein"]), nz(r["kcal"]))
             if not fl and not isnan(s):
                 A.append((s, *w))
+                A_codes.append(c)
                 B.append((s, *w))
             else:
                 if w[0] > 0:
@@ -1244,6 +1245,7 @@ def compute_balances(D, opts, plaus=None):
             w = (sum(nz(items[c]["protein"]) for c in dc), sum(nz(items[c]["kcal"]) for c in dc))
             if dg is not None and dg["reason"] in (None, "reviewed", "implausible"):
                 A.append((ratio(dg["comp"]["P"], dg["comp"]["D"]), *w))
+                A_codes.append(None)
                 B.append(A[-1])
             elif w[0] > 0:
                 n_withheld += 1
@@ -1264,6 +1266,7 @@ def compute_balances(D, opts, plaus=None):
                          "range": [min(ua, ub), max(ua, ub)],
                          "share_range": [min(sa, sb), max(sa, sb)]}
         out["n_foods"] = sum(1 for f in A if f[1] > 0)  # SSR and protein > 0
+        out["foods_a"] = list(zip(A_codes, A))  # for the feed-adjusted figures (main, "feed")
         out["n_withheld"] = n_withheld
         # per-person totals over every leaf item, withheld ones included
         out["g_per_day"] = sum(nz(r["protein"]) for r in items.values())
@@ -2061,6 +2064,31 @@ def main():
         counts["feed_top"] += 1
         if [x[0] for x in e["top"]] != [x[0] for x in m_[1]] or any(abs(a[1] - b[1]) > 1 for a, b in zip(e["top"], m_[1])):
             record("feed_top", {**w, "field": "feed.top"}, e["top"], m_[1])
+
+    # ---- all food, feed-adjusted (methodology '"All food" coverage': pigs and poultry) ----
+    adj_names = {"Pigmeat", "Poultry Meat", "Eggs"}
+    for iso, c in sorted(ssr["countries"].items()):
+        a_exp = c.get("indicators", {}).get("all")
+        r = res.get(iso, {})
+        if a_exp is None or "all" not in r:
+            continue
+        m_ = mine_f.get(iso)
+        for b, wi in (("protein", 1), ("kcal", 2)):
+            mine = {"feed_ssr": None, "feed_share": None}
+            if m_ is not None and not r["all"][b]["reason"]:
+                f = m_[0] / 100
+                foods = [(fd[0] * (1 - f) if D.item_names.get(code) in adj_names else fd[0], fd[wi])
+                         for code, fd in r["all"]["foods_a"]]
+                den = sum(w_ for _, w_ in foods)
+                if den > 0:
+                    mine["feed_ssr"] = sum(v * w_ for v, w_ in foods) / den
+                    mine["feed_share"] = sum(min(v, 100) * w_ for v, w_ in foods) / den
+            for k, mv in mine.items():
+                e = a_exp.get(b, {}).get(k)
+                counts["all_feed"] += 1
+                if (e is None) != (mv is None) or (e is not None and abs(e - mv) > 0.05 + 1e-9):
+                    record("all_feed", {"file": "ssr.json", "country": iso, "group": "all", "field": f"{b}.{k}"},
+                           e, None if mv is None else round(mv, 1))
 
     # ---- import months (methodology "When it comes from abroad") ----
     im = json.load(open(OUT_DIR / "import_months.json"))["countries"]

@@ -69,6 +69,29 @@ def sources() -> dict:
     return out
 
 
+def national_stats(window: str | None) -> dict:
+    """iso3 -> {basis, years, value, source, note}: national figures for countries FAO has no
+    food balance for (methodology, "National statistics where FAO has no balance")."""
+    import csv
+
+    with (config.MAPPINGS / "national_stats.csv").open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(x for x in f if not x.startswith("#")))
+    out = {}
+    for r in rows:
+        yearly = [float(v) for v in r["yearly"].split(";")]
+        value = float(r["value"])
+        if abs(sum(yearly) / len(yearly) - value) > 0.05:
+            raise ValueError(f"national_stats.csv {r['iso3']}: value is not the mean of yearly")
+        if window and r["years"] != window:
+            raise ValueError(f"national_stats.csv {r['iso3']}: years {r['years']}, the window is {window}; "
+                             "update it from the source (docs/updating.md)")
+        if r["source"] not in config.SOURCES:
+            raise ValueError(f"national_stats.csv {r['iso3']}: unknown source {r['source']}")
+        out[r["iso3"]] = {"basis": r["basis"], "years": r["years"], "value": value,
+                          "source": r["source"], "note": r["note"]}
+    return out
+
+
 def _range(lo, hi) -> list | None:
     """The two readings of a withheld ratio (compute.group_tonnes / overall), for "more than it
     uses" / "less than it uses" in words when both agree. None when there is no reading."""
@@ -76,16 +99,24 @@ def _range(lo, hi) -> list | None:
     return None if lo is None else [lo, hi]
 
 
-def _all_basis(r: pd.Series, w: str, extra: dict) -> dict:
+def _all_basis(r: pd.Series, w: str, extra: dict, fr: pd.Series | None = None) -> dict:
     """ "All food" on one basis (protein or kcal): withheld like a food when it rests on
-    contradictory balances (compute.overall `{w}_flag`)."""
+    contradictory balances (compute.overall `{w}_flag`). `fr`: the country's feed.parquet row,
+    for the feed-adjusted figures (methodology, '"All food" coverage'; the kcal one is the
+    headline)."""
     flag = r.get(f"{w}_flag") or ""
     if flag:
         return extra | {"withheld": {"reason": flag,
                                      "range": _range(r.get(f"{w}_ssr_low"), r.get(f"{w}_ssr_high")),
                                      "share_range": _range(r.get(f"{w}_share_low"),
                                                            r.get(f"{w}_share_high"))}}
-    return {"share": _round(r[f"{w}_share"]), "ssr": _round(r[f"{w}_ssr"])} | extra
+    fed = {}
+    if fr is not None:
+        for k in ("feed_ssr", "feed_share"):
+            v = _round(fr.get(f"{w}_{k}"))
+            if v is not None:
+                fed[k] = v
+    return {"share": _round(r[f"{w}_share"]), "ssr": _round(r[f"{w}_ssr"])} | fed | extra
 
 
 # A disagreement is shown for an item carrying at least this share of its group's domestic supply.
@@ -150,11 +181,11 @@ PER_CAPITA_KEYS = (
 ALL_FOOD = {
     "key": "all",
     "label": "All food",
-    "plain": "Counted by protein, the part of food that is hardest to replace. Meat, milk and "
-    "eggs count as produced here even when the animals ate imported feed.",
-    "notes": "Protein-weighted across every FBS commodity. Each food's self-sufficiency is capped "
-    "at 100% so a surplus of one food cannot hide a shortage of another. Meat, milk and eggs count "
-    "as home-grown even when the animals ate imported feed.",
+    "plain": "Counted in calories. Pork, chicken and eggs count only as far as the animals' feed "
+    "was grown here; beef, lamb and milk count in full, as cattle and sheep live mostly on grass.",
+    "notes": "Calorie-weighted across every FBS commodity, pigs and poultry counted only for "
+    "home-grown feed. The stricter reading caps each food at 100% so a surplus of one food cannot "
+    "hide a shortage of another.",
 }
 EU_ENTRY = {
     "name": "European Union (27)",
@@ -226,17 +257,18 @@ CORE_COUNTRY = ("name", "region", "europe", "view", "notes")
 
 def core_of(full: dict) -> dict:
     """ssr.json -> ssr_core.json: meta, groups, and per country the names and each food's headline
-    figure (tonnes SSR; all food: protein SSR) with its withheld reason."""
+    figure (tonnes SSR; all food: feed-adjusted kcal SSR) with its withheld reason."""
     countries = {}
     for iso3, c in full["countries"].items():
         e = {k: c[k] for k in CORE_COUNTRY if k in c}
         ind = {}
         for g, i in (c.get("indicators") or {}).items():
-            where = i.get("protein", {}) if g == "all" else i
-            figure = {"ssr": where["ssr"]} if where.get("ssr") is not None else {}
+            where = i.get("kcal", {}) if g == "all" else i
+            key = "feed_ssr" if g == "all" else "ssr"
+            figure = {key: where[key]} if where.get(key) is not None else {}
             w = {"reason": where["withheld"]["reason"]} if where.get("withheld") else None
             if g == "all":
-                ind[g] = {"protein": {**figure, **({"withheld": w} if w else {})}}
+                ind[g] = {"kcal": {**figure, **({"withheld": w} if w else {})}}
             else:
                 ind[g] = {**({"tonnes": {"ssr": i["tonnes"]["ssr"]}} if (i.get("tonnes") or {}).get("ssr") is not None else {}),
                           **({"withheld": w} if w else {})}
@@ -276,6 +308,8 @@ def export_ssr() -> None:
                          for k in ("production", "imports", "exports", "supply", "population",
                                    "stock_variation", "residuals")},
             "sources": sources(),
+            # Countries without an FAO balance: their own statistic (mappings/national_stats.csv).
+            "national": national_stats(years[-1] if years else None),
             "view": "national",
             "eu_members": sorted(config.EU27),
             # Figures quoted in the UI's text, computed here so no number there is typed by hand.
@@ -287,6 +321,8 @@ def export_ssr() -> None:
                 "ssr": "production / domestic supply * 100",
                 "idr": "imports / domestic supply * 100",
                 "protein_share": "sum(protein_i * min(ssr_i, 100)) / sum(protein_i), FBS leaf items",
+                "kcal_feed_ssr": "sum(kcal_i * ssr_i') / sum(kcal_i), ssr_i' = (1 - imported feed "
+                                 "protein share) * ssr_i for pigmeat, poultry meat and eggs",
             },
         },
         "groups": group_entries(products),
@@ -322,8 +358,9 @@ def export_ssr() -> None:
         o = overall[overall["iso3"] == iso3]
         if len(o):
             r = o.iloc[0]
+            fr = feed.loc[iso3] if iso3 in feed.index else None
             entry["indicators"]["all"] = {
-                w: _all_basis(r, w, extra) for w, extra in
+                w: _all_basis(r, w, extra, fr) for w, extra in
                 (("protein", {"g_per_day": _round(r["protein"])}),
                  ("kcal", {"per_day": _round(r["kcal"], 0)}))
             } | {

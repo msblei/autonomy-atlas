@@ -23,7 +23,7 @@ import { SEASONS, forHowLong, lastDay, lasts, months, season, strip } from "./ca
 
 const state = {
   iso3: null,
-  group: "all", // "all" = protein-weighted across every food, else a products.yaml group key
+  group: "all", // "all" = calorie-weighted across every food, else a products.yaml group key
   level: "intro", // intro | country | foods | food | trade | used | sources | table | about
   flow: "imports", // imports | exports (trade level)
   grown: false, // imports traced back to where they were grown, instead of who sold them
@@ -49,9 +49,9 @@ const EU_ZOOM = 2.3;
 
 // Gradients for the table level, where readers choose indicator and basis.
 const SCALES = {
-  ssr: { stops: [0, 50, 100, 150, 200], colors: ["#b84a2a", "#e8a46a", "#f2efe6", "#7fb58b", "#1e6b45"], ticks: ["0%", "100%", "200%+"] },
+  ssr: { stops: [0, 50, 100, 150, 200], colors: ["#b84a2a", "#e8a46a", "#f2efe6", "#7fb58b", "#1a4f36"], ticks: ["0%", "100%", "200%+"] },
   idr: { stops: [0, 25, 50, 75, 100], colors: ["#f2efe6", "#f6d1a8", "#e89a62", "#c95f33", "#7a2a12"], ticks: ["0%", "50%", "100%"] },
-  share: { stops: [20, 50, 75, 90, 100], colors: ["#b84a2a", "#e8a46a", "#f2efe6", "#7fb58b", "#1e6b45"], ticks: ["20% or less", "75%", "100%"] },
+  feed_share: { stops: [20, 50, 75, 90, 100], colors: ["#b84a2a", "#e8a46a", "#f2efe6", "#7fb58b", "#1a4f36"], ticks: ["20% or less", "75%", "100%"] },
 };
 
 // Where a food goes once it is in the country ("domestic supply"), in display order.
@@ -84,8 +84,10 @@ const SHORT = {
   vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, tea", wine_beer: "Wine, beer",
 };
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
+// Where readers report errors (footer, "How do we know?").
+const CONTACT = "hello@mariusbleif.com";
 // The map key as a ruler in months, one short label per colour (SEASONS, in the same order).
-const SEASON_SHORT = ["0–6", "6–9", "9–11", "11–12", "12", "12+"];
+const SEASON_SHORT = ["0–6", "6–9", "9–11", "11–12", "≈12", "12+"];
 
 // ------------------------------------------------------------------------------------------------
 // map
@@ -562,18 +564,18 @@ function groupInfo(group = state.group) {
   return state.data.groups.find((x) => x.key === group) ?? { label: group };
 }
 
-// The figure every month strip is built from: for "all food" the protein produced vs used in
-// total (a wheat surplus may make up for missing soy: what a country needs to get by), else the
-// tonnes SSR of that food.
+// The figure every month strip is built from: for "all food" the calories produced vs used in
+// total, pigs and poultry counted only for home-grown feed (a wheat surplus may make up for
+// missing fruit: what a country needs to get by), else the tonnes SSR of that food.
 function pctFor(id, group = state.group) {
   const ind = country(id)?.indicators?.[group];
-  const v = group === "all" ? ind?.protein?.ssr : ind?.tonnes?.ssr;
+  const v = group === "all" ? ind?.kcal?.feed_ssr : ind?.tonnes?.ssr;
   return v == null || Number.isNaN(v) ? null : v;
 }
 
-// "Today's menu": the same protein figure with every food capped at 100%, so nothing is swapped.
+// "Today's menu": the same calorie figure with every food capped at 100%, so nothing is swapped.
 function menuFor(id) {
-  const v = country(id)?.indicators?.all?.protein?.share;
+  const v = country(id)?.indicators?.all?.kcal?.feed_share;
   return v == null || Number.isNaN(v) ? null : v;
 }
 
@@ -591,13 +593,13 @@ function shortest(id, n = 2) {
 // Table level: the reader picks indicator and basis.
 function tableIndicator() {
   // "All food" has coverage only: no import dependency is computed across foods.
-  if (state.group === "all") return "share";
+  if (state.group === "all") return "feed_share";
   return state.indicator;
 }
 
 function tableBasis() {
-  if (state.group === "all") return state.basis === "kcal" ? "kcal" : "protein";
-  return state.basis;
+  if (state.group === "all") return state.basis === "protein" ? "protein" : "kcal";
+  return state.basis === "protein" ? "tonnes" : state.basis;
 }
 
 function valueFor(id, indicator = tableIndicator(), basis = tableBasis()) {
@@ -607,7 +609,7 @@ function valueFor(id, indicator = tableIndicator(), basis = tableBasis()) {
 
 function mapValue(id) {
   if (scenarioOn()) return state.scen.countries[id]?.[state.group] ?? null;
-  return state.level === "table" ? valueFor(id) : pctFor(id);
+  return state.level === "table" ? valueFor(id) : pctFor(id) ?? robustPct(id);
 }
 
 // ---- What if Russia and Ukraine stopped selling? (scenario.json, methodology "Scenario") ----
@@ -628,7 +630,7 @@ function lackLine(id) {
   const v = state.scen.countries[id]?.[state.group];
   if (v == null || v < 1) return "";
   const who = id === EU ? "the EU" : nameOf(id);
-  const what = state.group === "all" ? "the protein in its food" : `the ${food()} it uses`;
+  const what = state.group === "all" ? "the calories in its food" : `the ${food()} it uses`;
   return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${Math.round(v)}%</strong> of ${what},
     unless others sold more.</p>`;
 }
@@ -696,6 +698,30 @@ function implausibleWords(w, id, group) {
 
 // What still holds when a figure is withheld: both readings (as published, and with the
 // contradictory parts read generously) on the same side of 100%.
+// A withheld food whose two readings of FAO's figures (withheld.range) fall on the same side:
+// more than enough on both, or under six months on both. The map and the food list show that
+// band, never a figure; rankings leave it out. Single foods only: the "all food" range is not
+// feed-adjusted.
+function robustPct(id, group = state.group) {
+  if (group === "all") return null;
+  const r = withheld(id, group)?.range;
+  if (!r || r[0] == null || r[1] == null) return null;
+  if (r[0] >= SEASONS[4].max) return r[0];
+  if (r[1] < SEASONS[0].max) return r[1];
+  return null;
+}
+
+// A country without an FAO balance: its own statistic for "all food" (ssr.json meta.national,
+// methodology "National statistics where FAO has no balance"), on the main map only.
+function nationalFor(id) {
+  if (state.group !== "all" || scenarioOn() || ["table", "trade", "where"].includes(state.level)) return null;
+  return state.data?.meta?.national?.[id] ?? null;
+}
+
+function robustBand(v) {
+  return v >= SEASONS[4].max ? "more than a year" : "under 6 months";
+}
+
 function robustWords(range, id, what) {
   if (!range) return "";
   const [lo, hi] = range;
@@ -793,10 +819,15 @@ const CHEVRON = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m9 5 7 7-7
 function tooltip(iso3) {
   if (state.level === "trade") return tradeTooltip(iso3);
   const id = entity(iso3);
+  const nat = nationalFor(id);
+  if (!country(id) && nat) {
+    return `<strong>${nameOf(iso3)}</strong><span class="v"><i style="background:${season(nat.value).color}"></i>Own food
+      lasts ${lasts(nat.value)}, by its own statistic</span>`;
+  }
   if (!country(id)) return `<strong>${nameOf(iso3)}</strong><span class="v"><i class="hatch"></i>No data from FAO</span>`;
   const v = mapValue(id);
   const contradicts = state.group === "all"
-    ? country(id)?.indicators?.all?.protein?.withheld : withheld(id);
+    ? country(id)?.indicators?.all?.kcal?.withheld : withheld(id);
   if (v == null) {
     return `<strong>${nameOf(id)}</strong><span class="v"><i class="hatch"></i>${contradicts
       ? "No reliable data from FAO" : "No data from FAO"}</span>`;
@@ -804,9 +835,14 @@ function tooltip(iso3) {
   if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}`;
   if (scenarioOn()) {
     return `<strong>${nameOf(id)}</strong><span class="v">${v < 1 ? "under 1" : Math.round(v)}% of ${state.group === "all"
-      ? "the protein in its food" : `the ${food()} it uses`} was produced in Russia or Ukraine</span>`;
+      ? "the calories in its food" : `the ${food()} it uses`} was produced in Russia or Ukraine</span>`;
   }
   const what = state.group === "all" ? "Own food lasts" : `Own ${food()} lasts`;
+  if (contradicts && pctFor(id) == null) {
+    return `<strong>${nameOf(id)}</strong>
+      <span class="v"><i style="background:${season(v).color}"></i>${what} ${robustBand(v)} on any reading of
+      FAO's figures, which do not hold together</span>`;
+  }
   return `<strong>${nameOf(id)}</strong>
     <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>`;
 }
@@ -996,7 +1032,7 @@ function paintMap() {
   ]);
   const noData = [];
   for (const iso3 of Object.keys(state.names)) {
-    const v = country(entity(iso3)) ? mapValue(entity(iso3)) : null;
+    const v = country(entity(iso3)) ? mapValue(entity(iso3)) : nationalFor(iso3)?.value ?? null;
     map.setFeatureState({ source: "countries", id: iso3 }, { v });
     if (v == null) noData.push(iso3);
   }
@@ -1043,7 +1079,7 @@ function renderLegend() {
   }
   if (state.level === "table") {
     const { colors, ticks } = SCALES[tableIndicator()] ?? SCALES.ssr;
-    el.innerHTML = `<p class="title"><b>${tableIndicator().toUpperCase()}</b>, ${tableBasis()}</p>
+    el.innerHTML = `<p class="title"><b>${state.group === "all" ? "Coverage, feed-adjusted" : tableIndicator().toUpperCase()}</b>, ${tableBasis()}</p>
       <div class="grad" style="background: linear-gradient(90deg, ${colors.join(",")})"></div>
       <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>`;
     return;
@@ -1051,10 +1087,10 @@ function renderLegend() {
   const toggle = ["trade", "where", "table"].includes(state.level) ? "" : `<button type="button" class="linkish whatif" data-scenario="${state.scenario ? 0 : 1}">${state.scenario
     ? "Back to: how long it would last" : "What if Russia and Ukraine stopped selling?"}</button>`;
   if (scenarioOn()) {
-    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the protein in food</b>" : `the <b>${food()}</b> used`} that was produced in <b>Russia or Ukraine</b></p>
+    el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the calories in food</b>" : `the <b>${food()}</b> used`} that was produced in <b>Russia or Ukraine</b></p>
       ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
   } else {
-    el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last${state.group === "all" ? ", by protein," : ","} in months</p>${seasonScale()}${toggle}`;
+    el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months${state.group === "all" ? " (counted in calories)" : ""}</p>${seasonScale()}${toggle}`;
   }
   const b = el.querySelector("[data-scenario]");
   if (b) b.onclick = () => { state.scenario = b.dataset.scenario === "1"; if (state.scenario) loadScenario(); render(); keepFocus("#legend .whatif"); };
@@ -1114,7 +1150,7 @@ function cardRows(id, group = state.group) {
   const out = id === EU ? " outside the EU" : " abroad";
   const overview = hashFor({ iso3: id, group, level: group === "all" ? "country" : "food" });
   const go = (level, flow) => hashFor({ iso3: id, group, level, flow });
-  const w = group === "all" ? country(id)?.indicators?.all?.protein?.withheld : withheld(id, group);
+  const w = group === "all" ? country(id)?.indicators?.all?.kcal?.withheld : withheld(id, group);
   const row = (label, sign, href) => ({ label, sign, href, value: null, bar: [0, 0], empty: "no data", why: "No data from FAO" });
   const rows = {
     // Present tense: every figure is a yearly average ("Germany produces …").
@@ -1160,6 +1196,13 @@ function cardRows(id, group = state.group) {
   const top = Math.max(M ?? 0, X ?? 0) || 1;
   if (M != null) Object.assign(rows.imports, { value: shortTonnes(M / 1000), bar: [0, (M / top) * 100] });
   if (X != null) Object.assign(rows.exports, { value: shortTonnes(X / 1000), bar: [0, (X / top) * 100] });
+  // Across all foods only the shipments add up, and by weight as shipped: a tonne of lettuce is a
+  // tonne of cheese here, and goods passing through count too. The labels say so.
+  const shipped = "Every food added up by weight as shipped, goods passing through included: "
+    + `not a food balance.${id === EU ? " Only trade with countries outside the EU." : ""}`;
+  for (const [k, word] of [["imports", "in"], ["exports", "out"]]) {
+    Object.assign(rows[k], { label: `Shipped ${word}`, title: shipped });
+  }
   if (M == null) rows.imports.why = "No trade data from FAO";
   if (X == null) rows.exports.why = "No trade data from FAO";
   for (const k of ["imports", "exports"]) {
@@ -1213,7 +1256,7 @@ function renderFrame() {
     const bar = a.querySelector(".wf-track > span");
     bar.style.left = `${has ? r.bar[0] : 0}%`;
     bar.style.width = `${has ? r.bar[1] : 0}%`;
-    if (has) a.removeAttribute("title"); else a.title = r.why;
+    if (has && !r.title) a.removeAttribute("title"); else a.title = has ? r.title : r.why;
     if (on) { a.href = r.href; a.removeAttribute("aria-disabled"); }
     else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); }
     if (a.dataset.row === here && on) a.setAttribute("aria-current", "page");
@@ -1249,7 +1292,8 @@ function renderFoot() {
   const tools = state.iso3 && country(state.iso3)
     ? `<div class="tools"><a href="${link({ level: "sources" })}"${here("sources")}>How do we know?</a>
        <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
-    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
+    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a>
+       <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">Report an error</a></div>`;
   if (fieldsOn()) {
     el.innerHTML = `${tools}Map: <a href="https://data.jrc.ec.europa.eu/dataset/15f86c84-eae1-4723-8e00-c1b35c8f56b9" target="_blank"
       rel="noopener">JRC EUCROPMAP ${state.cropmap.meta.year}</a> (crop shares at 2 km). List: Eurostat crop statistics by region.
@@ -1318,6 +1362,8 @@ function viewIntro() {
   return `
     <h1 class="hero">Could your country feed itself?</h1>
     <p class="lede">How long its own food would last, if it bought nothing from abroad.</p>
+    <p class="small">What a country's own fields, pastures and waters yield against what it uses:
+      a measure of land and harvests, not of hunger or food security.</p>
     ${own ? `<button type="button" class="primary" data-go="#${own}">
       <span>Start with ${nameOf(own)}</span>${CHEVRON}</button>` : ""}
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
@@ -1328,6 +1374,18 @@ function viewIntro() {
 
 // No food balance (Japan, Singapore): say so; the card still shows what it buys and sells.
 function viewNoData() {
+  const nat = state.data?.meta?.national?.[state.iso3];
+  if (nat && state.group === "all") {
+    const s = state.data.meta.sources[nat.source];
+    return `<p class="q">Food produced in ${nameOf(state.iso3)} alone would give enough calories …</p>
+    <p class="answer">${forHowLong(nat.value)}.</p>
+    ${strip(nat.value)}
+    <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}. This is its own statistic:
+      <strong>${Math.round(nat.value)}%</strong> of the calories it uses, ${nat.years.replace("-", "–")}
+      (<a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>). It counts meat
+      and milk only for home-grown feed, for cattle too, so it is a little stricter than the FAO-based figures
+      elsewhere on the map, and it is not ranked with them. There are no figures food by food.</p>`;
+  }
   return `<p class="lead-none">No food balance from FAO.</p>
     <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}, so there is nothing to divide. The card
       shows only what it buys and sells, from the trade records.</p>`;
@@ -1349,15 +1407,15 @@ function viewCountry() {
   const id = state.iso3;
   const v = pctFor(id, "all");
   const who = id === EU ? "the 27 EU countries" : nameOf(id);
-  const wAll = country(id)?.indicators?.all?.protein?.withheld;
+  const wAll = country(id)?.indicators?.all?.kcal?.withheld;
   const head = v == null && wAll
     ? `<p class="lead-none">No reliable data from FAO.</p>
-      ${robustWords(wAll.range, id, "protein") ? `<p>${robustWords(wAll.range, id, "protein")}</p>` : ""}
+      ${robustWords(wAll.range, id, "calories") ? `<p>${robustWords(wAll.range, id, "calories")}</p>` : ""}
       <details class="notes"><summary>Why?</summary><p>For some foods, FAO's figures for ${nameOf(id)}
         contradict themselves, and the total changes a lot depending on how they are read.</p></details>`
     : v == null
     ? `<p class="lead-none">Not enough data from FAO.</p>`
-    : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough protein …</p>
+    : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough calories …</p>
       <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
       ${strip(v)}`;
   return `
@@ -1372,19 +1430,24 @@ function viewCountry() {
 function foodList(id) {
   const rows = state.data.groups
     .filter((g) => g.key !== "all")
-    .map((g) => ({ g, v: pctFor(id, g.key) }))
+    .map((g) => ({ g, v: pctFor(id, g.key) ?? robustPct(id, g.key), robust: pctFor(id, g.key) == null }))
     .filter((r) => r.v != null)
     .sort((a, b) => a.v - b.v);
   if (!rows.length) return "";
+  // Withheld foods without a band on any reading: named, so the list does not read as complete.
+  const missing = state.data.groups.filter((g) => g.key !== "all" && withheld(id, g.key)
+    && robustPct(id, g.key) == null);
   return `
     <h3>Food by food</h3>
-    <ul class="foodlist">${rows.map(({ g, v }) => `
+    <ul class="foodlist">${rows.map(({ g, v, robust }) => `
       <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
         ${foodIcon(g.key)}
         <span class="name">${g.label}</span>
-        ${strip(v, { small: true })}
-        <span class="when">${lasts(v, { short: true })}</span>
-      </a></li>`).join("")}</ul>`;
+        ${strip(robust ? Math.min(v, SEASONS[4].max) : v, { small: true })}
+        <span class="when">${robust ? robustBand(v) : lasts(v, { short: true })}</span>
+      </a></li>`).join("")}</ul>
+    ${missing.length ? `<p class="small">No figure for ${namesOf(missing.map((g) => g.label.toLowerCase()))}:
+      FAO's figures for ${missing.length === 1 ? "it do" : "them do"} not hold together.</p>` : ""}`;
 }
 
 // Countries ranked by the "all food" date.
@@ -1400,8 +1463,9 @@ function compareAll(id) {
   const shorter = rows.filter((r) => r.v < me - 0.5).length;
   return `
     <h3>How does ${id === EU ? "the EU" : nameOf(id)} compare?</h3>
-    <p>Eating as today, with no food standing in for another, its own food would last longer than
-      in <strong>${shorter}</strong> of ${rows.length} countries.</p>
+    <p>Eating as today, with no food standing in for another, its own food would last
+      <strong>${lasts(me, { short: true })}</strong> (${Math.round(me)}%): longer than in
+      <strong>${shorter}</strong> of ${rows.length} countries.</p>
     <div class="cols">
       <div><p class="small">Runs out soonest</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
       <div><p class="small">Lasts longest</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
@@ -1756,10 +1820,11 @@ function feedNote(id) {
   if (!f || f.imported_pct == null || !["meat", "eggs", "dairy"].includes(state.group)) return "";
   const who = id === EU ? "the EU" : nameOf(id);
   const share = `<strong>${Math.round(f.imported_pct)}%</strong> of the protein in ${id === EU ? "the EU's" : `${who}'s`} animal feed
-    is bought ${id === EU ? "outside the EU" : "abroad"}${f.top.length ? `, mostly ${namesOf(f.top.map(([n]) => feedName(n)))}` : ""}.`;
+    other than grass and hay is bought ${id === EU ? "outside the EU" : "abroad"}${f.top.length ? `, mostly ${namesOf(f.top.map(([n]) => feedName(n)))}` : ""}.`;
   if (state.group === "dairy") {
-    return `<h3>Feed from abroad</h3><p class="small">${share} Milk is not counted again for it: cows live mostly on grass
-      and hay, which no statistic counts as bought or sold.</p>`;
+    return `<h3>Feed from abroad</h3><p class="small">${share} Milk is not counted again for it: cows eat mostly grass
+      and hay, which no statistic counts as bought or sold. But dairy cows also get bought feed, so some of
+      the milk counted here rests on imports too.</p>`;
   }
   const v = state.group === "meat" ? f.meat_ssr : f.eggs_ssr;
   if (v == null) return "";
@@ -1989,11 +2054,27 @@ function viewAbout() {
     <h3>The sum</h3>
     <p>For each country and food we divide what is produced there (farmed, fished or made, like wine) by what the
       country uses, then turn that share into months of the year: 85% of 12 months is about
-      10 months. Choose a country to see its own figures worked out.</p>
+      10 months. All food together is counted in calories, with pork, chicken and eggs counted only as far
+      as the animals' feed was grown in the country. Choose a country to see its own figures worked out.</p>
     ${checks()}
     ${caveats(null, groupInfo("all"))}
     ${sourceList()}
-    ${mapSource()}`;
+    ${mapSource()}
+    ${aboutSite()}`;
+}
+
+// Who runs the site, how to report an error, and the legal pages (on the author's own site).
+function aboutSite() {
+  const made = state.data.meta.generated ? new Date(state.data.meta.generated) : null;
+  return `
+    <h3>About this site</h3>
+    <p class="small">Made by Marius Bleif. The data pipeline, the checks and the texts were written with the
+      help of an AI (Claude, by Anthropic), and checked as described above.${made && !Number.isNaN(made.getTime())
+      ? ` Figures last built on ${made.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : ""}</p>
+    <p class="small">Found a mistake? Write to <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">${CONTACT}</a>,
+      ideally with the page's address.</p>
+    <p class="small"><a href="https://mariusbleif.com/legal-notice/" target="_blank" rel="noopener">Legal notice</a> ·
+      <a href="https://mariusbleif.com/privacy-policy/" target="_blank" rel="noopener">Privacy policy</a></p>`;
 }
 
 // Every data source with its publisher and licence (ssr.json meta.sources = pipeline config.SOURCES),
@@ -2021,8 +2102,9 @@ function checks() {
   return `
     <h3>How we check the figures</h3>
     <p>Before anything goes online, the files we download are compared with FAO's own website; a
-      second program, written separately from the first, works out every number again from those
-      files and must agree on every number we publish; and we test that this page shows exactly those
+      second program, written separately from the first from the written method alone, works out every
+      number again from those files and must agree on every number we publish (both programs were
+      written with an AI, so this catches slips, not a shared misreading of the method); and we test that this page shows exactly those
       numbers. We also compare FAO's figures with an independent source, the US Department of
       Agriculture's, and say so where the two disagree a lot. How much of the EU's animal feed comes
       from abroad we compare with the European Commission's own feed protein balance.</p>
@@ -2155,7 +2237,9 @@ function inMonths(id, v) {
 }
 
 function receiptAll(id, v) {
-  const p = country(id)?.indicators?.all?.protein;
+  const p = country(id)?.indicators?.all?.kcal;
+  const f = country(id)?.feed;
+  const where = id === EU ? "in the EU" : `in ${nameOf(id)}`;
   if (v == null && p?.withheld) {
     const r = p.withheld.range;
     return `
@@ -2163,28 +2247,35 @@ function receiptAll(id, v) {
     <p>For some foods, FAO's figures contradict themselves: more is sold abroad or eaten than there
       was. Leaving those foods out gives ${r ? `${Math.round(r[0])}%` : "one figure"}; counting them with at
       least what FAO says people eat gives ${r?.[1] != null ? `${Math.round(r[1])}%` : "another"}. The two
-      are too far apart to show either as the answer. ${robustWords(r, id, "protein")}</p>`;
+      are too far apart to show either as the answer. ${robustWords(r, id, "calories")}</p>`;
   }
   if (v == null) return "";
   return `
     <h3>The sum for ${nameOf(id)}</h3>
     <p>“All food” cannot be added up in tonnes: a tonne of lettuce is not a tonne of cheese. So we
-      count protein, the part of food that is hardest to replace. People ${id === EU ? "in the EU" : `in ${nameOf(id)}`}
-      are supplied about <strong>${Math.round(p?.g_per_day ?? 0)} g</strong> of protein a day (what reaches
-      shops and homes, more than is eaten).</p>
+      count calories, as national statistics do. People ${where} are supplied about
+      <strong>${Math.round(p?.per_day ?? 0).toLocaleString("en-GB")} kcal</strong> a day (what reaches shops and homes,
+      more than is eaten).</p>
     ${country(id)?.indicators?.all?.n_withheld ? `<p class="aside">${country(id).indicators.all.n_withheld}
       ${country(id).indicators.all.n_withheld === 1 ? "food is" : "foods are"} left out because FAO's figures for
       ${country(id).indicators.all.n_withheld === 1 ? "it contradict" : "them contradict"} themselves (more sold or eaten
-      than there was). Their protein still counts in the daily total.</p>` : ""}
-    <p>For each of the ${country(id)?.indicators?.all?.n_foods ?? "–"} foods that provide protein ${id === EU ? "in the EU" : `in ${nameOf(id)}`} we take what is produced at home divided by what is used, and
-      weigh it by how much of that protein the food provides. A surplus of one food can make up for
-      a shortage of another: wheat or meat can stand in for imported soy or fish. Together that
-      gives <strong>${Math.round(v)}%</strong>.</p>
+      than there was). Their calories still count in the daily total.</p>` : ""}
+    <p>For each food we take what is produced at home divided by what is used, and weigh it by how
+      many of those calories the food provides. A surplus of one food can make up for a shortage of
+      another: wheat can stand in for imported fruit or oil. ${p?.ssr != null ? `Together that gives
+      <strong>${Math.round(p.ssr)}%</strong>.` : ""}</p>
+    ${f?.imported_pct != null ? `<p>Pigs and chickens live on grain and oilseed meal, not grass. <strong>${Math.round(f.imported_pct)}%</strong>
+      of the protein in feed other than grass and hay ${where} comes from abroad, so pork, chicken and eggs count
+      only for the rest. Beef, lamb and milk count in full: cattle and sheep live mostly on grass.
+      That gives <strong>${Math.round(v)}%</strong>.</p>` : ""}
     ${inMonths(id, v)}
     ${menuFor(id) != null ? `<h3>Keeping today's menu</h3>
     <p>If no food may stand in for another (each food counts at most 100%), it is
       <strong>${Math.round(menuFor(id))}%</strong>: ${forHowLong(menuFor(id))}. That is the stricter
-      question of eating exactly as today.</p>` : ""}
+      question of eating exactly as today, and the one countries are compared on.</p>` : ""}
+    ${country(id)?.indicators?.all?.protein?.feed_ssr != null ? `<p class="small">Counted by protein instead
+      of calories, it is ${Math.round(country(id).indicators.all.protein.feed_ssr)}%
+      (<a href="${link({ level: "table", group: "all" })}">all the numbers</a>).</p>` : ""}
     <p class="small">Food by food, with tonnes for each, is on the
       <a href="${link({ level: "foods", group: "all" })}">food-by-food page</a>.</p>`;
 }
@@ -2201,7 +2292,7 @@ function checkYourself(id) {
       ? `; butter and cream count as the milk they are made from: FAO's milk “Processing” line divided by the
          butter and cream “Production”, times their trade and use (and that milk taken out of milk's use)` : ""}`;
   const elements = state.group === "all"
-    ? `“${el.production}”, “${el.supply}” and “Protein supply quantity (g/capita/day)”`
+    ? `“${el.production}”, “${el.supply}” and “Food supply (kcal/capita/day)”`
     : `“${el.production}” and “${el.supply}”`;
   return `
     <h3>Check it yourself</h3>
@@ -2241,8 +2332,7 @@ function caveats(id, g) {
       <li>Producing enough is not the same as food security: a country can score high where many
         people can afford little, and low where it can afford to buy abroad.</li>
       ${g.plain ? `<li>${g.plain}</li>` : ""}
-      ${id === "UKR" ? `<li>Ukraine suspended much of its statistics in 2022; FAO's figures for 2022 and 2023
-        rest largely on estimates. Treat them as provisional.</li>` : ""}
+      ${id !== EU && country(id)?.notes ? `<li>${country(id).notes}</li>` : ""}
       ${id === EU ? `<li>For the EU, trade between member countries is left out: only what the EU as a whole produces and uses counts.</li>` : ""}
       ${id && isMember(id) ? `<li>Food it buys from other EU countries counts as buying abroad.</li>` : ""}
     </ul>`;
@@ -2276,15 +2366,16 @@ function viewTable() {
       </label>
       <label>Basis
         <select id="basis">
-          <option value="tonnes" ${state.basis === "tonnes" ? "selected" : ""}>${isAll ? "Protein" : "Tonnes"}</option>
-          <option value="kcal" ${state.basis === "kcal" ? "selected" : ""}>Calories</option>
+          ${isAll ? "" : `<option value="tonnes" ${tableBasis() === "tonnes" ? "selected" : ""}>Tonnes</option>`}
+          <option value="kcal" ${tableBasis() === "kcal" ? "selected" : ""}>Calories</option>
+          ${isAll ? `<option value="protein" ${tableBasis() === "protein" ? "selected" : ""}>Protein</option>` : ""}
         </select>
       </label>
     </div>
     <p class="small">The map now shows this indicator.</p>
     ${expertDetail(id)}
     ${g.notes ? `<p class="note">${g.notes}</p>` : ""}
-    ${c.notes ? `<p class="note">Note: ${c.notes}</p>` : ""}`;
+    ${c.notes ? `<p class="note">${c.notes}</p>` : ""}`;
 }
 
 // Concentration of trade partners (trade.json concentration, methodology "Trade partners").
@@ -2317,17 +2408,22 @@ function expertDetail(id) {
   if (state.group === "all") {
     const a = c.indicators.all ?? {};
     return `
-      <div class="big">${fmt(valueFor(id))}<small>coverage, ${tableBasis()}</small></div>
+      <div class="big">${fmt(valueFor(id))}<small>coverage, feed-adjusted, ${tableBasis()}</small></div>
       <table>
-        <tr><td>Protein: coverage (capped) / SSR</td><td>${fmt(a.protein?.share)} / ${fmt(a.protein?.ssr)}</td></tr>
+        <tr><td>Calories, feed-adjusted: coverage (capped) / SSR</td><td>${fmt(a.kcal?.feed_share)} / ${fmt(a.kcal?.feed_ssr)}</td></tr>
         <tr><td>Calories: coverage (capped) / SSR</td><td>${fmt(a.kcal?.share)} / ${fmt(a.kcal?.ssr)}</td></tr>
+        <tr><td>Protein, feed-adjusted: coverage (capped) / SSR</td><td>${fmt(a.protein?.feed_share)} / ${fmt(a.protein?.feed_ssr)}</td></tr>
+        <tr><td>Protein: coverage (capped) / SSR</td><td>${fmt(a.protein?.share)} / ${fmt(a.protein?.ssr)}</td></tr>
+        <tr><td>Imported share of feed protein</td><td>${c.feed?.imported_pct != null ? `${fmt(c.feed.imported_pct)}%` : "–"}</td></tr>
         <tr><td>Protein supply</td><td>${a.protein?.g_per_day ?? "–"} g/cap/day</td></tr>
         <tr><td>Food supply</td><td>${a.kcal?.per_day ?? "–"} kcal/cap/day</td></tr>
         <tr><td>Population</td><td>${pop(c)}</td></tr>
         ${hhiRows(id)}
       </table>
-      <p class="note">Coverage = Σ wᵢ·min(SSRᵢ, 100) / Σ wᵢ over FBS commodities, w = protein or kcal
-        per capita. SSR = same without the cap. ${HHI_NOTE}</p>`;
+      <p class="note">Coverage = Σ wᵢ·min(SSRᵢ, 100) / Σ wᵢ over FBS commodities, w = kcal or protein
+        per capita. SSR = same without the cap. Feed-adjusted: SSRᵢ × (1 − imported share of feed
+        protein) for pigmeat, poultry meat and eggs. The map and the headline use feed-adjusted
+        calories. ${HHI_NOTE}</p>`;
   }
   const g = c.indicators[state.group] ?? {};
   const t = g.tonnes ?? {};

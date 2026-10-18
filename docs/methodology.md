@@ -320,13 +320,36 @@ version is reported as `*_ssr`:
 Livestock products count as domestic regardless of feed origin; section "Feed" shows meat and
 eggs counting pigs and poultry only for home-grown feed, next to the figures here.
 
-**Which one is the headline.** The UI leads with the uncapped protein figure (`protein_ssr`):
-"does the country produce as much protein as its people eat?", letting a wheat or meat surplus
-stand in for imported soy or fish. That is the closer answer to "could it feed itself", and coffee,
-cocoa or bananas barely count because they carry almost no protein. The capped version is the
-stricter "could it keep today's menu, food by food?" and is shown second (and on the "How do we
-know?" page). With the cap only India reaches 100% (2021–2023); without it, 41 countries do.
-Trend lines for "all food" use the uncapped figure too.
+**Feed-adjusted, the headline.** Livestock products above count as home-grown whatever the
+animals ate. The headline takes section "Feed"'s imported share of feed protein `f` (per country;
+the EU as one) off pigs and poultry, as section "Feed" does for the meat and egg groups: for the
+leaf items Pigmeat, Poultry Meat and Eggs, `SSR_i' = (1 − f) · SSR_i`, every other item
+unchanged, then the same two weighted means over the same items:
+
+    feed_ssr_w   = Σ_i w_i · SSR_i' / Σ_i w_i
+    feed_share_w = Σ_i w_i · min(SSR_i', 100) / Σ_i w_i
+
+Cattle, sheep, goats and milk are not adjusted (section "Feed": grass and hay are not traded, so
+a concentrate-only share would overstate their dependence; dairy cows' concentrate feed is a
+known gap this leaves). A withheld "all food" figure (`*_flag`) has no feed-adjusted figure. A
+country without feed records in FAO's accounts has none either. Exported as `feed_ssr` and
+`feed_share` next to `ssr` and `share` for both bases.
+
+Without the adjustment, imported soybean meal hardly counts: it enters the weights only through
+the soy that people eat, while the meat made from it counts in full. The Netherlands came out at
+122% of its protein, Denmark at 182%, Germany at 100%.
+
+**Which one is the headline.** The UI leads with the feed-adjusted, uncapped **calorie** figure
+(`kcal.feed_ssr`): "does the country produce as many calories as its people use, counting meat
+and eggs only for home-grown feed?", letting a wheat surplus stand in for imported fruit. Calories,
+because that is how FAO, national statistics (Switzerland, Japan) and the JRC measure food
+self-sufficiency, and because energy, not protein, is what a diet runs short of first in Europe,
+where people get about twice the protein they need. A protein weighting also hid vegetable oil
+almost entirely (India: 99.5% of its protein, while it imports over half its edible oil). The
+protein figures stay on "All the numbers". The capped version (`kcal.feed_share`) is the stricter
+"could it keep today's menu, food by food?" and is shown second, next to the comparisons. Trend
+lines for "all food" (not shown in the UI) stay the unadjusted protein figure: feed shares exist
+for the window only.
 
 ## "How long would it last?" (what the UI shows first)
 
@@ -334,7 +357,7 @@ The first figure readers see is a duration, not a ratio:
 
     months = min(p, 100) / 100 × 12
 
-with p = uncapped protein SSR for "all food" and tonnes SSR for a single food. Text rounds to half
+with p = feed-adjusted uncapped kcal SSR (`kcal.feed_ssr`) for "all food" and tonnes SSR for a single food. Text rounds to half
 months ("about 10 months of the year"), switches to weeks below about 2 months and to "a few
 days" below one week. Above 100% it says "the whole year, with N months to spare",
 N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the same bands (under
@@ -342,8 +365,8 @@ N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the
 (`web/src/calendar.js`).
 
 **Comparisons between countries** ("How does … compare?", "Runs out soonest", "Lasts longest")
-use the capped figure (today's menu, `protein.share`): with the uncapped one a fish surplus stood
-in for every other food, and Iceland (4.3 years; 44% of its calories), the Seychelles and
+use the capped figure (today's menu, `kcal.feed_share`), and the panel shows it next to them: with
+the uncapped one a fish surplus stood in for every other food, and Iceland, the Seychelles and
 Micronesia led the list.
 
 A duration was chosen over a date ("runs out on 5 November", counting from 1 January) and over
@@ -354,6 +377,25 @@ date is still shown on the "How do we know?" page as an alternative reading of t
 It is a thought experiment and the "How do we know?" page says so: a year's production treated
 as one store, seasons and perishability ignored, the diet unchanged. It adds no information
 beyond SSR, so the methodology above still applies unchanged.
+
+## National statistics where FAO has no balance
+
+FAO publishes no food balance for some countries, Japan among them. Instead of a blank, the map and
+the country page show the country's own figure for "all food" where it is on the headline's basis
+(calories) and counts livestock only for home-grown feed, as the headline does:
+`mappings/national_stats.csv`, one row per country with the official yearly figures for the
+window's years and their mean. Japan: MAFF's calorie-based food self-sufficiency ratio, fiscal
+2021–2023, 38% in each (MAFF counts cattle and milk for home-grown feed too, which the headline
+here does not, so it is somewhat stricter). It is never ranked against FAO-based countries and
+carries no food-by-food figures. Exported as `ssr.json` `meta.national`.
+
+## Withheld foods on the map
+
+A withheld food (sections "Withheld") has no figure, but its two readings (`withheld.range`) can
+agree on the map's band: both at or above 104.17% (more than a year) or both under 50% (under
+six months). The map and the country's food list then show that band, in words ("more than a
+year on any reading of FAO's figures"), never a number; rankings still leave the food out.
+Single foods only: the "all food" range is not feed-adjusted.
 
 ## Trade partners (who buys from and sells to whom)
 
@@ -921,11 +963,11 @@ What a country would lack if Russia and Ukraine stopped selling, and nothing too
   Turkey as flour or through the Netherlands counts where it was grown). Fish has no tracing: its
   `s` is the share bought from them (Comext or BACI). The EU as one: its own figures (imports from
   outside the EU, traced).
-- **All food:** the foods' figures weighted by their protein per person (FBS items, as the
-  headline): `Σ_g protein_g × lack_g / Σ_g protein_g` over the foods with a figure, shown only
-  when those foods carry at least 90% of the protein of all groups (summed over items with
-  protein > 0): with its cereals withheld (section "Withheld as implausible") Turkey's fell from
-  17% to 3%, the food it buys most from Russia left out.
+- **All food:** the foods' figures weighted by their calories per person (FBS items, as the
+  headline): `Σ_g kcal_g × lack_g / Σ_g kcal_g` over the foods with a figure, shown only
+  when those foods carry at least 90% of the calories of all groups (summed over items with
+  kcal > 0): with its cereals withheld (section "Withheld as implausible") Turkey's fell from
+  17% to 3% (protein-weighted then), the food it buys most from Russia left out.
 - **No figure:** for Russia and Ukraine themselves; for a withheld food (its balance contradicts
   itself) or a withheld import flow (section "Trade records against the food balance"); where
   D ≤ 0 (nothing used).

@@ -6,7 +6,8 @@ items behind it, and meat and egg self-sufficiency counting pigs and poultry onl
 home-grown share of their feed.
 
 Output data/processed/feed.parquet: iso3, imported_pct, top (JSON list of [item, % of imported
-protein]), meat_ssr, eggs_ssr, items_pct.
+protein]), meat_ssr, eggs_ssr, items_pct, and "all food" counting pigs and poultry the same way:
+{protein,kcal}_feed_{ssr,share} (methodology, '"All food" coverage').
 """
 
 from __future__ import annotations
@@ -75,8 +76,29 @@ def read_sua(years: tuple[int, int], codes: set[int]) -> pd.DataFrame:
     return d.dropna(subset=["iso3"])[["iso3", "item_code", "element", "year", "t"]]
 
 
+# Leaf items whose production counts only in the home-grown share of the feed (pigs and poultry).
+ADJUSTED_ITEMS = ("Pigmeat", "Poultry Meat", "Eggs")
+
+
+def all_food(f: float, items: pd.DataFrame, total: pd.Series) -> dict:
+    """"All food" with SSR_i' = (1 - f) * SSR_i for ADJUSTED_ITEMS, against the same items and
+    weights as compute.overall (its `{w}_den`, reading A: items with an SSR and weight > 0)."""
+    out = {}
+    for w in ("protein", "kcal"):
+        keys = [f"{w}_feed_ssr", f"{w}_feed_share"]
+        den, ssr, share = total.get(f"{w}_den"), total.get(f"{w}_ssr"), total.get(f"{w}_share")
+        if str(total.get(f"{w}_flag") or "") != "" or pd.isna(den) or not den > 0 or pd.isna(ssr):
+            out.update(dict.fromkeys(keys, np.nan))
+            continue
+        a = items[items["item"].isin(ADJUSTED_ITEMS) & items["ssr"].notna() & (items[w] > 0)]
+        d_ssr = (a[w] * f * a["ssr"]).sum() / den
+        d_share = (a[w] * (a["ssr"].clip(upper=100) - ((1 - f) * a["ssr"]).clip(upper=100))).sum() / den
+        out.update({keys[0]: ssr - d_ssr, keys[1]: share - d_share})
+    return out
+
+
 def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFrame,
-            detail: list | None = None) -> pd.DataFrame:
+            detail: list | None = None, overall: pd.DataFrame | None = None) -> pd.DataFrame:
     """Per country. `detail`, when given, receives the EU's items: item_code, item, protein_t
     (crude protein fed, t a year) and imported_t (its share from outside the EU)."""
     items = load_items()
@@ -136,8 +158,11 @@ def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFram
         meat = ssr("meat", g.loc[(iso3, "meat"), "production"] - f * (p("Pigmeat") + p("Poultry Meat"))
                    if (iso3, "meat") in g.index else np.nan)
         eggs = ssr("eggs", (1 - f) * g.loc[(iso3, "eggs"), "production"] if (iso3, "eggs") in g.index else np.nan)
-        rows.append({"iso3": iso3, "imported_pct": 100 * f, "top": json.dumps(top), "meat_ssr": meat, "eggs_ssr": eggs,
-                     "items_pct": 100 * fed["F"].sum() / tot_t if tot_t > 0 else np.nan})
+        row = {"iso3": iso3, "imported_pct": 100 * f, "top": json.dumps(top), "meat_ssr": meat, "eggs_ssr": eggs,
+               "items_pct": 100 * fed["F"].sum() / tot_t if tot_t > 0 else np.nan}
+        if overall is not None and iso3 in overall.index:
+            row.update(all_food(f, items_fbs[items_fbs["iso3"] == iso3], overall.loc[iso3]))
+        rows.append(row)
     return pd.DataFrame(rows)
 
 
@@ -153,8 +178,9 @@ def run() -> None:
     items = pd.read_parquet(config.PROCESSED / "ssr_items.parquet")
     if "basis" in items:
         items = items[items["basis"] == "tonnes"]
+    overall = pd.read_parquet(config.PROCESSED / "ssr_overall.parquet").set_index("iso3")
     detail = []
-    out = compute(fbs_window(), groups, items, detail)
+    out = compute(fbs_window(), groups, items, detail, overall)
     out.to_parquet(dest, index=False)
     pd.DataFrame(detail).to_parquet(config.PROCESSED / EU_ITEMS, index=False)
     log.info("wrote %s (%d countries; median imported feed protein %.0f%%)", dest, len(out),
