@@ -630,10 +630,11 @@ const LACK = [{ max: 1, color: "#f3ead8", label: "<1%" }, { max: 5, color: "#ecc
 function lackLine(id) {
   if (!state.scen) { loadScenario(); return ""; }
   const v = state.scen.countries[id]?.[state.group];
-  if (v == null) return "";
+  // Only where it matters: a line saying "under 1%" on every page was noise (Brazil).
+  if (v == null || v < 1) return "";
   const who = id === EU ? "the EU" : nameOf(id);
   const what = state.group === "all" ? "the calories in its food" : `the ${food()} it uses`;
-  return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${v < 1 ? "under 1" : Math.round(v)}%</strong> of ${what},
+  return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${Math.round(v)}%</strong> of ${what},
     unless others sold more. ${whatIf(state.scenario ? "Back to the main map" : "Show every country on the map")}</p>`;
 }
 
@@ -1098,6 +1099,8 @@ function renderLegend() {
   const toggle = scenarioOn() ? `<button type="button" class="linkish whatif" data-scenario="0">Back to: how long it would last</button>` : "";
   if (scenarioOn()) {
     el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the calories in food</b>" : `the <b>${food()}</b> used`} that was produced in <b>Russia or Ukraine</b></p>
+      <p class="small">Two of the world's largest sellers of grain and sunflower oil, whose sales the war
+        put at risk in 2022.</p>
       ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
   } else {
     el.innerHTML = `<p class="title">${state.group === "all" ? "Months <b>its own food</b> would last, counted in calories"
