@@ -244,9 +244,9 @@ def check_eu_bloc(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
 
 def check_jrc(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
     """Where we cite the JRC, our ratio should be the JRC's own. True by construction for
-    tomatoes, olive oil and wine (its production and apparent use); for dairy the JRC's ratio
-    rests on an apparent use the dataset does not derive, so a gap there is a warning, shown in
-    the UI next to ours (export: jrc_published_ssr)."""
+    tomatoes, olive oil and wine (its production and apparent use). Dairy is not compared: the
+    JRC's RAW MILK row has no trade and its "apparent use" is raw milk not delivered to dairies
+    (Latvia 57 kg a person), not dairy use (methodology, "The JRC's raw-milk ratio")."""
     out = []
     years = groups["years"].iloc[0]
     window = tuple(int(y) for y in years.split("-"))
@@ -257,10 +257,7 @@ def check_jrc(groups: pd.DataFrame, items: pd.DataFrame) -> list[Finding]:
     it = items.set_index(["iso3", "item"])
     for (iso3, food), theirs in pub.items():
         if food == "dairy":
-            if (iso3, "dairy") not in t.index or t.loc[(iso3, "dairy"), "source"] != "jrc_bal":
-                continue
-            ours = t.loc[(iso3, "dairy"), "ssr"]
-            sev = WARN
+            continue
         else:
             fbs_items = jrc.FOODS[food][3]
             rows = [it.loc[(iso3, i)] for i in fbs_items if (iso3, i) in it.index]
@@ -690,10 +687,6 @@ def resolve(findings: list[Finding], ssr: dict | None, items: pd.DataFrame) -> l
         handled = None
         if f.check == "trend_spike":
             handled = "drawn apart and named in the year-by-year chart"
-        elif f.check == "jrc_ratio_dairy":
-            ind = (ssr or {}).get("countries", {}).get(f.iso3, {}).get("indicators", {}).get("dairy", {})
-            if "jrc_published_ssr" in ind:
-                handled = "the Commission's own ratio is shown next to ours on the sources page"
         elif f.check == "negative_items_in_group":
             handled = "both readings within the withholding threshold (parts test)"
         elif f.check == "usda_gap":

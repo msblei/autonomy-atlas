@@ -264,7 +264,6 @@ def export_ssr() -> None:
     review = checks.reviewed_withholds()
     plaus = _plausibility()
     window = tuple(int(y) for y in years[-1].split("-")) if years else None
-    jrc_pub = jrc.published_ssr(window) if window else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
     series, unusual = _trend_series(trends, trend_years)
     out: dict = {
@@ -384,11 +383,6 @@ def export_ssr() -> None:
                     ind["jrc_items"] = parts
                 if (iso3, r["group"]) in disagree:
                     ind["usda"] = disagree[(iso3, r["group"])]
-                if r["source"] == "jrc_bal" and r["group"] == "dairy":
-                    # The JRC's own dairy ratio, on a basis its dataset does not document
-                    # (jrc.published): shown next to ours, not instead of it.
-                    pub = jrc_pub.get((iso3, "dairy"))
-                    ind["jrc_published_ssr"] = _round(pub) if pub is not None else None
                 if r["source"] == "jrc_bal" and "kcal" not in ind:
                     # One milk-equivalent balance: no per-product ratio to weight by calories.
                     ind["kcal"] = {"flag": "jrc_group_only"}

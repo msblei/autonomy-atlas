@@ -182,9 +182,6 @@ CHECK_NOTES = {
                     "fishmeal and fish oil, which the records file as feed and oil), or trade the records do not "
                     "show (Rwanda's fish exports: none in the records, no fishmeal in its balance) "
                     "that the trade records file elsewhere. Records far above it would be withheld.",
-    "jrc_ratio_dairy": "The European Commission's own dairy ratio, on a basis its file does not "
-                       "document, against ours from its production and trade figures. Expected every "
-                       "release; both are shown on the sources page.",
     "negative_items_in_group": "Items with negative supply (re-exports exceeding what FAO counts "
                                "as available) shrink the group's 'uses at home'. Self-sufficiency is "
                                "barely affected where the country produces little of the food.",
@@ -195,6 +192,55 @@ CHECK_NOTES = {
     "balance_identity": "FAO's balance misses production + imports - exports - stock change = "
                         "supply by more than its rounding can explain (2.5 kt per item).",
 }
+
+
+def _why(w: dict) -> str:
+    """One line on why a figure is withheld, from what the export carries."""
+    c = w.get("components_kt") or {}
+    if w["reason"] == "reviewed":
+        return w.get("note") or ""
+    if w["reason"] == "implausible":
+        parts = []
+        for t in w.get("plausibility", []):
+            alt = "no use at home left" if t.get("ssr_alt") is None else f"{t['ssr_alt']:.0f}%"
+            if t["test"] == "use_per_person":
+                parts.append(f"uses {t['kg']:.0f} kg a person (ceiling {t['ceiling_kg']:.0f}): {alt}")
+            else:
+                parts.append(f"imports {t['ratio']:.1f}x the trade records' {t['trade_kt']:.0f} kt "
+                             f"(typical {t['typical']:.1f}x): {alt}")
+        return "; ".join(parts)
+    if w["reason"] == "parts_contradict" and w.get("items"):
+        return "rests on " + ", ".join(w["items"])
+    if c:
+        return (f"P {c.get('production', 0):.0f}, M {c.get('imports', 0):.0f}, X {c.get('exports', 0):.0f}, "
+                f"D {c.get('supply') if c.get('supply') is not None else '–'}, food {c.get('food', 0):.0f} kt")
+    return ""
+
+
+def _seasons_section(W) -> str:
+    p = W / "seasons.json"
+    if not p.exists():
+        return ""
+    lo = json.loads(p.read_text(encoding="utf-8")).get("left_out", {})
+    rows = [{"iso3": i, "group": g, "crops": ", ".join(ls)} for i, gs in sorted(lo.items()) for g, ls in gs.items()]
+    return (f"<h2>Season rows left out ({len(rows)})</h2><p class='note'>Crop calendars (GGCMI) whose "
+            "harvest does not match the International Wheat Council's wheat harvest months "
+            "(methodology, \"Seasons\"). Named on the food page instead of drawn. A long list after "
+            "a GGCMI release is a reason to look at the calendar, not to widen the check.</p>"
+            + _table(pd.DataFrame(rows, columns=["iso3", "group", "crops"])))
+
+
+def _cropmap_section(W) -> str:
+    p = W / "cropmap.json"
+    if not p.exists():
+        return ""
+    cm = json.loads(p.read_text(encoding="utf-8"))
+    rows = [{"group": g, "iso3": i, "map_kha": x["map_kha"], "eurostat_kha": x["eurostat_kha"], "ratio": x["ratio"]}
+            for g, info in cm["groups"].items() for i, x in sorted(info.get("left_out", {}).items())]
+    return (f"<h2>Crop map: countries left blank ({len(rows)})</h2><p class='note'>EUCROPMAP "
+            f"{cm['meta']['year']} area under half or over twice Eurostat's crop area for the same year "
+            "(methodology, \"Fields\"). The page names them.</p>"
+            + _table(pd.DataFrame(rows, columns=["group", "iso3", "map_kha", "eurostat_kha", "ratio"])))
 
 
 def run() -> None:
@@ -217,11 +263,12 @@ def run() -> None:
                 if w:
                     r = w.get("range") or [None, None]
                     withheld.append({"iso3": iso3, "name": c.get("name"), "group": group, "basis": basis,
-                                     "reason": w["reason"], "low": r[0], "high": r[1]})
+                                     "reason": w["reason"], "low": r[0], "high": r[1], "why": _why(w)})
             if ind.get("uses_withheld"):
                 withheld.append({"iso3": iso3, "name": c.get("name"), "group": group, "basis": "tonnes",
-                                 "reason": "uses breakdown only", "low": None, "high": None})
-    wdf = pd.DataFrame(withheld, columns=["iso3", "name", "group", "basis", "reason", "low", "high"])
+                                 "reason": "uses breakdown only", "low": None, "high": None,
+                                 "why": "FAO's residuals exceed a quarter of domestic supply; the ratio stands"})
+    wdf = pd.DataFrame(withheld, columns=["iso3", "name", "group", "basis", "reason", "low", "high", "why"])
     # Trade flows whose records are far above the food balance (checks.trade_verdicts).
     tpath = W / "trade.json"
     tw = json.loads(tpath.read_text(encoding="utf-8"))["meta"].get("withheld", []) if tpath.exists() else []
@@ -247,7 +294,10 @@ def run() -> None:
         (f"<h1>Autonomy Atlas: data audit</h1><p>Generated {datetime.now(UTC):%Y-%m-%d %H:%M} UTC "
          f"for the data window {html.escape(str(ssr['meta']['years']))}. "
          f"Validation {'passed' if v['ok'] else '<b>FAILED</b>'}: "
-         f"{html.escape(json.dumps(v['counts']))}.</p>"),
+         + ", ".join(f"{v['counts'].get(k, 0)} {label}" for k, label in
+                     (("block", "blocking"), ("warn", "open warnings"), ("withhold", "withholding records"),
+                      ("handled", "handled"), ("confirmed", "confirmed")))
+         + ".</p>"),
         rec_line,
         "<h2>Blocking findings</h2>" + _table(block, ["check", "iso3", "group", "detail"]),
         _usda_section(),
@@ -262,6 +312,8 @@ def run() -> None:
         f"<h2>Withheld trade flows ({len(tdf)})</h2><p>Trade records far above the food balance "
         "(methodology, \"Trade records against the food balance\"): the split by country is not "
         "shown, and for all food the bought or sold total neither.</p>" + _table(tdf),
+        _seasons_section(W),
+        _cropmap_section(W),
     ]
     sections.append(f"<h2>Open warnings ({len(warn)})</h2><p>Need a human look before release: fix, "
                     "withhold by review, or confirm in mappings/confirmed_findings.csv.</p>")

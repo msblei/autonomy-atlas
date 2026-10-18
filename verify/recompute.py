@@ -1369,7 +1369,6 @@ def flatten(res):
             flat[p + "uses_withheld"] = (bool(gr["uses_withheld"]), None)
             flat[p + "source"] = (gr["source"], None)
             flat[p + "jrc_items"] = (sorted(gr["jrc_items"]), None)
-            flat[p + "jrc_published_ssr"] = (gr["published_ssr"], 1)
             for k, v in gr["comp"].items():
                 name = {v_: k_ for k_, v_ in COMP_KEY.items()}.get(k, k)
                 flat[p + "components_kt." + name] = (v, 1)

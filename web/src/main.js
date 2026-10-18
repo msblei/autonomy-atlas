@@ -2026,24 +2026,12 @@ function aboutJrc(id) {
       (DG AGRI and the Joint Research Centre): the raw milk produced, and the trade in milk, cheese,
       butter, cream and milk powder, which the Commission converts into one unit, “milk equivalent”,
       counting trade between EU countries only once.</p>
-    ${pubDairy(id)}
     <p class="aside">FAO's own dairy figures for many EU countries do not add up: they turn countries
       that sell cheese and milk powder abroad, like Germany or Denmark, into buyers, and put Ireland
       at barely self-sufficient instead of almost twice over. So for
       dairy in EU countries we use the Commission's figures; everything else comes from FAO.</p>
     <p class="small">Average of ${years().join(", ")}. Downloaded ${s.downloaded ? longDate(s.downloaded) : "–"}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>.</p>`;
-}
-
-// The Commission's own dairy ratio differs from the one its production and trade figures give.
-function pubDairy(id) {
-  const pub = country(id)?.indicators?.dairy?.jrc_published_ssr;
-  const ours = country(id)?.indicators?.dairy?.tonnes?.ssr;
-  if (pub == null || ours == null || Math.abs(pub - ours) < 2) return "";
-  return `<p class="aside">The Commission's file also lists its own dairy ratio for ${whoOf(id)}:
-    ${Math.round(pub)}% instead of our ${Math.round(ours)}%. It works out how much milk is used at
-    home in a way the file does not explain, so we cannot check it. We show the share that follows
-    from its production and trade figures, which you can add up yourself (see below).</p>`;
 }
 
 // Foods that are one item of a group and come from the Commission (tomatoes in vegetables, ...),
