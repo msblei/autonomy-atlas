@@ -424,6 +424,16 @@ def run(*, write: bool = True) -> list[Finding]:
     else:
         findings += check_published(ssr, its, trade)
 
+    # A warning about a figure that is withheld anyway (any reason) asks nothing of the reviewer:
+    # the audit page lists the figure under "Withheld" already.
+    t = groups[groups["basis"] == "tonnes"]
+    gone = set(zip(t.loc[t["flag"].fillna("") != "", "iso3"], t.loc[t["flag"].fillna("") != "", "group"],
+                   strict=True))
+    moot = [f for f in findings if f.severity == WARN and (f.iso3, f.group) in gone]
+    if moot:
+        log.info("validation: %d warnings about withheld figures dropped", len(moot))
+        findings = [f for f in findings if not (f.severity == WARN and (f.iso3, f.group) in gone)]
+
     # Withholding by the consistency verdicts (checks.py) is applied upstream; count it here.
     counts = pd.Series([f.severity for f in findings]).value_counts().to_dict()
     log.info("validation: %s", counts)
