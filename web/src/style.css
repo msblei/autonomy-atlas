@@ -13,9 +13,8 @@
   --edge-strong: #cfc7b8;
   --produced: #2f6f4e; /* produced at home, in charts */
   --blue: #2f5f86; /* bought abroad, in charts */
-  --sow: #c9b98f; /* crop calendar: sown */
-  --grow: #9cc3a6; /* growing */
-  --harvest: #c8902e; /* harvested */
+  --grow: #9cc3a6; /* crop calendar: growing (sown months add a dark seed dot, not a colour) */
+  --harvest: #7a4b0c; /* harvested: 6.9:1 on paper, 3.8:1 against growing */
   --sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --panel-w: 392px;
   --rail-w: 158px;
@@ -442,12 +441,15 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 .season .srow { display: grid; grid-template-columns: 7.5em repeat(12, 1fr); gap: 2px; align-items: center; }
 .season .months span { font-size: 0.75rem; color: var(--ink-faint); text-align: center; }
 .season .crop { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.season .m { height: 18px; border-radius: 3px; background: var(--sunken); }
-.m.sowing { background: var(--sow); }
+.season .m { height: 18px; border-radius: 3px; background: var(--sunken); display: flex; align-items: center; justify-content: center; }
+/* Sown, growing and harvested differ in shape and lightness, not only in hue (colour-blind readers). */
+.m.sowing { background: var(--grow); }
+.m.sowing::after { content: ""; width: 6px; height: 6px; border-radius: 50%; background: var(--ink); }
 .m.growing { background: var(--grow); }
 .m.harvest { background: var(--harvest); }
 .season-key { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
-.season-key i.m { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-left: 6px; }
+.season-key i.m { display: inline-flex; align-items: center; justify-content: center; width: 12px; height: 12px; border-radius: 2px; margin-left: 6px; }
+.season-key i.m.sowing::after { width: 4px; height: 4px; }
 .season-key i.m:first-child { margin-left: 0; }
 
 /* Purchases from abroad by month: the busier the month, the darker. */

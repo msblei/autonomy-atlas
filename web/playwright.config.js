@@ -5,7 +5,9 @@ const PORT = 5181;
 export default defineConfig({
   testDir: "tests",
   timeout: 120_000,
-  workers: 2,
+  // One worker: two Chrome instances drawing the WebGL map side by side wait on each other (with the
+  // accessibility scans the suite took 16 minutes on two workers, 47 seconds on one).
+  workers: 1,
   reporter: [["list"]],
   // The installed Google Chrome (own temporary profile); no browser download needed.
   // Reduced motion: the panel hands details over instantly, so the data tests need not wait out the

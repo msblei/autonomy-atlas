@@ -1009,7 +1009,7 @@ function renderLegend() {
     el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months</p>${seasonScale()}${toggle}`;
   }
   const b = el.querySelector("[data-scenario]");
-  if (b) b.onclick = () => { state.scenario = b.dataset.scenario === "1"; if (state.scenario) loadScenario(); render(); };
+  if (b) b.onclick = () => { state.scenario = b.dataset.scenario === "1"; if (state.scenario) loadScenario(); render(); keepFocus("#legend .whatif"); };
 }
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
@@ -1223,6 +1223,14 @@ function renderFoot() {
   el.innerHTML = `${tools}Figures: UN Food and Agriculture Organization (FAO), ${m.years.replace("-", "–")} averages.`;
 }
 
+// A switch redraws the view it sits in: put the keyboard focus back on the redrawn button, so
+// keyboard and screen-reader users stay where they were (the detail may fade in a moment later).
+function keepFocus(selector) {
+  const go = () => document.querySelector(selector)?.focus({ preventScroll: true });
+  go();
+  setTimeout(go, 150);
+}
+
 // Clickable rows (foods, rankings, examples) navigate; selects in the table level re-render.
 function wire(el) {
   for (const b of el.querySelectorAll("[data-go]")) {
@@ -1236,13 +1244,14 @@ function wire(el) {
     };
   }
   for (const b of el.querySelectorAll("[data-fields]")) {
-    b.onclick = () => { state.fields = b.dataset.fields === "1"; render(); };
+    b.onclick = () => { state.fields = b.dataset.fields === "1"; render(); keepFocus(`[data-fields="${b.dataset.fields}"]`); };
   }
   for (const b of el.querySelectorAll("[data-mode]")) {
     b.onclick = () => {
       state.grown = b.dataset.mode === "grown";
       state.byValue = b.dataset.mode === "value";
       render(); fitTrade();
+      keepFocus(`[data-mode="${b.dataset.mode}"]`);
     };
   }
   const ind = el.querySelector("#indicator");
@@ -1415,12 +1424,12 @@ function seasonStrip(id) {
   return `
     <h3>When it is grown</h3>
     <div class="season" role="table" aria-label="When the main crops are sown and harvested">
-      <div class="srow months" role="row"><span role="columnheader"></span>${MONTHS.map((m) => `<span role="columnheader" title="${m}">${m[0]}</span>`).join("")}</div>
+      <div class="srow months" role="row"><span role="columnheader"></span>${MONTHS.map((m) => `<span role="columnheader" title="${m}" aria-label="${m}">${m[0]}</span>`).join("")}</div>
       ${rows.map((r) => `
         <div class="srow" role="row" aria-label="${r.label}: harvested in ${namesOf(harvestMonths(r))}">
           <span class="crop" role="rowheader">${r.label}</span>${MONTHS.map((m, k) => {
             const c = kind(r, k);
-            return `<span class="m ${c}" role="cell" title="${m}: ${c ? WORD[c] : "nothing"}"></span>`;
+            return `<span class="m ${c}" role="cell" title="${m}: ${c ? WORD[c] : "nothing"}" aria-label="${m}: ${c ? WORD[c] : "nothing"}"></span>`;
           }).join("")}
         </div>`).join("")}
     </div>
@@ -1614,12 +1623,12 @@ function importMonths(id) {
   return `
     <h3>When it comes from abroad</h3>
     <div class="season imports" role="table" aria-label="Purchases from abroad by month">
-      <div class="srow months" role="row"><span role="columnheader"></span>${MONTHS.map((m) => `<span role="columnheader" title="${m}">${m[0]}</span>`).join("")}</div>
+      <div class="srow months" role="row"><span role="columnheader"></span>${MONTHS.map((m) => `<span role="columnheader" title="${m}" aria-label="${m}">${m[0]}</span>`).join("")}</div>
       ${rows.map((r) => `
         <div class="srow" role="row">
-          <span class="crop" role="rowheader" title="${name(r.hs4)}">${name(r.hs4)}</span>${MONTHS.map((_, k) => `<span class="m s${shade(r, k)}" role="cell" title="${tip(r, k)}"></span>`).join("")}
+          <span class="crop" role="rowheader" title="${name(r.hs4)}">${name(r.hs4)}</span>${MONTHS.map((_, k) => `<span class="m s${shade(r, k)}" role="cell" title="${tip(r, k)}" aria-label="${tip(r, k)}"></span>`).join("")}
         </div>
-        <p class="small who">${leaders(r.top)}</p>`).join("")}
+        <p class="small who" aria-hidden="true">${leaders(r.top)}</p>`).join("")}
     </div>
     <p class="small">Darker = more of a year's purchases from abroad arrive that month (${state.months.meta.years.replace("-", "–")},
       the EU's own trade records). It shows when ${id === EU ? "the EU buys from outside" : "it is bought abroad"}, not when it is harvested.</p>`;
