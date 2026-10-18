@@ -1005,7 +1005,7 @@ function renderPeek() {
     const v = country(id) ? pctFor(id) : null;
     // On the overview the line says the answer; on a question, that row of the card.
     const said = key === "food" ? (v == null ? "" : `: own food lasts ${lasts(v, { short: true })}`)
-      : r.value != null ? `: ${r.label.toLowerCase()} ${r.value}` : "";
+      : r.value != null ? `: ${r.label.toLowerCase()} ${r.value}${r.unit ? ` ${r.unit}` : ""}` : "";
     line = `<b>${nameOf(id)}</b> ${groupInfo().label}${said}`;
   }
   document.getElementById("peek").innerHTML = `<span>${line}</span>
@@ -1184,9 +1184,10 @@ function cardRows(id, group = state.group) {
     const P = bal.produced, M = bal.imports, X = bal.exports, D = bal.used;
     const top = Math.max(P + M, D) || 1;
     const pct = (x) => (Math.max(0, x) / top) * 100;
-    const kcal = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal/person/day`;
+    const kcal = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal`;
     const why = "Calories per person a day, food by food: what is produced, bought and sold of each "
       + "food's calories. Pork, chicken and eggs from imported feed count as bought.";
+    for (const r of Object.values(rows)) r.unit = "/person/day"; // drawn lighter (renderFrame)
     Object.assign(rows.food, { value: kcal(P), bar: [0, pct(P)], title: why });
     Object.assign(rows.imports, { value: kcal(M), bar: [pct(P), pct(M)], title: why });
     Object.assign(rows.exports, { value: kcal(X), bar: [pct(P + M - X), pct(X)], title: why });
@@ -1280,6 +1281,7 @@ function renderFrame() {
     a.querySelector(".label > span").textContent = r.label;
     const value = a.querySelector(".value");
     value.textContent = has ? r.value : r.empty;
+    if (has && r.unit) value.insertAdjacentHTML("beforeend", ` <span class="unit">${r.unit}</span>`);
     value.classList.toggle("na", !has);
     const bar = a.querySelector(".wf-track > span");
     bar.style.left = `${has ? r.bar[0] : 0}%`;

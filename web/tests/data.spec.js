@@ -365,7 +365,7 @@ test("no balance (Japan): shipments are labelled as weight shipped, not a balanc
 test("all food: the card is a calorie balance, produced as in the headline", async ({ page }) => {
   const k = C.CHE.indicators.all.kcal;
   await open(page, "CHE");
-  const fmtK = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal/person/day`;
+  const fmtK = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal /person/day`;
   await expect(page.locator("#card .sum-row[data-row=food]")).toContainText(fmtK(k.balance.produced));
   await expect(page.locator("#card .sum-row[data-row=used]")).toContainText(fmtK(k.balance.used));
   expect(Math.abs(k.balance.produced - k.feed_ssr * k.balance.used / 100)).toBeLessThan(1);

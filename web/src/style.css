@@ -464,3 +464,4 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 
 /* "What if?" under the map key */
 #legend .whatif { display: block; margin: 6px auto 0; font-size: 12px; }
+#card .value .unit { font-weight: 400; font-size: 0.85em; color: var(--ink-soft); }
