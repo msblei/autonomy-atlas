@@ -1221,6 +1221,7 @@ def compute_balances(D, opts, plaus=None):
     def all_food(items, dairy):
         A, B = [], []  # (ssr, protein, kcal)
         A_codes = []  # item code per entry of A (None for dairy as one food)
+        A_trade = []  # (imports, exports) as % of use, per entry of A (the calorie balance)
         n_withheld = 0
         for c, r in items.items():
             if c in DAIRY:  # dairy counts as one food (below)
@@ -1230,6 +1231,7 @@ def compute_balances(D, opts, plaus=None):
             if not fl and not isnan(s):
                 A.append((s, *w))
                 A_codes.append(c)
+                A_trade.append((ratio(nz(r["M"]), r["D"]), ratio(nz(r["X"]), r["D"])))
                 B.append((s, *w))
             else:
                 if w[0] > 0:
@@ -1246,6 +1248,7 @@ def compute_balances(D, opts, plaus=None):
             if dg is not None and dg["reason"] in (None, "reviewed", "implausible"):
                 A.append((ratio(dg["comp"]["P"], dg["comp"]["D"]), *w))
                 A_codes.append(None)
+                A_trade.append((ratio(nz(dg["comp"]["M"]), dg["comp"]["D"]), ratio(nz(dg["comp"]["X"]), dg["comp"]["D"])))
                 B.append(A[-1])
             elif w[0] > 0:
                 n_withheld += 1
@@ -1266,7 +1269,7 @@ def compute_balances(D, opts, plaus=None):
                          "range": [min(ua, ub), max(ua, ub)],
                          "share_range": [min(sa, sb), max(sa, sb)]}
         out["n_foods"] = sum(1 for f in A if f[1] > 0)  # SSR and protein > 0
-        out["foods_a"] = list(zip(A_codes, A))  # for the feed-adjusted figures (main, "feed")
+        out["foods_a"] = list(zip(A_codes, A, A_trade))  # for the feed-adjusted figures (main, "feed")
         out["n_withheld"] = n_withheld
         # per-person totals over every leaf item, withheld ones included
         out["g_per_day"] = sum(nz(r["protein"]) for r in items.values())
@@ -2075,14 +2078,32 @@ def main():
         m_ = mine_f.get(iso)
         for b, wi in (("protein", 1), ("kcal", 2)):
             mine = {"feed_ssr": None, "feed_share": None}
+            if b == "kcal" and (m_ is None or r["all"][b]["reason"]) and a_exp.get("kcal", {}).get("balance"):
+                counts["all_balance"] += 1
+                record("all_balance", {"file": "ssr.json", "country": iso, "group": "all", "field": "kcal.balance"},
+                       a_exp["kcal"]["balance"], None)
             if m_ is not None and not r["all"][b]["reason"]:
                 f = m_[0] / 100
                 foods = [(fd[0] * (1 - f) if D.item_names.get(code) in adj_names else fd[0], fd[wi])
-                         for code, fd in r["all"]["foods_a"]]
+                         for code, fd, _ in r["all"]["foods_a"]]
                 den = sum(w_ for _, w_ in foods)
                 if den > 0:
                     mine["feed_ssr"] = sum(v * w_ for v, w_ in foods) / den
                     mine["feed_share"] = sum(min(v, 100) * w_ for v, w_ in foods) / den
+                if den > 0 and b == "kcal":
+                    # methodology: the calorie balance, kcal per person a day
+                    fa = r["all"]["foods_a"]
+                    fed_kcal = sum(f * fd[0] * fd[2] / 100 for code, fd, _ in fa if D.item_names.get(code) in adj_names)
+                    bal = {"produced": sum(v * w_ for v, w_ in foods) / 100,
+                           "imports": sum(fd[2] * nz(t[0]) / 100 for _, fd, t in fa) + fed_kcal,
+                           "exports": sum(fd[2] * nz(t[1]) / 100 for _, fd, t in fa), "used": den}
+                    e_bal = a_exp.get("kcal", {}).get("balance") or {}
+                    for k, mv in bal.items():
+                        counts["all_balance"] += 1
+                        e = e_bal.get(k)
+                        if e is None or abs(e - mv) > 0.5 + 1e-9:
+                            record("all_balance", {"file": "ssr.json", "country": iso, "group": "all",
+                                                   "field": f"kcal.balance.{k}"}, e, round(mv))
             for k, mv in mine.items():
                 e = a_exp.get(b, {}).get(k)
                 counts["all_feed"] += 1

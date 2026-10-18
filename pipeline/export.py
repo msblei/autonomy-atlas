@@ -116,6 +116,9 @@ def _all_basis(r: pd.Series, w: str, extra: dict, fr: pd.Series | None = None) -
             v = _round(fr.get(f"{w}_{k}"))
             if v is not None:
                 fed[k] = v
+        if w == "kcal" and "feed_ssr" in fed:
+            # kcal per person a day: produced + imports - exports = used, give or take stocks
+            fed["balance"] = {k: _round(fr.get(f"kcal_{k}"), 0) for k in ("produced", "imports", "exports", "used")}
     return {"share": _round(r[f"{w}_share"]), "ssr": _round(r[f"{w}_ssr"])} | fed | extra
 
 

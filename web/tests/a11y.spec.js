@@ -12,8 +12,10 @@ const VIEWS = [
   ["trade by money", "DEU/cereals/trade", '[data-mode="value"]'],
   ["where by region", "DEU/cereals/where", null],
   ["where fields", "DEU/cereals/where", '[data-fields="1"]'],
-  ["what if", "EGY/cereals", "#legend .whatif"],
+  ["what if", "EGY/cereals", "#view .whatif"],
   ["how do we know", "about", null],
+  ["legal notice", "legal", null],
+  ["privacy policy", "privacy", null],
 ];
 
 for (const [name, hash, act] of VIEWS) {

@@ -7,7 +7,8 @@ home-grown share of their feed.
 
 Output data/processed/feed.parquet: iso3, imported_pct, top (JSON list of [item, % of imported
 protein]), meat_ssr, eggs_ssr, items_pct, and "all food" counting pigs and poultry the same way:
-{protein,kcal}_feed_{ssr,share} (methodology, '"All food" coverage').
+{protein,kcal}_feed_{ssr,share} and the calorie balance kcal_{produced,imports,exports,used}
+(methodology, '"All food" coverage').
 """
 
 from __future__ import annotations
@@ -94,6 +95,12 @@ def all_food(f: float, items: pd.DataFrame, total: pd.Series) -> dict:
         d_ssr = (a[w] * f * a["ssr"]).sum() / den
         d_share = (a[w] * (a["ssr"].clip(upper=100) - ((1 - f) * a["ssr"]).clip(upper=100))).sum() / den
         out.update({keys[0]: ssr - d_ssr, keys[1]: share - d_share})
+        if w == "kcal":
+            # Calorie balance per person a day: produced = the headline's share of the use; the
+            # pork, chicken and eggs that rest on imported feed count as bought abroad.
+            out.update({"kcal_produced": (ssr - d_ssr) * den / 100,
+                        "kcal_imports": total.get("kcal_imports") + d_ssr * den / 100,
+                        "kcal_exports": total.get("kcal_exports"), "kcal_used": den})
     return out
 
 

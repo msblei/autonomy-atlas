@@ -109,7 +109,8 @@ test("withheld trade flows are never shown, and say so", async ({ page }) => {
     await open(page, `${iso3}/${group}/${flow === "imports" ? "trade" : "sells"}`);
     await expect(view(page)).toContainText("No reliable trading partners");
     await expect(view(page).locator("ol.partners")).toHaveCount(0);
-    if (group === "all") {
+    // all food with a calorie balance: the card shows that (FAO's balance), not the trade records
+    if (group === "all" && !C[iso3].indicators?.all?.kcal?.balance) {
       const row = page.locator(`#card [data-row="${flow}"] .value`);
       await expect(row).toHaveText("no reliable data");
     }
@@ -280,9 +281,10 @@ test("what if Russia and Ukraine stopped selling: the map key switches and the p
   const v = sc.countries.EGY.cereals;
   await open(page, "EGY/cereals");
   await expect(view(page)).toContainText(`Egypt would lack ${Math.round(v)}% of the cereals it uses`);
-  await page.locator("#legend .whatif").click();
+  await expect(page.locator("#legend .whatif")).toHaveCount(0); // the key belongs to the main map
+  await page.locator("#view .whatif").click();
   await expect(page.locator("#legend")).toContainText("produced in Russia or Ukraine");
-  await page.locator("#legend .whatif").click(); // and back
+  await page.locator("#view .whatif").click(); // and back
   await expect(page.locator("#legend")).toContainText("would last");
 });
 
@@ -354,8 +356,33 @@ test("no FAO balance: Japan shows its own statistic, with its source", async ({ 
   await expect(view(page)).toContainText("Ministry of Agriculture, Forestry and Fisheries of Japan");
 });
 
-test("all food: shipments are labelled as weight shipped, not a balance", async ({ page }) => {
-  await open(page, "NLD");
+test("no balance (Japan): shipments are labelled as weight shipped, not a balance", async ({ page }) => {
+  await open(page, "JPN");
   await expect(page.locator("#card")).toContainText("Shipped in");
   await expect(page.locator("#card .sum-row[data-row=imports]")).toHaveAttribute("title", /by weight as shipped/);
+});
+
+test("all food: the card is a calorie balance, produced as in the headline", async ({ page }) => {
+  const k = C.CHE.indicators.all.kcal;
+  await open(page, "CHE");
+  const fmtK = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal a day`;
+  await expect(page.locator("#card .sum-row[data-row=food]")).toContainText(fmtK(k.balance.produced));
+  await expect(page.locator("#card .sum-row[data-row=used]")).toContainText(fmtK(k.balance.used));
+  expect(Math.abs(k.balance.produced - k.feed_ssr * k.balance.used / 100)).toBeLessThan(1);
+});
+
+test("every page links the legal notice, the privacy policy and an error report", async ({ page }) => {
+  for (const hash of ["about", "DEU", "DEU/meat/trade"]) {
+    await open(page, hash);
+    await expect(page.locator("#foot .legal a[href='#legal']")).toHaveCount(1);
+    await expect(page.locator("#foot .legal a[href='#privacy']")).toHaveCount(1);
+    await expect(page.locator("#foot .legal a[href^='mailto:']")).toHaveCount(1);
+  }
+  await open(page, "legal");
+  await expect(view(page).locator("h2")).toHaveText("Legal notice");
+  await expect(view(page)).toContainText("Altendorf");
+  await open(page, "privacy");
+  await expect(view(page).locator("h2")).toHaveText("Privacy policy");
+  await expect(view(page)).toContainText("built with the help of an AI system");
+  await expect(page.locator("#frame")).toBeHidden();
 });

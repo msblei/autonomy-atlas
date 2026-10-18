@@ -44,6 +44,8 @@ const state = {
 };
 
 const EU = "EU27";
+// Pages of the site itself, not of a place: no frame, no country.
+const PAGES = ["about", "legal", "privacy"];
 // Below this zoom the EU is coloured as one country; above it, its members appear.
 const EU_ZOOM = 2.3;
 
@@ -220,7 +222,7 @@ const geoReady = loadJSON("data/countries.topojson")
 // page it is fetched once the borders and the core are in, so on a slow line it does not slow the
 // map down; a link straight to a country fetches it at once, since the panel is what was asked
 // for. Until it is in, a country's panel says "Loading…" (state.full).
-const fullEarly = location.hash.length > 1 && !location.hash.startsWith("#about")
+const fullEarly = location.hash.length > 1 && !PAGES.some((p) => location.hash.startsWith(`#${p}`))
   ? loadJSON("data/ssr.json") : null;
 function prepare(data) {
   // export.py drops empty fields to keep the file small; restore the ones the code walks.
@@ -441,7 +443,7 @@ function readersCountry() {
 function parseHash() {
   const [a, b, c] = decodeURIComponent(location.hash.slice(1)).split("/");
   const intro = { iso3: null, group: "all", level: "intro" };
-  if (a === "about") return { ...intro, level: "about" };
+  if (PAGES.includes(a)) return { ...intro, level: a };
   if (!a || !(country(a) || state.names[a])) return intro;
   if (!b) return { iso3: a, group: "all", level: "country" };
   if (b === "foods") return { iso3: a, group: "all", level: "country" }; // folded into the country page
@@ -454,7 +456,7 @@ function parseHash() {
 }
 
 function hashFor({ iso3, group = "all", level, flow = "imports" }) {
-  if (level === "about") return "#about";
+  if (PAGES.includes(level)) return `#${level}`;
   if (!iso3 || level === "intro") return "#";
   if (level === "country") return `#${iso3}`;
   if (level === "food") return `#${iso3}/${group}`;
@@ -492,7 +494,7 @@ function select(clicked) {
   const iso3 = state.level === "trade" ? clicked : entity(clicked);
   // Trade partners without food balances (Japan, Singapore) can still be looked at in trade view.
   const tradeOnly = state.level === "trade" && state.trade?.countries[iso3];
-  const level = ["intro", "about"].includes(state.level) || (!country(iso3) && !tradeOnly)
+  const level = ["intro", ...PAGES].includes(state.level) || (!country(iso3) && !tradeOnly)
     ? "country" : state.level;
   const hash = hashFor({ iso3, group: level === "country" || level === "foods" ? "all" : state.group, level, flow: state.flow });
   clickedOnMap = location.hash !== hash; // no hashchange (and no reset) when it is the same place
@@ -628,11 +630,17 @@ const LACK = [{ max: 1, color: "#f3ead8", label: "<1%" }, { max: 5, color: "#ecc
 function lackLine(id) {
   if (!state.scen) { loadScenario(); return ""; }
   const v = state.scen.countries[id]?.[state.group];
-  if (v == null || v < 1) return "";
+  if (v == null) return "";
   const who = id === EU ? "the EU" : nameOf(id);
   const what = state.group === "all" ? "the calories in its food" : `the ${food()} it uses`;
-  return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${Math.round(v)}%</strong> of ${what},
-    unless others sold more.</p>`;
+  return `<p class="small">If Russia and Ukraine stopped selling, ${who} would lack <strong>${v < 1 ? "under 1" : Math.round(v)}%</strong> of ${what},
+    unless others sold more. ${whatIf(state.scenario ? "Back to the main map" : "Show every country on the map")}</p>`;
+}
+
+// The switch to and from the "What if?" map: on the start page and next to a country's share,
+// not in the map key, so the key always belongs to the main map. Wired in wire().
+function whatIf(label) {
+  return `<button type="button" class="linkish whatif" data-scenario="${state.scenario ? 0 : 1}">${label}</button>`;
 }
 
 // kg/person/year from 1000 t and 1000 persons: kt * 1000 / population_k.
@@ -890,13 +898,13 @@ function render({ newPlace = false } = {}) {
 }
 
 // The panel's figures come from the full ssr.json; the start and about pages need only the core.
-const needsFull = () => !state.full && !["intro", "about"].includes(state.level);
+const needsFull = () => !state.full && !["intro", ...PAGES].includes(state.level);
 
 function showDetail({ fresh, dir, newPlace }) {
-  const views = { intro: viewIntro, about: viewAbout, country: viewCountry,
+  const views = { intro: viewIntro, about: viewAbout, legal: viewLegal, privacy: viewPrivacy, country: viewCountry,
     food: viewFood, trade: viewTrade, used: viewUsed, sources: viewSources, table: viewTable, where: viewWhere };
   const el = document.getElementById("view");
-  const noData = state.iso3 && !country(state.iso3) && state.level !== "about"
+  const noData = state.iso3 && !country(state.iso3) && !PAGES.includes(state.level)
     && !(state.level === "trade" && state.trade?.countries[state.iso3]);
   // What replaces a "Loading…" line fades in too, instead of popping up.
   if (el.querySelector(".detail [data-loading]") && !matchMedia("(prefers-reduced-motion: reduce)").matches) fresh = true;
@@ -1084,16 +1092,16 @@ function renderLegend() {
       <div class="ticks">${ticks.map((t) => `<span>${t}</span>`).join("")}</div>`;
     return;
   }
-  const toggle = ["trade", "where", "table"].includes(state.level) ? "" : `<button type="button" class="linkish whatif" data-scenario="${state.scenario ? 0 : 1}">${state.scenario
-    ? "Back to: how long it would last" : "What if Russia and Ukraine stopped selling?"}</button>`;
+  const toggle = scenarioOn() ? `<button type="button" class="linkish whatif" data-scenario="0">Back to: how long it would last</button>` : "";
   if (scenarioOn()) {
     el.innerHTML = `<p class="title">Share of ${state.group === "all" ? "<b>the calories in food</b>" : `the <b>${food()}</b> used`} that was produced in <b>Russia or Ukraine</b></p>
       ${scaleRow(LACK.map((s) => ({ color: s.color, label: s.label })))}${toggle}`;
   } else {
-    el.innerHTML = `<p class="title">How long <b>its own ${food()}</b> would last, in months${state.group === "all" ? " (counted in calories)" : ""}</p>${seasonScale()}${toggle}`;
+    el.innerHTML = `<p class="title">${state.group === "all" ? "Months <b>its own food</b> would last, counted in calories"
+      : `How long <b>its own ${food()}</b> would last, in months`}</p>${seasonScale()}${toggle}`;
   }
   const b = el.querySelector("[data-scenario]");
-  if (b) b.onclick = () => { state.scenario = b.dataset.scenario === "1"; if (state.scenario) loadScenario(); render(); keepFocus("#legend .whatif"); };
+  if (b) b.onclick = () => { state.scenario = false; render(); };
 }
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
@@ -1115,7 +1123,7 @@ function chooseFood(group) {
     return;
   }
   let level = state.level;
-  if (["country", "foods", "food", "intro", "about"].includes(level)) level = group === "all" ? "country" : "food";
+  if (["country", "foods", "food", "intro", ...PAGES].includes(level)) level = group === "all" ? "country" : "food";
   if ((level === "used" || level === "where") && group === "all") level = "country";
   location.hash = hashFor({ iso3: state.iso3, group, level, flow: state.flow });
 }
@@ -1125,7 +1133,7 @@ function chooseFood(group) {
 
 // Back goes up exactly one step: a question -> this food, a food -> all food, all food -> world.
 function upTarget() {
-  if (!state.iso3 || state.level === "about") return ["#", "Back to the world map"];
+  if (!state.iso3 || PAGES.includes(state.level)) return ["#", "Back to the world map"];
   const overview = state.group === "all" ? "country" : "food";
   if (state.level !== overview && country(state.iso3)) {
     return [link({ level: overview }), `Back to ${state.group === "all" ? "all food" : food()}`];
@@ -1163,6 +1171,23 @@ function cardRows(id, group = state.group) {
   // would disagree with them too, so none is shown.
   if (w) {
     for (const r of Object.values(rows)) Object.assign(r, { empty: "no reliable data", why: "No reliable data from FAO" });
+    return rows;
+  }
+  // All food: the calorie balance per person a day (kcal.balance), the same split as the headline:
+  // what is produced, bought and sold of each food's calories, pork, chicken and eggs from
+  // imported feed counted as bought.
+  const bal = group === "all" ? country(id)?.indicators?.all?.kcal?.balance : null;
+  if (bal?.used > 0) {
+    const P = bal.produced, M = bal.imports, X = bal.exports, D = bal.used;
+    const top = Math.max(P + M, D) || 1;
+    const pct = (x) => (Math.max(0, x) / top) * 100;
+    const kcal = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal a day`;
+    const why = "Calories per person a day, food by food: what is produced, bought and sold of each "
+      + "food's calories. Pork, chicken and eggs from imported feed count as bought.";
+    Object.assign(rows.food, { value: kcal(P), bar: [0, pct(P)], title: why });
+    Object.assign(rows.imports, { value: kcal(M), bar: [pct(P), pct(M)], title: why });
+    Object.assign(rows.exports, { value: kcal(X), bar: [pct(P + M - X), pct(X)], title: why });
+    Object.assign(rows.used, { value: kcal(D), bar: [0, pct(D)], title: why });
     return rows;
   }
   const c = country(id)?.indicators?.[group]?.components_kt;
@@ -1226,7 +1251,7 @@ function buildCard() {
 function renderFrame() {
   const frame = document.getElementById("frame");
   const id = state.iso3;
-  frame.hidden = !id || state.level === "about";
+  frame.hidden = !id || PAGES.includes(state.level);
   // Phones fold the search box away on a place's pages (style.css); #find opens it.
   panel.classList.toggle("at-place", !frame.hidden);
   const [up, upLabel] = upTarget();
@@ -1285,15 +1310,23 @@ function moveMarker() {
   marker.style.height = `${row.offsetHeight}px`;
 }
 
+// The footer of every page: the view's tools and sources, then contact and the legal pages.
 function renderFoot() {
+  renderFootBody();
+  document.getElementById("foot").insertAdjacentHTML("beforeend", `<p class="legal">
+    <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">Report an error</a> ·
+    <a href="#legal"${state.level === "legal" ? ` aria-current="page"` : ""}>Legal notice</a> ·
+    <a href="#privacy"${state.level === "privacy" ? ` aria-current="page"` : ""}>Privacy</a></p>`);
+}
+
+function renderFootBody() {
   const m = state.data.meta;
   const el = document.getElementById("foot");
   const here = (level) => (state.level === level ? ` aria-current="page"` : "");
   const tools = state.iso3 && country(state.iso3)
     ? `<div class="tools"><a href="${link({ level: "sources" })}"${here("sources")}>How do we know?</a>
        <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
-    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a>
-       <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">Report an error</a></div>`;
+    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
   if (fieldsOn()) {
     el.innerHTML = `${tools}Map: <a href="https://data.jrc.ec.europa.eu/dataset/15f86c84-eae1-4723-8e00-c1b35c8f56b9" target="_blank"
       rel="noopener">JRC EUCROPMAP ${state.cropmap.meta.year}</a> (crop shares at 2 km). List: Eurostat crop statistics by region.
@@ -1337,6 +1370,14 @@ function wire(el) {
       render(); fitTrade();
     };
   }
+  for (const b of el.querySelectorAll("[data-scenario]")) {
+    b.onclick = () => {
+      state.scenario = b.dataset.scenario === "1";
+      if (state.scenario) loadScenario();
+      render();
+      keepFocus("#view .whatif");
+    };
+  }
   for (const b of el.querySelectorAll("[data-fields]")) {
     b.onclick = () => { state.fields = b.dataset.fields === "1"; render(); keepFocus(`[data-fields="${b.dataset.fields}"]`); };
   }
@@ -1369,7 +1410,8 @@ function viewIntro() {
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
       .concat(country(EU) ? [EU] : [])
       .map((id) => `<button type="button" data-go="#${id}">${id === EU ? "European Union" : nameOf(id)}</button>`)
-      .join("")}</div>`;
+      .join("")}</div>
+    <p class="small">${whatIf(state.scenario ? "Back to the main map" : "What if Russia and Ukraine stopped selling?")}</p>`;
 }
 
 // No food balance (Japan, Singapore): say so; the card still shows what it buys and sells.
@@ -2073,8 +2115,89 @@ function aboutSite() {
       ? ` Figures last built on ${made.toLocaleDateString("en-GB", { day: "numeric", month: "long", year: "numeric" })}.` : ""}</p>
     <p class="small">Found a mistake? Write to <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">${CONTACT}</a>,
       ideally with the page's address.</p>
-    <p class="small"><a href="https://mariusbleif.com/legal-notice/" target="_blank" rel="noopener">Legal notice</a> ·
-      <a href="https://mariusbleif.com/privacy-policy/" target="_blank" rel="noopener">Privacy policy</a></p>`;
+    <p class="small"><a href="#legal">Legal notice</a> · <a href="#privacy">Privacy policy</a></p>`;
+}
+
+// The operator, as on mariusbleif.com/legal-notice (Swiss address; contact for this site).
+const OPERATOR = `Marius Bleif<br>c/o JL Consulting Group GmbH<br>Zürcherstrasse 84<br>8852 Altendorf<br>Switzerland`;
+// Date of the current wording of the two pages below; change it with the text.
+const LEGAL_DATE = "18 October 2026";
+
+function viewLegal() {
+  return `
+    <h2>Legal notice</h2>
+    <h3>Operator and contact</h3>
+    <p>${OPERATOR}</p>
+    <p>E-mail: <a href="mailto:${CONTACT}">${CONTACT}</a></p>
+    <p>Responsible for the content: Marius Bleif.</p>
+    <h3>About the figures</h3>
+    <p>The figures on this site are worked out from public statistics, above all those of the UN Food and
+      Agriculture Organization (FAO), which are themselves partly estimates. They are a thought experiment
+      about land and harvests, not a forecast and not advice. How each one is made is explained under
+      <a href="#about">How do we know?</a> and on each country's page. If you find a mistake, please write to
+      <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">${CONTACT}</a>.</p>
+    <h3>Disclaimer</h3>
+    <p>The operator takes care that the content is correct but gives no guarantee that it is correct,
+      accurate, up to date, reliable or complete. No liability is accepted for damage, material or
+      otherwise, arising from the use or non-use of the information on this site, from misuse of the
+      connection or from technical faults. The operator may change or delete content, or stop publishing
+      the site, at any time without notice.</p>
+    <h3>Links</h3>
+    <p>Links to other websites lie outside the operator's responsibility. Visiting them is at your own
+      risk; their own terms and privacy policies apply.</p>
+    <h3>Copyright and reuse</h3>
+    <p>Texts, design and the map's presentation belong to Marius Bleif unless stated otherwise. The underlying
+      data belong to their publishers and are used under the licences listed under
+      <a href="#about">How do we know?</a> (most of them CC BY 4.0); anyone reusing figures from this site must
+      also credit those sources. The borders are © EuroGeographics, for non-commercial use. For any other
+      reuse, please ask first.</p>
+    <h3>Privacy</h3>
+    <p>How personal data are handled is described in the <a href="#privacy">privacy policy</a>.</p>
+    <p class="small">As of ${LEGAL_DATE}.</p>`;
+}
+
+// Kept true to what the site does: static files from one host, no cookies, no storage, no
+// third-party requests (fonts and map glyphs are self-hosted), the browser language read locally.
+function viewPrivacy() {
+  return `
+    <h2>Privacy policy</h2>
+    <h3>1. Who is responsible</h3>
+    <p>${OPERATOR}</p>
+    <p>E-mail: <a href="mailto:${CONTACT}">${CONTACT}</a></p>
+    <h3>2. This site</h3>
+    <p>The Food Autonomy Atlas is a static website. It sets no cookies, stores nothing in your browser,
+      runs no analytics or tracking, and has no accounts or forms. Its map, data and fonts all come from the
+      same server: no third-party scripts, fonts or map services are loaded.</p>
+    <p>To suggest your country on the start page, the site reads your browser's language setting. This
+      happens only in your browser and is not sent anywhere.</p>
+    <h3>3. Server logs and hosting</h3>
+    <p>When you open the site, the hosting provider records technical data, as every web server does: IP
+      address, date and time, the page requested, browser and operating system, and the referring page. These
+      data are used only to deliver the site and keep it secure, and are deleted after a short time. The site
+      is hosted by Netlify, Inc. (USA), which is certified under the Swiss-U.S. and EU-U.S. Data Privacy
+      Frameworks.</p>
+    <h3>4. Links to other sites</h3>
+    <p>The site links to its data sources and other websites. Nothing is sent to them until you follow a
+      link; from then on their own privacy policies apply.</p>
+    <h3>5. E-mail</h3>
+    <p>If you write to us, for example to report an error, we use your address and message only to answer
+      you and to correct the site, and delete them once they are no longer needed.</p>
+    <h3>6. Artificial intelligence</h3>
+    <p>The atlas, its data pipeline, its checks and its texts were built with the help of an AI system
+      (Claude, by Anthropic), and checked as described under <a href="#about">How do we know?</a>. The site
+      itself uses no AI when you visit it, and nothing you do on it is sent to an AI service.</p>
+    <h3>7. Legal basis</h3>
+    <p>Data are processed under the Swiss Federal Act on Data Protection (FADP) and, where it applies, the
+      EU General Data Protection Regulation (GDPR), on the basis of a legitimate interest in delivering and
+      securing the site and answering messages (Art. 6(1)(f) GDPR).</p>
+    <h3>8. Your rights</h3>
+    <p>You may ask free of charge what data about you are held, and have them corrected or deleted, by
+      writing to <a href="mailto:${CONTACT}">${CONTACT}</a>. You may also complain to the Federal Data
+      Protection and Information Commissioner (FDPIC) in Bern or, where the GDPR applies, to the supervisory
+      authority where you live.</p>
+    <h3>9. Changes</h3>
+    <p>This policy may be updated; the version published here applies.</p>
+    <p class="small">As of ${LEGAL_DATE}.</p>`;
 }
 
 // Every data source with its publisher and licence (ssr.json meta.sources = pipeline config.SOURCES),

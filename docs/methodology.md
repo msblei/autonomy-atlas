@@ -335,6 +335,20 @@ known gap this leaves). A withheld "all food" figure (`*_flag`) has no feed-adju
 country without feed records in FAO's accounts has none either. Exported as `feed_ssr` and
 `feed_share` next to `ssr` and `share` for both bases.
 
+**The calorie balance** (the four rows of the "All food" card), per person a day, over the same
+items: each food's calories split by the shares of its use that are produced, bought and sold.
+
+    used     = Σ_i k_i                          (k = kcal/cap/day; = kcal_den)
+    produced = feed_ssr_kcal × used / 100        (Σ_i k_i · SSR_i' / 100)
+    imports  = Σ_i k_i · M_i / D_i  +  Σ_{pigs, poultry, eggs} k_i · f · SSR_i / 100
+    exports  = Σ_i k_i · X_i / D_i
+
+Dairy as one food uses its group's milk-equivalent M, X and D. The calories of pork, chicken and
+eggs raised on imported feed count as bought abroad, so produced + imports − exports = used up to
+stock changes. A hub that moves much more than it uses (Netherlands) buys and sells several times
+the calories it uses: that is its balance, not an error. Exported as `kcal.balance`
+`{produced, imports, exports, used}`, whole kcal; absent where the headline is withheld.
+
 Without the adjustment, imported soybean meal hardly counts: it enters the weights only through
 the soy that people eat, while the meat made from it counts in full. The Netherlands came out at
 122% of its protein, Denmark at 182%, Germany at 100%.

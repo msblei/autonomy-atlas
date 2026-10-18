@@ -126,6 +126,7 @@ svg { flex: none; }
 #foot .tools a { font-weight: 700; color: var(--ink); text-decoration: none; }
 #foot .tools a:hover, #foot .tools a[aria-current] { text-decoration: underline; }
 #foot a { color: var(--ink-soft); }
+#foot .legal { margin: 4px 0 0; }
 
 /* the sheet's handle and its folded summary exist on phones only */
 #grab, #peek { display: none; }

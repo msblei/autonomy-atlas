@@ -308,13 +308,17 @@ def collapse_dairy(items: pd.DataFrame, groups: pd.DataFrame) -> pd.DataFrame:
     sub = items[is_d].assign(_jrc=items.loc[is_d, "jrc_food"].eq(JRC_WHOLE_GROUP) if "jrc_food" in items else False)
     d = sub.groupby(["iso3", "years"], as_index=False).agg(
         **{c: (c, lambda x: x.sum(min_count=1)) for c in PER_CAPITA_ELEMENTS}, _jrc=("_jrc", "any"))
-    d = d.merge(t[["iso3", "years", "ssr", "flag", "production", "supply"]], on=["iso3", "years"], how="left")
+    d = d.merge(t[["iso3", "years", "ssr", "flag", "production", "imports", "exports", "supply"]],
+                on=["iso3", "years"], how="left")
     # Withheld by review or by the plausibility test, the balance still adds up: "all food" keeps
     # the published reading, as it keeps the items of any such group (methodology, "Withheld").
     kept = d["flag"].isin([checks.REVIEWED, checks.IMPLAUSIBLE])
     d.loc[kept, "ssr"] = ratio(d.loc[kept, "production"], d.loc[kept, "supply"])
     d.loc[kept, "flag"] = ""
-    d = d.drop(columns=["production", "supply"])
+    # The group's trade and use (milk equivalent), for the calorie balance in overall() only:
+    # production and supply must stay empty, or reading B of a withheld dairy group would change.
+    d = d.rename(columns={"imports": "bal_imports", "exports": "bal_exports", "supply": "bal_supply"})
+    d = d.drop(columns=["production"])
     d["item"] = np.where(d["_jrc"], JRC_DAIRY_ITEM, FAO_DAIRY_ITEM)
     d["jrc_food"] = np.where(d["_jrc"], JRC_WHOLE_GROUP, None)
     d["group"] = DAIRY_GROUP
@@ -454,6 +458,14 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
                     vals[name] = (s[w] * v).sum() / tot if tot > 0 else np.nan
                     if name == "a":
                         row[f"{w}_den"] = tot  # the weight divided by (feed.py adjusts against it)
+                        if w == "kcal" and suffix == "_ssr":
+                            # The calorie balance: each food's calories split by its imports and
+                            # exports as shares of its use (methodology, '"All food" coverage').
+                            def col(c, s=s):  # dairy as one food: its group's (collapse_dairy)
+                                return s[f"bal_{c}"].fillna(s[c]) if f"bal_{c}" in s else s[c]
+                            sup = col("supply").where(col("supply") > 0)
+                            row["kcal_imports"] = (s[w] * col("imports").fillna(0) / sup).sum()
+                            row["kcal_exports"] = (s[w] * col("exports").fillna(0) / sup).sum()
                 row[f"{w}{suffix}"] = vals["a"]
                 both = pd.Series([vals["a"], vals["b"]], dtype=float)
                 lo, hi = both.min(), both.max()
@@ -464,7 +476,8 @@ def overall(items: pd.DataFrame, leaves: set[str]) -> pd.DataFrame:
                     depends = True
             row[f"{w}_flag"] = checks.PARTS_CONTRADICT if depends else ""
         rows.append(row)
-    cols = ["iso3", "years", "n_foods", "n_withheld", "protein_flag", "kcal_flag", "protein_den", "kcal_den"] + [
+    cols = ["iso3", "years", "n_foods", "n_withheld", "protein_flag", "kcal_flag", "protein_den", "kcal_den",
+            "kcal_imports", "kcal_exports"] + [
         f"{w}{suffix}{b}" for w in PER_CAPITA_ELEMENTS for suffix in ("", "_share", "_ssr")
         for b in (("",) if suffix == "" else ("", "_low", "_high"))]
     return pd.DataFrame(rows, columns=cols)
