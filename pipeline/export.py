@@ -87,6 +87,7 @@ def _all_basis(r: pd.Series, w: str, extra: dict) -> dict:
 
 # A disagreement is shown for an item carrying at least this share of its group's domestic supply.
 USDA_ITEM_SHARE = 0.10
+USDA_GROUP_PP = 5.0  # ... or a disagreement that could move the group's figure by this many points
 
 
 def _usda_disagreements(items: pd.DataFrame) -> dict:
@@ -105,7 +106,11 @@ def _usda_disagreements(items: pd.DataFrame) -> dict:
     out: dict = {}
     for _, r in cmp.sort_values("supply_fao", ascending=False).iterrows():
         tot = gsum.get((r["iso3"], r["group"]))
-        if not tot or tot <= 0 or r["supply_fao"] < USDA_ITEM_SHARE * tot:
+        if not tot or tot <= 0:
+            continue
+        share = r["supply_fao"] / tot
+        # an important item, or one whose disagreement could move the group's figure by 5 points
+        if share < USDA_ITEM_SHARE and share * abs(r["ssr_fao"] - r["ssr_usda"]) < USDA_GROUP_PP:
             continue
         out.setdefault((r["iso3"], r["group"]), []).append(
             {"item": r["item"], "fao": _round(r["ssr_fao"]), "usda": _round(r["ssr_usda"])})

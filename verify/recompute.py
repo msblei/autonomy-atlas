@@ -858,7 +858,8 @@ def usda_flags(D, res, usda, use_rule="either"):
         if abs(fao - us) <= max(20.0, 0.2 * min(fao, us)):
             continue
         gd = r["groups"][g]["comp"]["D"] if g in r["groups"] else math.nan
-        if not isnan(gd) and gd > 0 and b["D"] >= 0.1 * gd:
+        # methodology "FAO against USDA", Use: >= 10% of the group's supply, or share x |gap| >= 5
+        if not isnan(gd) and gd > 0 and (b["D"] >= 0.1 * gd or b["D"] / gd * abs(fao - us) >= 5):
             out[(iso, g)][item] = (fao, us)
     return out
 
