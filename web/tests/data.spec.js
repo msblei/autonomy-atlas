@@ -282,3 +282,13 @@ test("a trade flow withheld by review says why in words", async ({ page }) => {
   await view(page).locator("details.notes summary").click();
   await expect(view(page)).toContainText(w[5].slice(0, 40));
 });
+
+test("how do we know: every source is credited with its licence", async ({ page }) => {
+  await page.goto("./#about");
+  const list = page.locator("ul.sources li");
+  const n = Object.keys(data.meta.sources).length - 1; // the borders are credited under "The map"
+  await expect(list).toHaveCount(n);
+  for (const key of ["eumofa_cf", "ggcmi_calendar", "isimip_landuse", "feedipedia", "cepii_baci"]) {
+    await expect(page.locator("#view")).toContainText(data.meta.sources[key].title);
+  }
+});

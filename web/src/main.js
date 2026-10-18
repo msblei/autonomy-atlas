@@ -1861,7 +1861,23 @@ function viewAbout() {
       10 months. Choose a country to see its own figures worked out.</p>
     ${checks()}
     ${caveats(null, groupInfo("all"))}
+    ${sourceList()}
     ${mapSource()}`;
+}
+
+// Every data source with its publisher and licence (ssr.json meta.sources = pipeline config.SOURCES),
+// as their licences ask; the borders follow under "The map".
+function sourceList() {
+  const all = Object.entries(state.data.meta.sources ?? {}).filter(([k]) => k !== "gisco_countries");
+  if (!all.length) return "";
+  return `
+    <h3>Sources and licences</h3>
+    <ul class="sources small">${all.map(([, s]) => `
+      <li><a href="${s.url}" target="_blank" rel="noopener">${s.title}</a>, ${s.publisher}.
+        ${s.licence_url ? `<a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>` : s.licence}.</li>`).join("")}
+    </ul>
+    <p class="small">The figures on this site are worked out from these sources (summed, averaged, converted and
+      compared); the sources are not responsible for them.</p>`;
 }
 
 // How the figures are checked (Makefile `verify`), with the count of left-out figures taken
