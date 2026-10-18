@@ -23,6 +23,7 @@ from . import (
     feedcheck,
     harmonise,
     manifest,
+    plausible,
     regions,
     report,
     scenario,
@@ -85,6 +86,7 @@ def main(argv: list[str] | None = None) -> int:
         compute.run(years=years)
         baci.extract(trade.fbs_window())
         trade.run()
+        plausible.run(years=years)
         comext.run_compare(trade.fbs_window())
         comext.run_value(trade.fbs_window())
         baci.run_compare(trade.fbs_window())
@@ -106,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         compute.run(years=years)
         baci.extract(trade.fbs_window())
         trade.run()
+        plausible.run(years=years)
         comext.run_compare(trade.fbs_window())
         comext.run_value(trade.fbs_window())
         baci.run_compare(trade.fbs_window())

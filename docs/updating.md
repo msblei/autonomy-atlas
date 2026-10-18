@@ -57,11 +57,18 @@ and wine fall back to FAO's figures (`pipeline/jrc.py`).
 2. **The review lists**, which carry human judgements about one release's figures. Each line has
    a date: check it still holds.
    - `mappings/withheld_by_review.csv`: balances withheld although they do not contradict
-     themselves (Uruguay's and Cambodia's pulses).
+     themselves (Uruguay's and Cambodia's pulses, Denmark's sugar, Djibouti's transit grain and
+     oil).
+   - The plausibility verdicts (`data/processed/plausibility.parquet`, "implausible" on the audit
+     page) are a rule, not a list: they follow the new figures by themselves. Look at what a
+     refresh adds or drops; if a figure everyone knows to be right is withheld, the ceilings
+     (`checks.USE_CEILING_KG`) or the trade threshold (`checks.PLAUS_TRADE_OVER`) need a second
+     look, not an exception.
    - `mappings/trade_withheld_by_review.csv`: trade flows found false (the Marshall Islands'
      cereal imports).
    - `mappings/confirmed_findings.csv`: warnings found right (very high SSRs, Botswana's trade).
-3. **Mappings that follow the sources' codes**: `trade_items.csv` (FAO trade items),
+3. **Mappings that follow the sources' codes**: `trade_items.csv` (FAO trade items; a new fruit or
+   meat item also needs its `fbs_item`, else it is left out of the per-item extra-EU shares),
    `hs_overrides.csv` and `cn8_items.csv` (Comext codes; `atlas crosswalk` stops on any new code it
    cannot place), `feed_items.csv` (new feed items would show as a lower `items_pct`),
    `comext_partners.csv` (a new Comext partner code is dropped from the partner lists until mapped).

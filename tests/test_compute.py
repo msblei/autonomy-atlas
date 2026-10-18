@@ -291,3 +291,27 @@ def test_duplicate_balance_rows_fail_loudly():
     })
     with pytest.raises(ValueError, match="same iso3/item/year/element"):
         compute.to_wide(fbs)
+
+
+def test_dairy_in_milk_equivalent_keeps_the_identity_and_moves_the_butter_milk():
+    from pipeline.compute import dairy_milk_equivalent, group_tonnes
+
+    # New Zealand-like: 22 Mt milk, 9 Mt of it churned into 0.6 Mt of butter and cream, mostly sold
+    base = {"iso3": "NZL", "years": "2021-2023", "group": "dairy", "group_label": "Dairy",
+            "stock_variation": 0.0, "feed": 0.0, "seed": 0.0, "losses": 0.0, "other_uses": 0.0,
+            "tourist": 0.0, "residuals": 0.0, "flag": ""}
+    items = pd.DataFrame([
+        {**base, "item": "Milk - Excluding Butter", "production": 22000, "imports": 400,
+         "exports": 12600, "supply": 9800, "food": 500, "processing": 9000},
+        {**base, "item": "Butter, Ghee", "production": 450, "imports": 5, "exports": 420,
+         "supply": 35, "food": 35, "processing": 0},
+        {**base, "item": "Cream", "production": 150, "imports": 0, "exports": 140,
+         "supply": 10, "food": 10, "processing": 0},
+    ])
+    out = dairy_milk_equivalent(items)
+    f = 9000 / 600
+    assert out.loc[1, "production"] == 0 and out.loc[1, "exports"] == 420 * f
+    assert out.loc[0, "supply"] == 9800 - 9000 and out.loc[0, "processing"] == 0
+    g = group_tonnes(items).iloc[0]
+    assert abs(g["production"] + g["imports"] - g["exports"] - g["stock_variation"] - g["supply"]) < 1e-6
+    assert abs(g["ssr"] - 100 * 22000 / (800 + 45 * f)) < 1e-6  # about 15x, not 2x

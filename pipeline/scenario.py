@@ -21,6 +21,7 @@ from .compute import EU_BLOC
 log = logging.getLogger(__name__)
 
 PARTNERS = ("RUS", "UKR")
+ALL_MIN_PROTEIN = 0.9  # "all food" needs figures for foods carrying 90% of the groups' protein
 OUT = "scenario.parquet"
 
 
@@ -61,6 +62,10 @@ def compute(partners: pd.DataFrame, groups: pd.DataFrame, items: pd.DataFrame, p
     w = out.assign(p=[prot.get((i, gr), np.nan) for i, gr in zip(out["iso3"], out["group"], strict=True)])
     w = w[w["p"] > 0]
     allf = (w.assign(x=w["lack"] * w["p"]).groupby("iso3")[["x", "p"]].sum())
+    # Only where the foods with a figure carry most of the protein: without Turkey's withheld
+    # cereals its "all food" fell from 17% to 3%, the foods it buys most from Russia left out.
+    total = prot[prot > 0].groupby(level="iso3").sum()
+    allf = allf[allf["p"] >= ALL_MIN_PROTEIN * total.reindex(allf.index)]
     allf = (allf["x"] / allf["p"]).rename("lack").reset_index().assign(group="all")
     return pd.concat([out, allf], ignore_index=True)
 

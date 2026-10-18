@@ -92,3 +92,42 @@ def test_usda_comparison_flags_large_gaps_only():
     c = usda.compare(fao, psd).set_index("iso3")
     assert bool(c.loc["TUR", "large_gap"]) and not bool(c.loc["DEU", "large_gap"])
     assert round(c.loc["TUR", "ssr_usda"]) == 92
+
+
+# ---- plausibility (docs/methodology.md, "Withheld as implausible") ----
+
+def groups_frame(rows):
+    cols = ["iso3", "group", "production", "imports", "supply", "population", "flag"]
+    return pd.DataFrame(rows, columns=cols)
+
+
+def test_use_per_person_above_ceiling_is_withheld():
+    # New Zealand dairy before the milk-equivalent fix: 9.8 Mt used by 5.1 M people (1.9 t each)
+    g = groups_frame([["NZL", "dairy", 22007, 417, 9814, 5130, ""]])
+    v = checks.plausibility(g)
+    assert list(v["test"]) == ["use_per_person"]
+    # second reading: use at home at the ceiling, 550 kg x 5.13 M people
+    assert abs(v["ssr_alt"].iloc[0] - 100 * 22007 / (0.55 * 5130)) < 1e-6
+
+
+def test_ceiling_that_does_not_move_the_ratio_asks_nothing():
+    # 10 kt over the ceiling on a big balance: the SSR barely moves
+    g = groups_frame([["AAA", "meat", 100, 1600, 1610, 10000, ""]])  # 161 kg a person, ceiling 150
+    assert checks.plausibility(g).empty  # 6.2% -> 6.7%: under 10 points and 10%
+
+
+def test_imports_far_above_trade_records_against_the_typical_ratio():
+    # four countries at 1.2x their records, one at 2.7x (United States fruit)
+    rows = [[c, "fruit", 100, 120, 220, 1000, ""] for c in ("AAA", "BBB", "CCC", "DDD")]
+    rows.append(["USA", "fruit", 19968, 50974, 64649, 333000, ""])
+    trade = pd.Series({(c, "fruit"): 100.0 for c in ("AAA", "BBB", "CCC", "DDD")} | {("USA", "fruit"): 18813.0})
+    v = checks.plausibility(groups_frame(rows), trade)
+    assert list(v["iso3"]) == ["USA"]
+    m_alt = 18813 * 1.2
+    assert abs(v["ssr_alt"].iloc[0] - 100 * 19968 / (64649 - (50974 - m_alt))) < 1e-6
+
+
+def test_withheld_for_another_reason_is_not_tested_but_own_verdict_is_retested():
+    g = groups_frame([["NZL", "dairy", 22007, 417, 9814, 5130, "supply_nonpositive"],
+                      ["IRL", "dairy", 8960, 1279, 4588, 5110, checks.IMPLAUSIBLE]])
+    assert list(checks.plausibility(g)["iso3"]) == ["IRL"]

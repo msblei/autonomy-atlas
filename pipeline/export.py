@@ -262,6 +262,7 @@ def export_ssr() -> None:
     years = sorted(groups["years"].unique())
     disagree = _usda_disagreements(items)
     review = checks.reviewed_withholds()
+    plaus = _plausibility()
     window = tuple(int(y) for y in years[-1].split("-")) if years else None
     jrc_pub = jrc.published_ssr(window) if window else {}
     trend_years = sorted(int(y) for y in trends["year"].unique())
@@ -356,6 +357,9 @@ def export_ssr() -> None:
                                        "range": _range(r.get("ssr_low"), r.get("ssr_high"))}
                     if reason == checks.REVIEWED:
                         ind["withheld"]["note"] = review.get((iso3, r["group"]))
+                    if reason == checks.IMPLAUSIBLE:
+                        # the second readings that moved the figure (plausible.py), for the text
+                        ind["withheld"]["plausibility"] = plaus.get((iso3, r["group"]), [])
                     if reason == checks.PARTS_CONTRADICT:
                         # which foods' own figures contradict themselves, for the explanation
                         bad = items[(items["iso3"] == iso3) & (items["group"] == r["group"])
@@ -415,6 +419,27 @@ def export_ssr() -> None:
     dest.write_text(json.dumps(_compact(item_tables), ensure_ascii=False, separators=(",", ":")),
                     encoding="utf-8")
     log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)
+
+
+def _plausibility() -> dict[tuple[str, str], list[dict]]:
+    """(iso3, group) -> the plausibility test's second readings (data/processed/plausibility.parquet):
+    test, ssr_alt (null: no use at home left), and per test the figures the UI quotes: kg a
+    person and the ceiling (use_per_person); the records' imports in kt and the balance's ratio to
+    them against the group's typical one (imports_vs_trade)."""
+    from . import plausible
+
+    path = config.PROCESSED / plausible.OUT
+    if not path.exists():
+        return {}
+    out: dict = {}
+    for r in pd.read_parquet(path).itertuples():
+        d = {"test": r.test, "ssr_alt": _round(r.ssr_alt)}
+        if r.test == "use_per_person":
+            d |= {"kg": _round(r.value, 0), "ceiling_kg": _round(r.limit, 0)}
+        else:
+            d |= {"trade_kt": _round(r.trade_kt, 0), "ratio": _round(r.value), "typical": _round(r.limit)}
+        out.setdefault((r.iso3, r.group), []).append(d)
+    return out
 
 
 def _round_coords(c, nd: int = 3):

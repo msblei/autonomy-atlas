@@ -94,6 +94,18 @@ def check_balance_identity(groups: pd.DataFrame, items: pd.DataFrame) -> list[Fi
     ours_row = (g["iso3"] == EU_BLOC) | (g.get("source", pd.Series("", index=g.index)) == "jrc_bal")
     rounding = pd.Series([FAO_ROUNDING_KT * n_items.get((i, gr), 1) for i, gr in zip(g["iso3"], g["group"], strict=True)],
                          index=g.index)
+    # FAO dairy in milk equivalent: butter's and cream's rounding counts f times (compute.milk_per_fat)
+    from .compute import DAIRY_GROUP, FAT_ITEMS, MILK_ITEM, milk_per_fat
+
+    d = items[items["item"].isin([MILK_ITEM, *FAT_ITEMS]) & items["supply"].notna()]
+    if "jrc_food" in d:
+        d = d[d["jrc_food"].fillna("") != "dairy"]
+    if len(d) and "years" in d:
+        f = milk_per_fat(d).droplevel("years")
+        n_fat = d[d["item"].isin(FAT_ITEMS)].groupby("iso3").size()
+        is_d = (g["group"] == DAIRY_GROUP) & g["iso3"].isin(f.index)
+        rounding[is_d] = FAO_ROUNDING_KT * (1 + g.loc[is_d, "iso3"].map(f)
+                                            * g.loc[is_d, "iso3"].map(n_fat).fillna(0))
     tol = np.maximum(np.maximum(1.0, REL_TOL * scale), np.where(ours_row, 0.0, rounding))
     for _, r in g[ok & (gap > tol)].iterrows():
         ours = r["iso3"] == EU_BLOC or r.get("source") == "jrc_bal"
@@ -122,7 +134,10 @@ def check_group_sums(items: pd.DataFrame, groups: pd.DataFrame) -> list[Finding]
             if it in seen:
                 out.append(Finding("item_in_two_groups", BLOCK, f"{it!r} in {seen[it]} and {key}"))
             seen[it] = key
-    it = items[items["group"].notna()]
+    from .compute import dairy_milk_equivalent
+
+    # dairy: the items in milk equivalent (butter and cream as the milk they are made from)
+    it = dairy_milk_equivalent(items[items["group"].notna()])
     s = it.groupby(["iso3", "group"])[["production", "imports", "exports", "supply"]].sum(min_count=1)
     t = groups[groups["basis"] == "tonnes"].set_index(["iso3", "group"])
     j = t.join(s, rsuffix="_items", how="left")
@@ -304,6 +319,22 @@ def check_usda() -> list[Finding]:
                            f"use {r['supply_fao']:.0f} / {r['supply_usda']:.0f} kt)",
                            r["iso3"], r["item"], _f(r["gap_pp"])))
     return out
+
+
+def check_plausibility() -> list[Finding]:
+    """The plausibility test's verdicts (pipeline/plausible.py), for the record: each second
+    reading that withheld a figure, with the figures behind it."""
+    from . import plausible
+
+    path = config.PROCESSED / plausible.OUT
+    if not path.exists():
+        return [Finding("plausibility_missing", BLOCK, "no plausibility.parquet: `atlas build`")]
+    v = pd.read_parquet(path)
+    return [Finding("implausible", WITHHOLD,
+                    f"{r.detail}: SSR {r.ssr:.0f}% as published, "
+                    + ("no use at home left" if pd.isna(r.ssr_alt) else f"{r.ssr_alt:.0f}%")
+                    + " on the second reading", r.iso3, r.group, _f(r.ssr_alt))
+            for r in v.itertuples()]
 
 
 def check_feed_dgagri() -> list[Finding]:
@@ -708,6 +739,7 @@ def run(*, write: bool = True) -> list[Finding]:
     findings += check_jrc(groups, items)
     findings += check_usda()
     findings += check_feed_dgagri()
+    findings += check_plausibility()
     if partners is None:
         findings.append(Finding("trade_missing", BLOCK, "no trade_partners.parquet"))
     else:
@@ -782,6 +814,7 @@ def run(*, write: bool = True) -> list[Finding]:
                           .to_dict("records"),
             "files": {n: _sha(W / n) for n in PUBLISHED if (W / n).exists()},
             "thresholds": {"residual_share": checks.RESIDUAL_SHARE, "ssr_review": SSR_REVIEW,
+                           "use_ceiling_kg": checks.USE_CEILING_KG, "plaus_trade_over": checks.PLAUS_TRADE_OVER,
                            "jrc_tol_pp": JRC_TOL_PP, "fao_eu27_tol": FAO_EU27_TOL},
             "findings": [asdict(f) for f in findings if f.severity != WITHHOLD],
         }

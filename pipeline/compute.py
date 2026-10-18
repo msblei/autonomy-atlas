@@ -140,9 +140,59 @@ def _with_groups(items: pd.DataFrame) -> pd.DataFrame:
     return items[items["group"].notna()]
 
 
+# FAO's dairy items (docs/methodology.md, "Dairy in milk equivalent"): "Milk - Excluding Butter"
+# is in milk equivalent and its "Processing" line is the milk churned into butter and cream, which
+# are separate items in product weight. Summed as they are, a butter exporter keeps the milk of its
+# exported butter in its own supply (New Zealand: 9.0 Mt of 9.8 Mt "used at home").
+DAIRY_GROUP = "dairy"
+MILK_ITEM = "Milk - Excluding Butter"
+FAT_ITEMS = ("Butter, Ghee", "Cream")
+MILK_PER_FAT = (5.0, 30.0)  # t of milk per t of butter and cream: the country's own ratio, clipped
+MILK_PER_FAT_DEFAULT = 17.5  # median of the countries that make butter or cream (2021-2023)
+
+
+def milk_per_fat(items: pd.DataFrame) -> pd.Series:
+    """f per (iso3, years): milk processed / (butter + cream produced), clipped to MILK_PER_FAT,
+    MILK_PER_FAT_DEFAULT where none is made. `items`: FAO dairy rows (milk, butter, cream)."""
+    keys = ["iso3", "years"]
+    proc = items[items["item"] == MILK_ITEM].groupby(keys)["processing"].sum(min_count=1)
+    made = items[items["item"].isin(FAT_ITEMS)].groupby(keys)["production"].sum(min_count=1).clip(lower=0)
+    f = (proc / made.where(made > 0)).reindex(proc.index.union(made.index))
+    return f.clip(*MILK_PER_FAT).fillna(MILK_PER_FAT_DEFAULT)
+
+
+def dairy_milk_equivalent(items: pd.DataFrame) -> pd.DataFrame:
+    """FAO dairy items -> rows that sum to a milk-equivalent balance (JRC dairy left alone).
+
+    Per country and window, f = milk processed / (butter + cream produced), clipped to
+    MILK_PER_FAT (MILK_PER_FAT_DEFAULT where none is produced). Butter and cream: production 0,
+    every other quantity x f (their milk is the milk's own production); milk: supply and
+    processing less f x (butter + cream produced). P + M - X - dS = D holds exactly for any f."""
+    g = items
+    is_jrc = g["jrc_food"].eq(JRC_WHOLE_GROUP) if "jrc_food" in g else pd.Series(False, index=g.index)
+    milk = (g["item"] == MILK_ITEM) & ~is_jrc
+    fat = g["item"].isin(FAT_ITEMS) & ~is_jrc
+    if not (milk.any() and fat.any()):
+        return g
+    g = g.copy()
+    keys = ["iso3", "years"]
+    made = g[fat].groupby(keys)["production"].sum(min_count=1).clip(lower=0)
+    f = milk_per_fat(g[milk | fat])
+    idx = pd.MultiIndex.from_frame(g[keys])
+    fk = pd.Series(f.reindex(idx).fillna(MILK_PER_FAT_DEFAULT).to_numpy(), index=g.index)
+    qty = [c for c in COMPONENTS if c in g and c != "production"]
+    g.loc[fat, qty] = g.loc[fat, qty].mul(fk[fat], axis=0)
+    g.loc[fat, "production"] = 0.0
+    churned = pd.Series((made.reindex(idx).fillna(0) * fk.to_numpy()).to_numpy(), index=g.index)
+    for c in ("supply", "processing"):
+        g.loc[milk, c] = g.loc[milk, c] - churned[milk]
+    return g
+
+
 def group_tonnes(items: pd.DataFrame) -> pd.DataFrame:
-    """Sum components across items of a group, then compute ratios. Basis: tonnes."""
-    g = _with_groups(items)
+    """Sum components across items of a group, then compute ratios. Basis: tonnes (dairy in milk
+    equivalent, dairy_milk_equivalent)."""
+    g = dairy_milk_equivalent(_with_groups(items))
     agg = g.groupby(["iso3", "group", "group_label", "years"], as_index=False)[COMPONENTS].sum(
         min_count=1
     )
@@ -240,19 +290,37 @@ JRC_WHOLE_GROUP = "dairy"
 JRC_DAIRY_ITEM = "Dairy (milk equivalent, European Commission)"
 
 
-def collapse_jrc_dairy(items: pd.DataFrame, groups: pd.DataFrame) -> pd.DataFrame:
-    """For "all food": where the JRC replaced dairy, its items become one row with the group's
-    (JRC) SSR and the items' summed protein and kcal. Item-level dairy SSRs there are FAO
-    product-weight figures scaled to a milk-equivalent total, neither FAO's nor the JRC's."""
-    if "jrc_food" not in items:
+FAO_DAIRY_ITEM = "Dairy (milk equivalent)"
+
+
+def collapse_dairy(items: pd.DataFrame, groups: pd.DataFrame) -> pd.DataFrame:
+    """For "all food": a country's dairy items become one row with the dairy group's SSR (milk
+    equivalent: the JRC's where it replaced dairy, else FAO's via dairy_milk_equivalent) and the
+    items' summed protein and kcal. Item-level dairy SSRs are product-weight figures: FAO's milk
+    line keeps the milk of exported butter in its supply, and the JRC-scaled items are neither
+    FAO's nor the JRC's figures."""
+    if "group" not in items:
         return items
-    is_d = items["jrc_food"] == JRC_WHOLE_GROUP
+    is_d = items["group"] == DAIRY_GROUP
     if not is_d.any():
         return items
-    t = groups[(groups["basis"] == "tonnes") & (groups["group"] == JRC_WHOLE_GROUP)]
-    d = items[is_d].groupby(["iso3", "years"], as_index=False)[PER_CAPITA_ELEMENTS].sum(min_count=1)
-    d = d.merge(t[["iso3", "years", "ssr", "flag"]], on=["iso3", "years"], how="left")
-    d["item"] = JRC_DAIRY_ITEM
+    t = groups[(groups["basis"] == "tonnes") & (groups["group"] == DAIRY_GROUP)]
+    sub = items[is_d].assign(_jrc=items.loc[is_d, "jrc_food"].eq(JRC_WHOLE_GROUP) if "jrc_food" in items else False)
+    d = sub.groupby(["iso3", "years"], as_index=False).agg(
+        **{c: (c, lambda x: x.sum(min_count=1)) for c in PER_CAPITA_ELEMENTS}, _jrc=("_jrc", "any"))
+    d = d.merge(t[["iso3", "years", "ssr", "flag", "production", "supply"]], on=["iso3", "years"], how="left")
+    # Withheld by review or by the plausibility test, the balance still adds up: "all food" keeps
+    # the published reading, as it keeps the items of any such group (methodology, "Withheld").
+    kept = d["flag"].isin([checks.REVIEWED, checks.IMPLAUSIBLE])
+    d.loc[kept, "ssr"] = ratio(d.loc[kept, "production"], d.loc[kept, "supply"])
+    d.loc[kept, "flag"] = ""
+    d = d.drop(columns=["production", "supply"])
+    d["item"] = np.where(d["_jrc"], JRC_DAIRY_ITEM, FAO_DAIRY_ITEM)
+    d["jrc_food"] = np.where(d["_jrc"], JRC_WHOLE_GROUP, None)
+    d["group"] = DAIRY_GROUP
+    d = d.drop(columns="_jrc")
+    if "jrc_food" not in items:
+        d = d.drop(columns="jrc_food")
     return pd.concat([items[~is_d], d], ignore_index=True)
 
 
@@ -316,11 +384,15 @@ def _extra_eu_trade(sums: pd.DataFrame, members: pd.DataFrame, extra: pd.DataFra
     # Items outside the groups use the members' share for all foods; a group with no shares at
     # all keeps the old members' sum (fish without a Comext download).
     traded = set(extra["group"])
-    m = m[m["group"].isna() | m["group"].isin(traded)]
+    m = m[m["group"].isna() | m["group"].isin(traded)].reset_index(drop=True)
     m["group"] = m["group"].fillna("all")
     for flow in ("imports", "exports"):
         sh = extra[extra["flow"] == flow][["iso3", "group", "year", "share"]]
         own = m.merge(sh, on=["iso3", "group", "year"], how="left")["share"]
+        # The item's own share where the trade records have one (fruit and meat: trade.ITEM_KEY).
+        item = m[["iso3", "item", "year"]].assign(group="item:" + m["item"]).merge(
+            sh, on=["iso3", "group", "year"], how="left")["share"]
+        own = item.fillna(own)
         # A member without trade records for that food: its share across all foods that year.
         alls = m[["iso3", "year"]].merge(sh[sh["group"] == "all"].drop(columns="group"),
                                         on=["iso3", "year"], how="left")["share"]
@@ -436,7 +508,8 @@ def latest_window(wide: pd.DataFrame, n: int = config.WINDOW_YEARS) -> tuple[int
     return (y1 - n + 1, y1)
 
 
-def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str]) -> dict:
+def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str],
+                    plausible: dict | None = None) -> dict:
     items = window_mean(wide, years)
     if "population" not in items:
         items["population"] = np.nan
@@ -447,15 +520,21 @@ def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str]
     items = items.merge(item_to_group(), on="item", how="left")
 
     groups = pd.concat([group_tonnes(items), group_kcal(items)], ignore_index=True)
-    # Withheld by review (checks.reviewed_withholds): window and single years, both bases.
-    review = checks.reviewed_withholds()
-    if review:
-        hit = pd.Series([(i, g) in review for i, g in zip(groups["iso3"], groups["group"], strict=True)],
+    # Withheld by review (checks.reviewed_withholds) and by the plausibility test (plausible.py):
+    # window and single years, both bases. A plausibility verdict keeps both readings as the range.
+    for reason, keys in ((checks.REVIEWED, checks.reviewed_withholds()), (checks.IMPLAUSIBLE, plausible)):
+        if not keys:
+            continue
+        hit = pd.Series([(i, g) in keys for i, g in zip(groups["iso3"], groups["group"], strict=True)],
                         index=groups.index)
-        free = groups["flag"].fillna("") == ""
-        groups.loc[hit & free & (groups["basis"] == "tonnes"), "flag"] = checks.REVIEWED
+        free = (groups["flag"].fillna("") == "") & (groups["basis"] == "tonnes")
+        groups.loc[hit & free, "flag"] = reason
+        if reason == checks.IMPLAUSIBLE:
+            rng = [keys.get((i, g), (np.nan, np.nan)) for i, g in zip(groups["iso3"], groups["group"], strict=True)]
+            groups.loc[hit & free, "ssr_low"] = [r[0] for r, h in zip(rng, hit & free, strict=True) if h]
+            groups.loc[hit & free, "ssr_high"] = [r[1] for r, h in zip(rng, hit & free, strict=True) if h]
         groups.loc[hit, ["ssr", "idr"]] = np.nan
-    totals = overall(collapse_jrc_dairy(items, groups), leaves | {JRC_DAIRY_ITEM})
+    totals = overall(collapse_dairy(items, groups), leaves | {JRC_DAIRY_ITEM, FAO_DAIRY_ITEM})
     groups = groups.merge(_jrc_foods(items), on=["iso3", "group"], how="left")
     groups["jrc_foods"] = groups["jrc_foods"].fillna("")
     jf = _jrc_foods(items.assign(group="all")).drop(columns="group")
@@ -469,7 +548,8 @@ def _compute_window(wide: pd.DataFrame, years: tuple[int, int], leaves: set[str]
 
 def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None,
             extra: pd.DataFrame | None = None,
-            jrc: pd.DataFrame | None = None) -> dict[str, pd.DataFrame]:
+            jrc: pd.DataFrame | None = None,
+            plausible: dict | None = None) -> dict[str, pd.DataFrame]:
     """Returns {'items', 'groups', 'overall', 'trends'} tidy frames.
 
     items/groups/overall cover the window (default: latest 3 years); trends has one SSR value per
@@ -484,11 +564,11 @@ def compute(fbs: pd.DataFrame, *, years: tuple[int, int] | None = None,
     years = years or latest_window(wide)
     log.info("window %s", years)
     res = _compute_window(jrc_bal.apply(base, jrc_bal.full_cover(jrc, years), UTILISATION),
-                          years, leaves)
+                          years, leaves, plausible)
 
     trend_rows = []
     for y in sorted(wide["year"].dropna().unique()):
-        r = _compute_window(wide, (int(y), int(y)), leaves)
+        r = _compute_window(wide, (int(y), int(y)), leaves, plausible)
         t = r["groups"][r["groups"]["basis"] == "tonnes"][["iso3", "group", "ssr", "jrc_foods"]]
         # "All food" headline: total protein produced vs used (uncapped), see docs/methodology.md.
         o = r["overall"][["iso3", "protein_ssr", "jrc_foods", "protein_flag"]].rename(
@@ -517,7 +597,9 @@ def run(*, years: tuple[int, int] | None = None) -> None:
     if extra is None:
         log.warning("no %s: EU27 supply is the members' sum, which double counts intra-EU trade",
                     shares)
-    res = compute(fbs, years=years, extra=extra, jrc=jrc_bal.load_balances())
+    from . import plausible
+
+    res = compute(fbs, years=years, extra=extra, jrc=jrc_bal.load_balances(), plausible=plausible.load())
     for name, df in res.items():
         out = config.PROCESSED / f"ssr_{name}.parquet"
         df.to_parquet(out, index=False)

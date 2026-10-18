@@ -64,6 +64,18 @@ def load_item_groups() -> dict[int, str]:
         return {int(r["item_code"]): r["group"] for r in rows if r["group"]}
 
 
+ITEM_KEY = "item:"  # extra-EU share keys per FBS item ("item:Bananas"), next to the group keys
+
+
+def load_item_fbs() -> dict[int, str]:
+    """Trade item code -> FBS item (`fbs_item`, fruit and meat only), for the EU bloc's per-item
+    extra-EU shares."""
+    path = config.MAPPINGS / "trade_items.csv"
+    with path.open(encoding="utf-8") as f:
+        rows = csv.DictReader(line for line in f if not line.startswith("#"))
+        return {int(r["item_code"]): r["fbs_item"] for r in rows if r.get("fbs_item")}
+
+
 def load_item_factors() -> dict[int, float]:
     """Trade item code -> kg of primary product per kg traded (`to_primary`; dairy in milk
     equivalent). Items without a factor count as traded."""
@@ -339,6 +351,13 @@ def extract() -> None:
     both = yearly(raw[raw["group"] != FEED_GROUP])
     both.to_parquet(config.INTERIM / YEARLY, index=False)
     shares = extra_eu_shares(both)
+    # Per FBS item where the mapping has one (fruit, meat): a group's share does not fit all its
+    # items (bananas come from outside the EU far more than apples). Members' own reports only.
+    fbs_item = load_item_fbs()
+    own = raw[raw["item_code"].isin(fbs_item) & raw["reporter"].isin(config.EU27)]
+    own = own.assign(group=ITEM_KEY + own["item_code"].map(fbs_item))
+    per_item = extra_eu_shares(own.groupby(["reporter", "partner", "group", "flow", "year"], as_index=False)["value"].sum())
+    shares = pd.concat([shares, per_item[per_item["group"] != "all"]], ignore_index=True)
     # Fish is not in the trade matrix: its extra-EU shares come from Comext (live weight).
     cx = config.INTERIM / comext.YEARLY
     if cx.exists():

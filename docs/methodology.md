@@ -83,6 +83,45 @@ more … than it uses", both < 99.5 "less". Ukraine, vegetable oils: sunflower o
 but 239 kt are eaten; the group is 1196% or 969% depending on the reading, so no number is shown,
 but "more than it uses" is. Small contradictions do not withhold a group (Dutch offals in meat).
 
+### Withheld as implausible: balances that add up but cannot be right
+
+A balance can add up and still describe more food than a country could use. Two cases found in a
+pre-release review (2026-10-18): New Zealand "using" 1.9 t of milk a person a year (fixed at the
+source: section "Dairy in milk equivalent"), and the United States buying 51 Mt of fruit a year
+where the trade records hold 19 Mt: FAO books 2.05 Mt of "apple juice, concentrated" (2022) and
+converts it into about 14 Mt of apples, 54 kg a person against the 18–20 kg the USDA counts. The
+consistency tests above cannot see this, so `pipeline/plausible.py` (`checks.plausibility`)
+reads every shown group figure (tonnes, 2021–2023, countries of 500,000 people or more) a second
+way:
+
+| Test | Second reading | Why |
+|---|---|---|
+| `use_per_person`: D per person above a ceiling (kg/year: dairy 550 in milk equivalent, meat 150, eggs 30, fish 120, fruit 250, vegetables 300, pulses 60, wine and beer 200) | D = ceiling × population | no national average is known above these; cereals, oilseeds, oils, sugar, roots and stimulants have none (feed, crushing, biofuel, distilling) |
+| `imports_vs_trade`: imports more than 1.5× the group's typical ratio to the trade records (median over countries; both ≥ 50 kt) | M = trade records × typical ratio, D lowered by the difference | the balance counts primary equivalents, the records product weight, so each group has its own usual ratio; far above it, the balance describes conversions or flows the records do not hold |
+
+The trade records are the yearly partner flows of section "Trade partners" (FAO trade matrix,
+fish from Comext and BACI) for the same window. A figure is withheld (`implausible`) when a second
+reading moves its SSR by more than max(10 points, 10% of the second reading), the threshold of the
+parts test, or leaves no use at home: in the window and in every single year, on both bases, like
+a figure withheld by review. `withheld.range` is the published and the second readings (lowest,
+highest; no upper end when a reading leaves no use at home), so the UI can still say "more" or
+"less than it uses" when all agree, and `withheld.plausibility` lists each reading with the
+figures the text quotes (kg a person and the ceiling; the records' kt, the ratio and the typical
+ratio). As for a figure withheld by review, the group's items keep their own figures and "all
+food" uses the published reading (dairy, which counts there as one food, too).
+
+`atlas build` runs the test after the trade partners exist, writes
+`data/processed/plausibility.parquet`, then computes the balances again with its verdicts; the
+test reads a figure it withheld before like any other, so a second run gives the same verdicts.
+
+Examples, 2021–2023 (published → second reading): Germany vegetables 24% → 35% (the Federal
+Office for Agriculture, BLE, has about 36%); United Kingdom vegetables 20% → 32%, dairy 75% →
+90% (Defra about 90%); Turkey cereals 67% → 86% (USDA 92% for wheat); United States fruit 31% →
+55%; Ireland dairy 195% → 319%, the Netherlands 113% → 147% and Denmark 140% → 175% (the
+Commission's dairy balance leaves out infant formula, casein and milk protein concentrates, which
+these countries export, so too little leaves the country and their use at home reaches 700–900 kg
+a person); Norway fish 248% → 574% (FAO counts 1.2 Mt of fish fed to farmed salmon as used).
+
 **"All food"** (`compute.overall`), per basis (protein, kcal) separately:
 
 - `protein` g/day and `kcal` per day count every leaf item, withheld ones included (people eat
@@ -102,20 +141,48 @@ losses, processing, other uses, tourist and residuals are left out of `component
 stands, because residuals sit on the utilisation side (D = food + … + residuals) and SSR uses only
 the availability side.
 
-2021–2023 counts: 95 group balances withheld (63 `supply_nonpositive`, 10 `food_exceeds_supply`,
-22 `parts_contradict`), 20 uses breakdowns withheld, 3 protein and 6 kcal "all food" headlines.
+2021–2023 counts: 183 group balances withheld (63 `supply_nonpositive`, 11 `food_exceeds_supply`,
+22 `parts_contradict`, 82 `implausible`, 5 `reviewed`), 20 uses breakdowns withheld, 3 protein and 6 kcal "all food" headlines.
 
 ## Aggregation to product groups
 
 Group definitions: `pipeline/mappings/products.yaml`.
 
 - **Tonnes basis:** sum P, M, X, D across items in the group, then compute SSR/IDR from the sums.
+  Dairy is in milk equivalent (below).
 - **kcal basis:** compute SSR per item, then weight by each item's kcal/capita/day within the
   group: SSR_kcal = Σ(SSR_i × kcal_i) / Σ kcal_i.
 - **Value basis** (phase 2+): weight by import or supply value from trade data at current prices.
 
 Report the basis in every output row. Do not show a tonnes figure next to a kcal figure in one
 chart without saying so.
+
+### Dairy in milk equivalent
+
+FAO's "Milk - Excluding Butter" is in milk equivalent and its "Processing" line is the milk
+churned into butter and cream, which are separate items in product weight. Summed as they are,
+a butter exporter keeps the milk of the butter it sells abroad in its own use: New Zealand's
+"use at home" was 9.8 Mt, 9.0 Mt of it that milk, 1.9 t a person (SSR 224%). So the dairy group
+(`compute.dairy_milk_equivalent`, FAO dairy only; the JRC's is milk equivalent already) counts
+butter and cream as the milk they are made from:
+
+    f = milk Processing / (butter + cream Production)      per country and window
+    butter, cream:  production 0; imports, exports, stock change, supply and uses × f
+    milk:           supply and processing − f × (butter + cream Production)
+
+f is the country's own ratio (median 17.5 t of milk per t of butter and cream, 2021–2023; New
+Zealand 14.6, Ireland 20.6, United States 22.1), clipped to 5–30, and 17.5 where no butter or
+cream is made. P + M − X − ΔS = D holds exactly for any f, since the milk's production is the
+group's. New Zealand: 1,669% (250 kg used a person); Belarus 142 → 179%, Uruguay 153 → 184%.
+Only the tonnes basis is converted: the parts test judges each item on FAO's own rows (a butter
+row with its production moved to the milk would otherwise "sell more than it has") and then
+raises a flagged item's converted D to max(D, food, 0); the kcal basis weights FAO's own item
+ratios, and the table of items keeps FAO's product rows. In "all food" a country's dairy counts
+as one food at the tonnes ratio (`compute.collapse_dairy`, as for the JRC's dairy below).
+
+Tried and not used for EU members: the same conversion on FAO's figures puts Germany's use at
+438 kg of milk a person and the Netherlands' at 906 kg (FAO's milk-equivalent trade in cheese and
+powders, section "EU countries"), against 337 and 716 kg with the JRC; the JRC stays.
 
 ## Time averaging
 
@@ -150,7 +217,11 @@ exports are the trade with non-members only, in FBS primary equivalents:
 
 The shares are per member, food group and year from the FAOSTAT trade matrix
 (`trade.extra_eu_shares`, reported flows with mirror fallback; items outside the groups use the
-member's all-food share). Uses (food, feed, …) are the members' sums scaled to D_EU. Fish, which
+member's all-food share). Fruit and meat have shares per FBS item (`fbs_item` in
+`mappings/trade_items.csv`, from the members' own reports; key `item:<FBS item>`), because one
+share does not fit them all: almost every banana comes from outside the EU, most apples from
+inside. With the fruit group's share the EU used 3.7 Mt of bananas a year, against 5.8 Mt in FAO's
+own sum of the members. Uses (food, feed, …) are the members' sums scaled to D_EU. Fish, which
 the trade matrix does not cover, takes its shares from Eurostat Comext (section "Comext": live
 weight, per member, flow and year).
 
@@ -267,6 +338,11 @@ days" below one week. Above 100% it says "the whole year, with N months to spare
 N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the same bands (under
 6 months, 6–9, 9–11, 11–12, the whole year, more than enough), so map and text always agree
 (`web/src/calendar.js`).
+
+**Comparisons between countries** ("How does … compare?", "Runs out soonest", "Lasts longest")
+use the capped figure (today's menu, `protein.share`): with the uncapped one a fish surplus stood
+in for every other food, and Iceland (4.3 years; 44% of its calories), the Seychelles and
+Micronesia led the list.
 
 A duration was chosen over a date ("runs out on 5 November", counting from 1 January) and over
 "from today": both suggest a real starting point and invite questions about harvest timing that
@@ -808,7 +884,10 @@ What a country would lack if Russia and Ukraine stopped selling, and nothing too
   `s` is the share bought from them (Comext or BACI). The EU as one: its own figures (imports from
   outside the EU, traced).
 - **All food:** the foods' figures weighted by their protein per person (FBS items, as the
-  headline): `Σ_g protein_g × lack_g / Σ_g protein_g` over the foods with a figure.
+  headline): `Σ_g protein_g × lack_g / Σ_g protein_g` over the foods with a figure, shown only
+  when those foods carry at least 90% of the protein of all groups (summed over items with
+  protein > 0): with its cereals withheld (section "Withheld as implausible") Turkey's fell from
+  17% to 3%, the food it buys most from Russia left out.
 - **No figure:** for Russia and Ukraine themselves; for a withheld food (its balance contradicts
   itself) or a withheld import flow (section "Trade records against the food balance"); where
   D ≤ 0 (nothing used).
@@ -885,6 +964,7 @@ the group's figure by 5 points and is listed on the audit page as handled.
 | Known facts | `tests/test_real_data.py` | France poultry < 100% and EU > 100%, EU soybeans 10–30%, NL a cereal hub, JRC replacements in place, Jordan eggs and Ukraine oils withheld, Iceland fish not |
 | Independent recomputation | `verify/recompute.py` | written from this document alone, without reading `pipeline/`; recomputes every published number (≈250,000) from the raw files and must agree on all of them. Its first run found three pipeline bugs (EU27 per-person population, window averaging, EU27 fish kcal IDR) |
 | What the page shows | `web/tests/*.spec.js` (Playwright, installed Chrome) | headline and food-page wording = `calendar.js` of the exported figure; receipt sum = exported ratio; rankings never include a withheld figure and equal the data's top five; no factual figure typed into `main.js` |
+| Plausibility | `pipeline/plausible.py`, `checks.plausibility` (section "Withheld as implausible") | balances that add up but put use at home per person beyond any known national average, or imports far beyond the trade records: withheld with both readings |
 | Second source | `pipeline/usda.py` (section "FAO against USDA") | FAO figures far from USDA's for the same country and commodity: warnings, and a note on the page |
 | Human review | `atlas report` → `data/processed/audit.html` | every withheld figure and warning, and the 50 largest changes since the last release (`atlas release-snapshot` after publishing). A warning ends one of three ways: **handled** when the site deals with it by itself (`validate.resolve`: unusual years drawn apart; the JRC's own dairy ratio shown next to ours; negative-supply items kept within the withholding threshold by the parts test; a USDA disagreement shown on the page or too small to move the group's figure by 5 points; trade records under half of the balance, which the trade page then says); **confirmed** when a review found it right, with the reason and date in `pipeline/mappings/confirmed_findings.csv`; or fixed or withheld (by a rule or by review). A release should have no open warnings |
 

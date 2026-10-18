@@ -104,6 +104,9 @@ TRADE_ITEMS = {int(r["item_code"]): r["group"] for r in read_csv_comments(MAP / 
                if r["group"].strip()}
 # Methodology, "Withheld by review": groups withheld after a human review (iso3, group) -> note
 REVIEWED = {(r["iso3"], r["group"]): r["note"] for r in read_csv_comments(MAP / "withheld_by_review.csv")}
+# methodology "National vs EU-bloc view": fruit and meat have extra-EU shares per FBS item
+TRADE_FBS_ITEM = {int(r["item_code"]): r["fbs_item"] for r in read_csv_comments(MAP / "trade_items.csv")
+                  if r.get("fbs_item")}
 # Methodology, "Trade partners": partner lists in the FBS basis where trade_items.csv gives a factor
 # (dairy in milk equivalent); the EU-bloc shares stay in product weight.
 TO_PRIMARY = {int(r["item_code"]): float(r["to_primary"]) for r in read_csv_comments(MAP / "trade_items.csv")
@@ -687,7 +690,10 @@ def scenario_rows(res, D, trade, hidden):
                      if nm in code_of and code_of[nm] in bal)
             if pr > 0:
                 num, den = num + v * pr, den + pr
-        if den > 0:
+        total = sum(sum(nz(bal[code_of[nm]]["protein"]) for nm in PRODUCTS[g]["items"]
+                        if nm in code_of and code_of[nm] in bal and nz(bal[code_of[nm]]["protein"]) > 0)
+                    for g in PRODUCTS)
+        if den > 0 and den >= 0.9 * total:  # foods with a figure carry >= 90% of the protein
             rows["all"] = num / den
         if rows:
             out[iso] = rows
@@ -859,6 +865,13 @@ def load_all() -> Data:
     tot = b.groupby(["c", "flow", "year"])["t"].sum()
     ext = b[b["extra"]].groupby(["c", "flow", "year"])["t"].sum()
     D.share_a = (ext.reindex(tot.index).fillna(0) / tot).where(tot > 0).to_dict()
+    # per FBS item (fruit, meat), from the members' own reports, product weight
+    t = D.tm[D.tm["year"].isin(D.TREND) & D.tm["r"].isin(EU) & D.tm["p"].notna()]
+    t = t.assign(fbs=t["item"].map(TRADE_FBS_ITEM)).dropna(subset=["fbs"])
+    t = t.assign(extra=~t["p"].isin(EU))
+    tot = t.groupby(["r", "flow", "year", "fbs"])["t"].sum()
+    ext = t[t["extra"]].groupby(["r", "flow", "year", "fbs"])["t"].sum()
+    D.share_i = (ext.reindex(tot.index).fillna(0) / tot).where(tot > 0).to_dict()
     # fish: extra-EU shares from Comext, live weight, over all partners (unnamed ones outside the
     # EU except Comext's intra-EU codes)
     D.fish = load_comext_fish()
@@ -882,7 +895,9 @@ def load_all() -> Data:
 
 def eu_share(D, c, flow, year, item):
     g = D.ITEM_GROUP.get(item)
-    s = D.share_g.get((c, flow, year, g)) if g else None
+    s = D.share_i.get((c, flow, year, D.item_names.get(item)))
+    if isnan(s):
+        s = D.share_g.get((c, flow, year, g)) if g else None
     if isnan(s):
         s = D.share_a.get((c, flow, year))  # items outside the groups / no group trade
     return 1.0 if isnan(s) else s
@@ -923,8 +938,35 @@ def build_eu27(D, opts):
     return tab, eu_years, pops
 
 
-def compute_balances(D, opts):
-    """Window + trend results for every country (and EU27) under one reading of the spec."""
+def dairy_milk_eq(items, D):
+    """Methodology "Dairy in milk equivalent": FAO dairy rows (milk, butter, cream) -> rows that
+    sum to a milk-equivalent balance. f = milk Processing / (butter + cream Production), clipped
+    to 5-30, 17.5 where none is made; butter and cream: production 0, the rest x f; milk: supply
+    and processing - f x (butter + cream Production)."""
+    name = {v: k for k, v in D.item_names.items() if k in D.DAIRY}
+    milk, fats = name.get("Milk - Excluding Butter"), [name.get("Butter, Ghee"), name.get("Cream")]
+    fats = [c for c in fats if c in items]
+    if milk not in items or not fats:
+        return items
+    made = max(sum(nz(items[c]["P"]) for c in fats), 0.0)
+    f = 17.5 if made <= 0 else min(max(nz(items[milk]["processing"]) / made, 5.0), 30.0)
+    out = dict(items)
+    for c in fats:
+        r = {k: (v * f if k in BAL + USES and not isnan(v) else v) for k, v in items[c].items()}
+        r["P"] = 0.0
+        out[c] = r
+    m = dict(items[milk])
+    m["D"] = m["D"] - f * made
+    m["processing"] = nz(m["processing"]) - f * made
+    out[milk] = m
+    return out
+
+
+def compute_balances(D, opts, plaus=None):
+    """Window + trend results for every country (and EU27) under one reading of the spec.
+    `plaus`: (iso3, group) -> (low, high) of the plausibility test's readings (withheld as
+    implausible, window and every year)."""
+    plaus = plaus or {}
     yearly = dict(D.yearly)
     country_years = dict(D.country_years)
     popd = dict(D.popd)
@@ -1041,6 +1083,9 @@ def compute_balances(D, opts):
         codes = [c for c in GI[g] if c in items]
         if not codes and not (g == "dairy" and dairy):
             return None
+        raw = items  # items judged (parts test) and weighted (kcal) on FAO's own rows
+        if g == "dairy" and dairy is None:
+            items = dairy_milk_eq(items, D)
         comp = {}
         for k in BAL + USES:
             vals = [items[c][k] for c in codes if not isnan(items[c][k])]
@@ -1054,7 +1099,7 @@ def compute_balances(D, opts):
                          None if jrc_dairy else comp["food"])
         # parts sensitivity (JRC dairy items are not judged one by one): ssr_pub over the
         # published D, ssr_adj with flagged items' D raised to max(D, food, 0)
-        flagged = [] if jrc_dairy else [c for c in codes if item_result(items[c])[0]]
+        flagged = [] if jrc_dairy else [c for c in codes if item_result(raw[c])[0]]
         pub = ratio(comp["P"], comp["D"])
         adj = ratio(sum(nz(items[c]["P"]) for c in codes),
                     sum(d_adj(items[c]) if c in flagged else nz(items[c]["D"]) for c in codes)
@@ -1063,9 +1108,13 @@ def compute_balances(D, opts):
             reason = "parts_contradict"
         if reason is None and (iso, g) in REVIEWED:
             reason = "reviewed"
+        if reason is None and (iso, g) in plaus:
+            reason = "implausible"
         rng = None  # exported for every withheld group
         if reason == "reviewed":
             rng = "null"  # nothing contradicts itself: no two readings
+        elif reason == "implausible":
+            rng = list(plaus[(iso, g)])
         elif reason:
             if not isnan(pub) and not isnan(adj):
                 rng = [min(pub, adj), max(pub, adj)]
@@ -1085,8 +1134,8 @@ def compute_balances(D, opts):
         if not reason and not jrc_dairy:
             num = numi = den = 0.0
             for c in codes:
-                fl, s, m = item_result(items[c])
-                w = items[c]["kcal"]
+                fl, s, m = item_result(raw[c])
+                w = raw[c]["kcal"]
                 if fl or isnan(s) or isnan(w) or w <= 0:
                     continue
                 num, den, numi = num + s * w, den + w, numi + m * w  # m NaN -> NaN (unknown)
@@ -1098,7 +1147,7 @@ def compute_balances(D, opts):
         A, B = [], []  # (ssr, protein, kcal)
         n_withheld = 0
         for c, r in items.items():
-            if dairy and c in DAIRY:
+            if c in DAIRY:  # dairy counts as one food (below)
                 continue
             fl, s, _ = item_result(r)
             w = (nz(r["protein"]), nz(r["kcal"]))
@@ -1111,11 +1160,14 @@ def compute_balances(D, opts):
                 sb = ratio(nz(r["P"]), d_adj(r))  # reading B
                 if not isnan(sb):
                     B.append((sb, *w))
-        if dairy:
-            dc = [c for c in DAIRY if c in items]  # JRC dairy: one food, summed weights
+        dc = [c for c in DAIRY if c in items]
+        if dairy or dc:
+            # dairy as one food at the group's milk-equivalent ratio (the JRC's or FAO's), with the
+            # items' summed weights; withheld by review or as implausible: the published reading
+            dg = group_result("dairy", items, dairy)
             w = (sum(nz(items[c]["protein"]) for c in dc), sum(nz(items[c]["kcal"]) for c in dc))
-            if not verdict(dairy["P"], dairy["M"], dairy["X"], None, dairy["D"]):
-                A.append((dairy["P"] / dairy["D"] * 100, *w))
+            if dg is not None and dg["reason"] in (None, "reviewed", "implausible"):
+                A.append((ratio(dg["comp"]["P"], dg["comp"]["D"]), *w))
                 B.append(A[-1])
             elif w[0] > 0:
                 n_withheld += 1
@@ -1234,6 +1286,10 @@ def flatten(res):
             elif gr["range"]:
                 for k in (0, 1):
                     flat[p + f"withheld.range.{k}"] = (gr["range"][k], 1)
+            for k, rd in enumerate(gr.get("plausibility", [])):
+                for key, v in rd.items():
+                    dp = None if key == "test" else (0 if key in ("kg", "ceiling_kg", "trade_kt") else 1)
+                    flat[p + f"withheld.plausibility.{k}.{key}"] = (v, dp)
             flat[p + "uses_withheld"] = (bool(gr["uses_withheld"]), None)
             flat[p + "source"] = (gr["source"], None)
             flat[p + "jrc_items"] = (sorted(gr["jrc_items"]), None)
@@ -1292,6 +1348,9 @@ def flatten_export(ssr, items, TREND):
                 flat[p + "withheld.range"] = "null"
             for k, val in enumerate(wh.get("range") or []):
                 flat[p + f"withheld.range.{k}"] = val
+            for k, rd in enumerate(wh.get("plausibility", [])):
+                for key, val in rd.items():
+                    flat[p + f"withheld.plausibility.{k}.{key}"] = val
             flat[p + "uses_withheld"] = bool(gi.get("uses_withheld"))
             flat[p + "source"] = gi.get("source")
             flat[p + "jrc_items"] = sorted(gi.get("jrc_items", []))
@@ -1591,6 +1650,67 @@ def trade_withheld(trade, res):
     return sorted(out)
 
 
+# Methodology, "Withheld as implausible": second readings of every shown group figure
+CEILING_KG = {"dairy": 550, "meat": 150, "eggs": 30, "fish": 120, "fruit": 250, "vegetables": 300,
+              "pulses": 60, "wine_beer": 200}
+
+
+def plausibility(res, trade):
+    """{(iso3, group): [reading, ...]} for the figures a second reading moves by more than
+    max(10 points, 10% of it) or leaves without use at home; a reading is {test, ssr_alt, ...}
+    with the figures the UI quotes. Tested: shown figures (or withheld as implausible), countries
+    of 500,000 people or more, D > 0."""
+    rows = {}  # (iso, g) -> (P, M, D, pop)
+    for iso, r in res.items():
+        if "groups" not in r or isnan(r.get("population_k")) or r["population_k"] < 500:
+            continue
+        for g, gr in r["groups"].items():
+            c = gr["comp"]
+            if gr["reason"] not in (None, "implausible") or isnan(c["D"]) or c["D"] <= 0:
+                continue
+            rows[(iso, g)] = (nz(c["P"]), nz(c["M"]), c["D"], r["population_k"])
+    out = defaultdict(list)
+
+    def moves(pub, alt):
+        return isnan(alt) or abs(pub - alt) > max(10.0, 0.1 * abs(alt))
+
+    for (iso, g), (P, M, Dd, pop) in rows.items():
+        cap = CEILING_KG.get(g)
+        kg = Dd / pop * 1000
+        if cap is not None and kg > cap:
+            alt = 100 * P / (cap * pop / 1000)
+            if moves(100 * P / Dd, alt):
+                out[(iso, g)].append({"test": "use_per_person", "ssr_alt": alt, "kg": kg, "ceiling_kg": cap})
+    pairs = defaultdict(list)
+    for (iso, g), (P, M, Dd, pop) in rows.items():
+        t = sum(trade.get(iso, {}).get(g, {}).get("imports", {}).values()) / 1000
+        if M >= 50 and t >= 50:
+            pairs[g].append((iso, P, M, Dd, t))
+    for g, ps in pairs.items():
+        typical = float(np.median([M / t for _, _, M, _, t in ps]))
+        for iso, P, M, Dd, t in ps:
+            if M / t <= 1.5 * typical:
+                continue
+            d_alt = Dd - (M - t * typical)
+            alt = 100 * P / d_alt if d_alt > 0 else math.nan
+            if moves(100 * P / Dd, alt):
+                out[(iso, g)].append({"test": "imports_vs_trade", "ssr_alt": alt, "trade_kt": t,
+                                      "ratio": M / t, "typical": typical})
+    return dict(out)
+
+
+def plaus_ranges(res, plaus):
+    """(iso3, group) -> [low, high] over the published and second readings (high NaN when a
+    reading leaves no use at home)."""
+    out = {}
+    for (iso, g), rs in plaus.items():
+        c = res[iso]["groups"][g]["comp"]
+        vals = [100 * nz(c["P"]) / c["D"]] + [r["ssr_alt"] for r in rs]
+        ok = [v for v in vals if not isnan(v)]
+        out[(iso, g)] = (min(ok), math.nan if len(ok) < len(vals) else max(ok))
+    return out
+
+
 # Methodology, "Trends": a year more than 3x, or under a third of, both neighbours (all >= 5%).
 def unusual_years(series, years):
     out = []
@@ -1636,9 +1756,15 @@ def main():
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
     D = load_all()
-    res = compute_balances(D, PRIMARY)
+    res0 = compute_balances(D, PRIMARY)
+    plaus = plausibility(res0, build_trade(D, res0)[0])
+    prange = plaus_ranges(res0, plaus)
+    log(f"plausibility: {len(plaus)} figures withheld as implausible")
+    res = compute_balances(D, PRIMARY, prange)
+    for k, rs in plaus.items():
+        res[k[0]]["groups"][k[1]]["plausibility"] = rs
     log(f"balances (primary reading) for {sum('groups' in r for r in res.values())} countries")
-    alt_res = {name: compute_balances(D, o) for name, o in ALTERNATIVES.items()}
+    alt_res = {name: compute_balances(D, o, prange) for name, o in ALTERNATIVES.items()}
     alts = {name: flatten(r) for name, r in alt_res.items()}
     log("alternative readings computed")
     usda, usda_unmapped = load_usda(D.WIN)

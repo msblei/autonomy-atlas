@@ -29,6 +29,7 @@ FOOD_EXCEEDS = "food_exceeds_supply"
 PARTS_CONTRADICT = "parts_contradict"
 RESIDUALS_LARGE = "residuals_large"
 REVIEWED = "reviewed"  # withheld by a human review (mappings/withheld_by_review.csv), not by a test
+IMPLAUSIBLE = "implausible"  # adds up, but a second reading of it moves the ratio a lot (plausibility)
 
 # Tolerances: FAO rounds to 1 kt, so a few kt or per cent of slack is noise, not a contradiction.
 EXPORT_SLACK = 0.02  # exports may exceed production + imports - stock change by 2% ...
@@ -213,3 +214,76 @@ def reviewed_withholds() -> dict[tuple[str, str], str]:
     with path.open(encoding="utf-8") as f:
         rows = csv.DictReader(line for line in f if not line.startswith("#"))
         return {(r["iso3"], r["group"]): r["note"] for r in rows}
+
+
+# ------------------------------------------------------------------------------------------------
+# Plausibility (docs/methodology.md, "Plausibility"). A balance can add up and still describe more
+# food than a country could use: New Zealand "using" 1.9 t of milk a person a year (the milk turned
+# into exported butter left in its supply); the United States buying 51 Mt of fruit a year where
+# the trade records hold 19 Mt (juice concentrate converted as if it were fresh fruit several
+# times over). Each test gives a second reading of the same figure; a figure is flagged only when
+# that reading moves its SSR by more than the parts test's threshold (PARTS_PP points or
+# PARTS_REL), so a test that changes nothing asks nothing.
+
+# Use at home (domestic supply) per person and year, kg, above which no national average is known:
+# generous ceilings for groups whose supply is mostly eaten. Cereals, oilseeds, oils, sugar, roots
+# and stimulants are left out: feed, crushing, biofuel and distilling legitimately put their supply
+# far above what people eat.
+USE_CEILING_KG = {"dairy": 550, "meat": 150, "eggs": 30, "fish": 120, "fruit": 250,
+                  "vegetables": 300, "pulses": 60, "wine_beer": 200}
+# Imports in the balance against the trade records: the balance counts primary equivalents, the
+# records product weight, so each group has its own typical ratio (median over countries). A
+# country more than PLAUS_TRADE_OVER times above it is read again with imports at that ratio
+# (Germany's vegetables: 2.1x the records against 1.4x typical; 24% as published, 35% on the second
+# reading, the Federal Office for Agriculture (BLE) has about 36%).
+PLAUS_TRADE_OVER = 1.5
+PLAUS_TRADE_MIN_KT = 50.0  # both the balance and the records at least 50 kt
+MIN_POPULATION_K = 500  # micro-states and tourist hubs (Macao, Maldives) are left out
+
+
+def plausibility(groups: pd.DataFrame, trade_imports: pd.Series | None = None) -> pd.DataFrame:
+    """One row per (iso3, group, test) whose second reading moves the group's SSR materially.
+
+    `groups`: tonnes rows (iso3, group, production, imports, supply, population in 1000, flag);
+    `trade_imports`: kt per (iso3, group) from the trade records. Only figures that are shown
+    (flag "" or IMPLAUSIBLE) are tested. Columns: iso3, group, test ("use_per_person" |
+    "imports_vs_trade"), detail, ssr, ssr_alt (NaN: the second reading leaves no use at home),
+    value, limit, trade_kt."""
+    # An earlier verdict of this test does not exempt a figure from it (atlas build runs it, then
+    # computes the balances again with its verdicts applied).
+    g = groups[groups["flag"].fillna("").isin(["", IMPLAUSIBLE]) & (groups["population"] >= MIN_POPULATION_K)
+               & (groups["supply"] > 0)].copy()
+    g["ssr_pub"] = 100 * g["production"] / g["supply"]
+    rows = []
+
+    cap = g["group"].map(USE_CEILING_KG)
+    kg = g["supply"] / g["population"] * 1000
+    over = cap.notna() & (kg > cap)
+    for r, k, c in zip(g[over].itertuples(), kg[over], cap[over], strict=True):
+        alt = 100 * r.production / (c * r.population / 1000)
+        rows.append((r.iso3, r.group, "use_per_person",
+                     f"uses {k:.0f} kg a person a year at home (ceiling {c:.0f} kg)", r.ssr_pub, alt,
+                     k, c, np.nan))
+
+    if trade_imports is not None:
+        j = g.set_index(["iso3", "group"]).join(
+            trade_imports.rename("trade_kt").rename_axis(["iso3", "group"]), how="inner")
+        j = j[(j["imports"] >= PLAUS_TRADE_MIN_KT) & (j["trade_kt"] >= PLAUS_TRADE_MIN_KT)]
+        j["ratio"] = j["imports"] / j["trade_kt"]
+        j["typical"] = j.groupby(level="group")["ratio"].transform("median")
+        j = j[j["ratio"] > PLAUS_TRADE_OVER * j["typical"]]
+        for (iso3, group), r in j.iterrows():
+            m_alt = r["trade_kt"] * r["typical"]
+            d_alt = r["supply"] - (r["imports"] - m_alt)
+            alt = 100 * r["production"] / d_alt if d_alt > 0 else np.nan
+            rows.append((iso3, group, "imports_vs_trade",
+                         f"balance {r['imports']:.0f} kt bought abroad, {r['ratio']:.1f}x the trade "
+                         f"records ({r['trade_kt']:.0f} kt; {r['typical']:.1f}x is typical for {group})",
+                         r["ssr_pub"], alt, r["ratio"], r["typical"], r["trade_kt"]))
+
+    # value / limit: kg a person and the ceiling (use_per_person); the balance's imports over the
+    # records and the group's typical ratio (imports_vs_trade, with trade_kt).
+    out = pd.DataFrame(rows, columns=["iso3", "group", "test", "detail", "ssr", "ssr_alt",
+                                      "value", "limit", "trade_kt"])
+    moves = (out["ssr"] - out["ssr_alt"]).abs() > np.maximum(PARTS_PP, PARTS_REL * out["ssr_alt"].abs())
+    return out[moves | out["ssr_alt"].isna()].reset_index(drop=True)

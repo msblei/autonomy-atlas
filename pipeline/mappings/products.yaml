@@ -89,7 +89,7 @@ groups:
 
   fruit:
     label: Fruit
-    plain: Mixes fruit that grows here (apples, plums) with fruit that cannot (bananas, oranges).
+    plain: Mixes fruit that grows here (apples, plums) with fruit that cannot (bananas, oranges). Grapes count in full, also those pressed into wine.
     items:
       - Apples and products
       - Grapes and products (excl wine)
@@ -119,7 +119,7 @@ groups:
 
   dairy:
     label: Dairy
-    plain: Counts all milk from cows kept here, also those given imported feed (see "Feed from abroad").
+    plain: Counts all milk from cows kept here, also those given imported feed (see "Feed from abroad"). Butter, cheese and milk powder count as the milk they are made from.
     items:
       - Milk - Excluding Butter
       - Butter, Ghee
@@ -133,7 +133,7 @@ groups:
 
   fish:
     label: Fish & seafood
-    plain: Fish caught by the country's own boats plus fish farms.
+    plain: Fish caught by the country's own boats plus fish farms. Fish ground into meal for animal and fish feed counts as used too.
     items:
       - Freshwater Fish
       - Demersal Fish

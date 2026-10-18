@@ -46,8 +46,18 @@ test("food pages: figure, withheld explanation, and the receipt's sum", async ({
       await open(page, `${id}/${g}`);
       const v = ind.tonnes?.ssr;
       if (ind.withheld) {
-        // contradictory balances say so; one withheld by review gives the reviewed reason
-        await expect(view(page)).toContainText(ind.withheld.reason === "reviewed" ? ind.withheld.note : "do not add up");
+        // contradictory balances say so; one withheld by review gives the reviewed reason; one
+        // withheld as implausible names every second reading with its share (plausible.py)
+        const w = ind.withheld;
+        if (w.reason === "implausible") {
+          await expect(view(page)).toContainText("add up, but");
+          for (const t of w.plausibility) {
+            await expect(view(page)).toContainText(t.ssr_alt == null ? "nothing left for use at home"
+              : `produce ${Math.round(t.ssr_alt)}% of what it uses`);
+          }
+        } else {
+          await expect(view(page)).toContainText(w.reason === "reviewed" ? w.note : "do not add up");
+        }
         await expect(view(page).locator(".answer")).toHaveCount(0);
         await expect(view(page)).not.toContainText("Was it always like this?");
       } else if (v != null) {
@@ -120,10 +130,11 @@ test("unusual years are drawn apart in the year-by-year chart", async ({ page })
 
 test("trade pages say when the records hold under half of the balance", async ({ page }) => {
   const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
-  // The United Kingdom's sugar exports: the balance also counts sugar inside processed goods.
-  const t = trade.countries.GBR.sugar.exports, b = C.GBR.indicators.sugar.components_kt.exports;
+  // Spain's sugar exports: the balance also counts sugar inside processed goods. (The United
+  // Kingdom's, the earlier example, is withheld as implausible since 2026-10-18.)
+  const t = trade.countries.ESP.sugar.exports, b = C.ESP.indicators.sugar.components_kt.exports;
   expect(t[0] / 1000).toBeLessThan(0.5 * b);
-  await open(page, "GBR/sugar/sells");
+  await open(page, "ESP/sugar/sells");
   await expect(view(page)).toContainText("The split by country is of the records");
   await open(page, "DEU/fruit/trade"); // records cover the balance: no such line
   await expect(view(page)).not.toContainText("The split by country is of the records");
@@ -291,4 +302,14 @@ test("how do we know: every source is credited with its licence", async ({ page 
   for (const key of ["eumofa_cf", "ggcmi_calendar", "isimip_landuse", "feedipedia", "cepii_baci"]) {
     await expect(page.locator("#view")).toContainText(data.meta.sources[key].title);
   }
+});
+
+test("all food: countries are compared on today's menu (capped), not on the headline", async ({ page }) => {
+  // A fish surplus standing in for every other food put Iceland first (methodology, "How long").
+  await open(page, "DEU");
+  const cmp = view(page).locator("h3", { hasText: "compare?" }).locator("xpath=following-sibling::div[1]");
+  const top = await cmp.locator("ol.rank").nth(1).locator("a").evaluateAll((as) => as.map((a) => a.getAttribute("href").slice(1)));
+  const menu = (id) => C[id].indicators?.all?.protein?.share;
+  const pool = Object.keys(C).filter((id) => id !== "EU27" && menu(id) != null).sort((a, b) => menu(b) - menu(a));
+  expect(top).toEqual(pool.slice(0, 5));
 });

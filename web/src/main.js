@@ -74,6 +74,7 @@ const FLAG_TEXT = {
   food_exceeds_supply: "No figure: FAO lists more eaten than there is left for use at home.",
   parts_contradict: "No figure: the total rests on single foods whose figures contradict themselves.",
   reviewed: "No figure: withheld after a review of FAO's figures (see the food's page).",
+  implausible: "No figure: FAO's figures add up, but read against what people use or what the trade records show they move a lot (see the food's page).",
   jrc_group_only: "Dairy comes from the European Commission's balance in milk equivalent, for dairy as a whole: no ratio per product and none weighted by calories.",
 };
 
@@ -655,9 +656,10 @@ function whyWithheld(id, group = state.group) {
   const who = id === EU ? "the EU" : nameOf(id);
   if (w.reason === "reviewed") {
     // Withheld by review (mappings/withheld_by_review.csv): FAO's own lines, then the reason.
-    return `FAO lists ${tonnes(M)} of ${food(group)} bought abroad a year in ${who}, ${tonnes(c.feed)} of it fed
-      to animals, while people eat ${tonnes(c.food)}. ${w.note ?? ""}`;
+    return `FAO lists ${tonnes(P)} of ${food(group)} produced and ${tonnes(M)} bought abroad a year in ${who};
+      ${tonnes(c.feed)} is fed to animals, while people eat ${tonnes(c.food)}. ${w.note ?? ""}`;
   }
+  if (w.reason === "implausible") return implausibleWords(w, id, group);
   if (w.reason === "supply_missing" || c.supply == null) {
     return `FAO publishes no complete balance for ${food(group)} in ${who}.`;
   }
@@ -670,6 +672,26 @@ function whyWithheld(id, group = state.group) {
   const resid = c.residuals && w.reason !== "parts_contradict"
     ? ` FAO closes the gap with an unexplained “Residuals” line of ${tonnes(c.residuals)}.` : "";
   return `FAO's figures for ${food(group)} in ${who} do not add up: ${what}.${resid}`;
+}
+
+// Withheld by the plausibility test (pipeline/plausible.py): FAO's balance adds up, but a second
+// reading of it, at the most anyone is known to use or at the trade records' usual ratio, moves
+// the share by more than ten points. Every number here comes from ssr.json.
+function implausibleWords(w, id, group) {
+  const c = w.components_kt ?? {};
+  const who = id === EU ? "the EU" : nameOf(id);
+  const pub = c.supply > 0 ? Math.round((100 * c.production) / c.supply) : null;
+  const instead = (alt) => alt == null
+    ? `${who} would have nothing left for use at home, against ${pub}% as published`
+    : `${who} would produce ${Math.round(alt)}% of what it uses instead of ${pub}%`;
+  const parts = (w.plausibility ?? []).map((t) => t.test === "use_per_person"
+    ? `they leave ${tonnes(c.supply)} of ${food(group)} for use at home, ${t.kg} kg a person a year, more than
+       people anywhere are known to use (we allow up to ${t.ceiling_kg} kg). With at most that much used, ${instead(t.ssr_alt)}`
+    : `they have ${tonnes(c.imports)} of ${food(group)} bought abroad a year, ${t.ratio.toFixed(1)} times what the
+       trade records hold (${tonnes(t.trade_kt)}), where ${t.typical.toFixed(1)} times is usual for ${food(group)}. At
+       the usual ratio, ${instead(t.ssr_alt)}`);
+  return `FAO's figures for ${food(group)} in ${who} add up, but ${parts.join("; and ")}. The two readings are
+    too far apart to show either as the answer.`;
 }
 
 // What still holds when a figure is withheld: both readings (as published, and with the
@@ -1364,17 +1386,20 @@ function foodList(id) {
 }
 
 // Countries ranked by the "all food" date.
+// Compared on today's menu (each food at most 100%), not on the headline: there a fish surplus
+// stands in for every other food, which put Iceland and the Seychelles at the top for years.
 function compareAll(id) {
   const rows = rankable()
-    .map((r) => ({ ...r, v: pctFor(r.id, "all") }))
+    .map((r) => ({ ...r, v: menuFor(r.id) }))
     .filter((r) => r.v != null)
     .sort((a, b) => b.v - a.v);
-  const me = pctFor(id, "all");
+  const me = menuFor(id);
   if (!rows.length || me == null) return "";
   const shorter = rows.filter((r) => r.v < me - 0.5).length;
   return `
     <h3>How does ${id === EU ? "the EU" : nameOf(id)} compare?</h3>
-    <p>Its own food would last longer than in <strong>${shorter}</strong> of ${rows.length} countries.</p>
+    <p>Eating as today, with no food standing in for another, its own food would last longer than
+      in <strong>${shorter}</strong> of ${rows.length} countries.</p>
     <div class="cols">
       <div><p class="small">Runs out soonest</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
       <div><p class="small">Lasts longest</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
@@ -1420,12 +1445,12 @@ function viewFood() {
     ${g.plain ? `<p class="small">${g.plain}</p>` : ""}
     ${euLine(id)}
     ${w ? "" : lackLine(id)}
-    ${w ? "" : secondOpinion(id)}
+    ${secondOpinion(id)}
     ${w ? "" : feedNote(id)}
     ${w ? "" : trend(id)}
-    ${w ? "" : seasonStrip(id)}
-    ${w ? "" : importMonths(id)}
-    ${w ? "" : whereLink(id)}
+    ${seasonStrip(id)}
+    ${importMonths(id)}
+    ${whereLink(id)}
     ${compareFood(id)}`;
 }
 
@@ -1872,6 +1897,30 @@ function fromJrc(id, group = state.group) {
   return country(id)?.indicators?.[group]?.source === "jrc_bal";
 }
 
+// The Commission's foods inside a group otherwise FAO's (tomatoes in vegetables), as words.
+function jrcParts(id, group = state.group) {
+  const parts = country(id)?.indicators?.[group]?.jrc_items;
+  if (!parts?.length) return "";
+  return parts.length > 1 ? `${parts.slice(0, -1).join(", ")} and ${parts[parts.length - 1]}` : parts[0];
+}
+
+// Under each figure of a receipt: where exactly it comes from. FAO's element name where the figure
+// is FAO's sum; otherwise what was changed (docs/methodology.md: JRC replacements, dairy in milk
+// equivalent, the EU's trade with the rest of the world).
+function sourceLabel(id, group = state.group) {
+  const el = state.data.meta.elements;
+  if (fromJrc(id, group)) return () => "in milk equivalent (European Commission)";
+  const parts = jrcParts(id, group);
+  const trade = (fao) => id === EU && (fao === el.imports || fao === el.exports);
+  return (fao) => {
+    const bits = [`FAO: “${fao}”`];
+    if (group === "dairy") bits.push("in milk equivalent (butter and cream counted as the milk they are made from)");
+    if (trade(fao)) bits.push("trade with the rest of the world only");
+    if (parts) bits.push(`${parts} from the European Commission`);
+    return bits.join(", ");
+  };
+}
+
 function viewSources() {
   const id = state.iso3;
   const g = groupInfo();
@@ -1920,8 +1969,10 @@ function sourceList() {
 // How the figures are checked (Makefile `verify`), with the count of left-out figures taken
 // from the data itself.
 function checks() {
-  const n = Object.values(state.data.countries)
-    .reduce((a, c) => a + Object.values(c.indicators ?? {}).filter((i) => i.withheld).length, 0);
+  const count = (test) => Object.values(state.data.countries)
+    .reduce((a, c) => a + Object.values(c.indicators ?? {}).filter((i) => i.withheld && test(i.withheld.reason)).length, 0);
+  const n = count((r) => !["implausible", "reviewed"].includes(r));
+  const odd = count((r) => r === "implausible"), seen = count((r) => r === "reviewed");
   return `
     <h3>How we check the figures</h3>
     <p>Before anything goes online, the files we download are compared with FAO's own website; a
@@ -1931,8 +1982,11 @@ function checks() {
       Agriculture's, and say so where the two disagree a lot. How much of the EU's animal feed comes
       from abroad we compare with the European Commission's own feed protein balance.</p>
     <p>FAO's figures for ${n} combinations of country and food contradict themselves, for example
-      more sold abroad than there was. We leave those out, say so where they would appear, and show
-      FAO's own lines so you can see why.</p>`;
+      more sold abroad than there was. For ${odd} more they add up but cannot be right as they stand:
+      more used per person than anywhere else is known, or far more bought abroad than the trade
+      records show, so that a second reading moves the share a lot.${seen ? ` ${seen} more we left
+      out after looking at FAO's figures one by one.` : ""} We leave all of those out, say so where they
+      would appear, and show FAO's own lines so you can see why.</p>`;
 }
 
 function aboutJrc(id) {
@@ -1966,7 +2020,7 @@ function pubDairy(id) {
 // Foods that are one item of a group and come from the Commission (tomatoes in vegetables, ...),
 // with the reason in plain words (docs/methodology.md has the figures).
 const JRC_WHY = {
-  tomatoes: "tomato paste and sauce sold abroad were not counted back as tomatoes",
+  tomatoes: "tomato paste and sauce traded across borders were not counted back as the tomatoes they were made from",
   "olive oil": "FAO's olive oil trade figures disagree with the EU's customs records",
   wine: "FAO's wine figures disagree with the EU's own statistics (for Germany, FAO counts a little over half the wine made)",
 };
@@ -2004,7 +2058,7 @@ function aboutFao() {
       of the UN Food and Agriculture Organization (FAO). Countries report what they produce and
       trade; FAO builds the food balances from that and from its own estimates, and marks every
       figure in them as estimated or imputed. We take them as published, check them, and leave out
-      figures that contradict themselves.</p>
+      figures that contradict themselves or cannot be right as they stand.</p>
     <p class="small">Edition used: released ${s.released ? longDate(s.released) : "–"}.
       We use the average of ${years().join(", ")}.
       Licence: <a href="${s.licence_url}" target="_blank" rel="noopener">${s.licence}</a>
@@ -2015,14 +2069,16 @@ function receiptGroup(id, v) {
   const comp = country(id)?.indicators?.[state.group]?.components_kt ?? {};
   const el = state.data.meta.elements;
   const jrc = fromJrc(id);
-  const row = (label, fao, val) => val == null ? ""
-    : `<tr><td>${label}<br><small>${jrc && fao !== el.population ? "in milk equivalent (European Commission)" : `FAO: “${fao}”`}</small></td><td>${val}</td></tr>`;
+  const label = sourceLabel(id);
+  const row = (label_, fao, val) => val == null ? ""
+    : `<tr><td>${label_}<br><small>${fao === el.population ? `FAO: “${fao}”` : label(fao)}</small></td><td>${val}</td></tr>`;
   const w = withheld(id);
   if (w) {
     const raw = w.components_kt ?? {};
+    const asIs = !jrc && !jrcParts(id) && state.group !== "dairy" && id !== EU;
     return `
-    <h3>FAO's figures for ${nameOf(id)}, ${food()}</h3>
-    <p class="small">Per year, average of ${years().join(", ")}, exactly as FAO publishes them.</p>
+    <h3>${asIs ? "FAO's figures" : "The figures"} for ${nameOf(id)}, ${food()}</h3>
+    <p class="small">Per year, average of ${years().join(", ")}${asIs ? ", exactly as FAO publishes them" : ""}.</p>
     <table class="receipt">
       ${row("Produces", el.production, tonnes(raw.production))}
       ${row("Buys abroad", el.imports, tonnes(raw.imports))}
@@ -2032,7 +2088,7 @@ function receiptGroup(id, v) {
       ${raw.residuals ? row("Unexplained remainder", el.residuals, tonnes(raw.residuals)) : ""}
     </table>
     <h3>Why we show no figure</h3>
-    <p>${whyWithheld(id)} A share worked out from these figures would not mean anything, so we
+    <p>${whyWithheld(id)} ${withheld(id).reason === "implausible" ? "So we" : "A share worked out from these figures would not mean anything, so we"}
       leave ${food()} in ${whoOf(id)} out of the map and all comparisons.</p>`;
   }
   // The share is the precomputed one (`v`), so this page and the map can never disagree.
@@ -2103,9 +2159,13 @@ function checkYourself(id) {
   const s = state.data.meta.sources[state.data.meta.source];
   const el = state.data.meta.elements;
   const g = groupInfo();
+  const parts = jrcParts(id);
   const items = state.group === "all"
     ? "all items"
-    : `${g.items.map((i) => `“${i}”`).join(", ")}, then add them up`;
+    : `${g.items.map((i) => `“${i}”`).join(", ")}, then add them up${parts
+      ? `, with ${parts} replaced by the European Commission's figures (see above)` : ""}${state.group === "dairy"
+      ? `; butter and cream count as the milk they are made from: FAO's milk “Processing” line divided by the
+         butter and cream “Production”, times their trade and use (and that milk taken out of milk's use)` : ""}`;
   const elements = state.group === "all"
     ? `“${el.production}”, “${el.supply}” and “Protein supply quantity (g/capita/day)”`
     : `“${el.production}” and “${el.supply}”`;
@@ -2260,8 +2320,11 @@ function expertDetail(id) {
     ${(state.items?.[id]?.[state.group] ?? []).some((i) => i.flag === "jrc_group_only")
       ? `<p class="note">${FLAG_TEXT.jrc_group_only}</p>` : ""}
     ${items.length ? `<h3>Largest items</h3><table>${items
-      .map((i) => `<tr><td>${i.item}</td><td>${fmt(i.ssr)}</td></tr>`)
+      .map((i) => `<tr><td>${i.item}</td><td>${i.ssr === 0 ? "none produced (FAO)" : fmt(i.ssr)}</td></tr>`)
       .join("")}</table>` : ""}
+    ${items.length && state.group === "dairy" ? `<p class="note">Items in FAO's own units: milk in milk equivalent,
+      butter and cream in product weight, and the milk made into butter and cream counted in the milk's use. The
+      dairy figure above counts all of it as milk.</p>` : ""}
     <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply. ${HHI_NOTE}
       ${id === EU ? "EU bloc: production summed over members; imports and exports are trade with non-members only (members' FBS trade × extra-EU share from the trade matrix); supply = P + M − X − ΔS." : "National view: imports from other EU countries count as imports."}</p>
     ${t.flag || k.flag ? `<p class="note">${FLAG_TEXT[t.flag ?? k.flag] ?? `Flag: ${t.flag ?? k.flag}`}</p>` : ""}`;
