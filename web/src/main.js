@@ -1908,7 +1908,7 @@ function regionTooltip(code) {
   if (!r) return null;
   const [, kt, share, density] = r;
   // The colour is tonnes per km² (how densely it grows); the share is of the country's harvest.
-  const dens = density == null ? "" : `<br><span class="small">${density < 10 ? density.toFixed(1) : Math.round(density).toLocaleString("en-GB")} t per km² (the colour)</span>`;
+  const dens = density == null ? "" : `<br><span class="small">${density < 10 ? density.toFixed(1) : Math.round(density).toLocaleString("en-GB")} t per km²</span>`;
   return `<strong>${state.regions.names[code] ?? code}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)}${state.group === "sugar" ? " of beet" : ""} a year${dens}`;
 }
 
