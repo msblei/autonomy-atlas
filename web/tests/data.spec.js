@@ -273,3 +273,12 @@ test("what if Russia and Ukraine stopped selling: the map key switches and the p
   await page.locator("#legend .whatif").click(); // and back
   await expect(page.locator("#legend")).toContainText("would last");
 });
+
+test("a trade flow withheld by review says why in words", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  const w = trade.meta.withheld.find((r) => r.length > 5);
+  expect(w).toBeTruthy();
+  await open(page, `${w[0]}/${w[1]}/${w[2] === "imports" ? "trade" : "sells"}`);
+  await view(page).locator("details.notes summary").click();
+  await expect(view(page)).toContainText(w[5].slice(0, 40));
+});

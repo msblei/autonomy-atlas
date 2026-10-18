@@ -2273,7 +2273,7 @@ const recordsOf = (group = state.group) => SOURCE_NAMES[tradeSourceKey(group)][0
 function tradeWithheld(id, group = state.group, flow = tradeFlow()) {
   const f = flow === "grown" ? "imports" : flow;
   const w = state.trade?.meta.withheld?.find((r) => r[0] === id && r[1] === group && r[2] === f);
-  return w ? { trade: w[3], balance: w[4] } : null;
+  return w ? { trade: w[3], balance: w[4], note: w[5] ?? null } : null;
 }
 
 function tradeFor(id, group = state.group, flow = tradeFlow(), basis = tradeBasis()) {
@@ -2333,10 +2333,10 @@ function viewTrade() {
   }
   if (wh) {
     return `<p class="lead-none">No reliable trading partners${tradeSourceKey() === "fao_tm" ? " from FAO" : ""}.</p>
-      <details class="notes"><summary>Why?</summary><p>${recordsOf()} list ${tonnes(wh.trade)}
+      <details class="notes"><summary>Why?</summary><p>${wh.note ?? `${recordsOf()} list ${tonnes(wh.trade)}
         ${state.flow === "imports" ? "bought" : "sold"} abroad a year, its food balance ${tonnes(wh.balance)}.
         Records this far above the balance usually count cargo passing through or shipments booked to
-        the wrong country, so the split by country is not shown.</p></details>`;
+        the wrong country, so the split by country is not shown.`}</p></details>`;
   }
   const imports = state.flow === "imports";
   const grown = imports && state.grown && canTrace();
@@ -2409,10 +2409,10 @@ function viewTrade() {
 function partial(t, balanceKt) {
   if (balanceKt == null || !(balanceKt > 0) || t[0] / 1000 >= 0.5 * balanceKt) return "";
   const why = state.group === "fish"
-    ? "fish made into fishmeal and fish oil, mostly for fish farms, which trade records count as feed and oil"
-    : `${food()} inside processed goods, which the records file under other products`;
+    ? "can also count fish made into fishmeal and fish oil, which trade records file as feed and oil, and trade the records do not show"
+    : `also counts ${food()} inside processed goods, which the records file under other products`;
   return `<p class="small">${recordsOf()} hold ${tonnes(t[0] / 1000)} of the ${tonnes(balanceKt)} in FAO's food
-    balance. The balance also counts ${why}. The split by country is of the records.</p>`;
+    balance. The balance ${why}. The split by country is of the records.</p>`;
 }
 
 function cap(s) {

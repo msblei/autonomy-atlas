@@ -393,6 +393,15 @@ be. The balance figures themselves (bought and sold in the FBS) are unaffected; 
 whose bought and sold totals come from the trade records, those totals are withheld with it.
 Other countries' flows with the withheld country as partner are their own records and stay.
 
+**Withheld by review.** A flow the test lets through can still be false: a country that reports
+nothing gets its partners' reports, and a seller may book cargo to a ship's flag. Flows a review
+finds false are listed in `mappings/trade_withheld_by_review.csv` (iso3, group, flow, date, a
+reason in words) and withheld like the others; `meta.withheld` carries the note as a sixth
+element and the page shows it instead of the records-against-balance wording. 2026-10-18: the
+Marshall Islands' cereal imports, which rest on Ukraine's reported sales to them (19.7 kt in
+2022, single years only), most likely cargo for ships flagged there; found because the scenario
+section put the islands' cereals at 53% from Russia and Ukraine.
+
 ## Comext: EU members' fish trade, and a second look at the trade matrix
 
 Source: Eurostat Comext, dataset DS-045409 "EU trade since 1988 by HS2-4-6 and CN8"
@@ -442,7 +451,12 @@ INT_EU, …) are dropped, so nothing counts twice; the single partners add up to
    Fishmeal is no fish in these records, but the FBS counts fish used as feed: a member that
    imports fishmeal for its fish farms has records far below its balance (Greece 2021–2023: 189 kt
    against 668 kt, of which 490 kt feed). The check of section "Trade records against the food
-   balance" flags it and the trade page says the records hold only part of the balance.
+   balance" flags it and the trade page says the records hold only part of the balance. Not every
+   gap is fishmeal: Rwanda's balance has 32 kt of fish exports and no feed or non-food use, and
+   the records none (most likely fish sold across land borders unrecorded), so the page names
+   both causes. Fish codes with large live-weight factors are right by definition (shark fins,
+   0305 71: 20 kg of shark per kg) but magnify a mis-coded record: Botswana's 1.7 kt of "shark
+   fins" to South Africa become 31 kt of fish, which the check withholds.
 2. *The EU bloc's fish balance*: the extra-EU shares `s_imp`, `s_exp` of section "National vs
    EU-bloc view" for fish, per member, flow and year, live weight over all partners.
 3. *A comparison with the trade matrix* (not a source): for each member, group (fish excluded)

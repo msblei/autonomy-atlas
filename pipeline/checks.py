@@ -145,7 +145,33 @@ def trade_verdicts(partners: pd.DataFrame, groups: pd.DataFrame, eu_bloc: str = 
                                 np.where(high | low, "warn", ""))
         rows.append(j.reset_index())
     out = pd.concat(rows, ignore_index=True)
-    return out[["iso3", "group", "flow", "trade_kt", "balance_kt", "ratio", "typical", "verdict"]]
+    # flows withheld by a human review (mappings/trade_withheld_by_review.csv)
+    for iso3, group, flow in trade_reviewed():
+        hit = (out["iso3"] == iso3) & (out["group"] == group) & (out["flow"] == flow)
+        if hit.any():
+            out.loc[hit, "verdict"] = "withhold"
+        else:
+            tk = t[(t["iso3"] == iso3) & (t["group"] == group) & (t["flow"] == flow)]["tonnes"].sum() / 1000
+            bk = g.set_index(["iso3", "group"])[flow].get((iso3, group), np.nan)
+            out = pd.concat([out, pd.DataFrame([{"iso3": iso3, "group": group, "flow": flow, "trade_kt": tk,
+                                                 "balance_kt": bk, "ratio": np.nan, "typical": np.nan,
+                                                 "verdict": "withhold"}])], ignore_index=True)
+    out["note"] = [trade_reviewed().get((i, gr, f)) for i, gr, f in zip(out["iso3"], out["group"], out["flow"], strict=True)]
+    return out[["iso3", "group", "flow", "trade_kt", "balance_kt", "ratio", "typical", "verdict", "note"]]
+
+
+def trade_reviewed() -> dict[tuple[str, str, str], str]:
+    """(iso3, group, flow) -> note, from mappings/trade_withheld_by_review.csv."""
+    import csv
+
+    from . import config
+
+    path = config.MAPPINGS / "trade_withheld_by_review.csv"
+    if not path.exists():
+        return {}
+    with path.open(encoding="utf-8") as f:
+        return {(r["iso3"], r["group"], r["flow"]): r["note"]
+                for r in csv.DictReader(x for x in f if not x.startswith("#"))}
 
 
 # ------------------------------------------------------------------------------------------------

@@ -525,7 +525,7 @@ def export_trade() -> None:
             "mirror": mirrored,
             # Flows not published: [iso3, group, flow, trade records kt, food balance kt].
             "withheld": [[r.iso3, r.group, r.flow, round(r.trade_kt), round(r.balance_kt)]
-                         for r in v.itertuples()],
+                         + ([r.note] if isinstance(r.note, str) and r.note else []) for r in v.itertuples()],
         },
         "names": dict(zip(*load_trade_only()[["iso3", "name"]].T.values, strict=True)),
         "countries": countries,

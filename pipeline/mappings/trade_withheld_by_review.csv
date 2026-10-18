@@ -1,0 +1,7 @@
+# Trade flows withheld after a human review, although their records do not exceed the food
+# balance (docs/methodology.md, "Trade records against the food balance", withheld by review).
+# Withheld like any withheld flow: no split by country, no "where it was grown", no scenario
+# figure. `note` says why in words (no figures: they come from the data); add a line only with a
+# reason a reader can check in the trade records, and the date of the review.
+iso3,group,flow,reviewed,note
+MHL,cereals,imports,2026-10-18,"The Marshall Islands report no trade; the split comes from what partners report, and Ukraine's reported cereal sales to them (one of the largest ship registries) come in single years and most likely went to ships flagged there, not to the islands."

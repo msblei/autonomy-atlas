@@ -162,8 +162,9 @@ CHECK_NOTES = {
                 "points; the rest cannot move it that much.",
     "trade_vs_fbs": "Trade records far from their food group's typical ratio to the balance. All are "
                     "below it: the balance also counts food contained in processed goods (sugar in "
-                    "chocolate and soft drinks, milk in food preparations, wheat gluten in fish feed; fish fed to "
-                    "farmed fish as fishmeal, which is not fish in the trade records) "
+                    "chocolate and soft drinks, milk in food preparations, wheat gluten in fish feed; fish made into "
+                    "fishmeal and fish oil, which the records file as feed and oil), or trade the records do not "
+                    "show (Rwanda's fish exports: none in the records, no fishmeal in its balance) "
                     "that the trade records file elsewhere. Records far above it would be withheld.",
     "jrc_ratio_dairy": "The European Commission's own dairy ratio, on a basis its file does not "
                        "document, against ours from its production and trade figures. Expected every "
@@ -210,8 +211,9 @@ def run() -> None:
     tw = json.loads(tpath.read_text(encoding="utf-8"))["meta"].get("withheld", []) if tpath.exists() else []
     names = {k: c.get("name") for k, c in ssr["countries"].items()}
     tdf = pd.DataFrame([{"iso3": i, "name": names.get(i, i), "group": g, "flow": f,
-                         "trade_records_kt": t, "food_balance_kt": b} for i, g, f, t, b in tw],
-                       columns=["iso3", "name", "group", "flow", "trade_records_kt", "food_balance_kt"])
+                         "trade_records_kt": w[3], "food_balance_kt": w[4],
+                         "reviewed": w[5] if len(w) > 5 else ""} for w in tw for i, g, f in [w[:3]]],
+                       columns=["iso3", "name", "group", "flow", "trade_records_kt", "food_balance_kt", "reviewed"])
 
     rel = _latest_release()
     chg = changes(rel["ssr"], ssr) if rel else pd.DataFrame()

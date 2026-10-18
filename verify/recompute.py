@@ -1579,6 +1579,15 @@ def trade_withheld(trade, res):
         typical = float(np.median([t / b for _, t, b in rows]))
         out += [[i, g, flow, round(t), round(b)] for i, t, b in rows
                 if t / b > 3 * typical and t / b > 1.5]
+    # withheld by review (methodology: the flows listed in mappings/trade_withheld_by_review.csv)
+    have = {tuple(w[:3]) for w in out}
+    for r in read_csv_comments(MAP / "trade_withheld_by_review.csv"):
+        k = (r["iso3"], r["group"], r["flow"])
+        if k in have:
+            continue
+        t = sum(trade.get(k[0], {}).get(k[1], {}).get(k[2], {}).values()) / 1000
+        b = res.get(k[0], {}).get("groups", {}).get(k[1], {}).get("comp", {}).get("M" if k[2] == "imports" else "X")
+        out.append([*k, round(t), None if b is None or isnan(b) else round(b)])
     return sorted(out)
 
 
