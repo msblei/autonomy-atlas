@@ -73,7 +73,7 @@ def _table(df: pd.DataFrame, cols: list[str] | None = None) -> str:
         "<tr>" + "".join(f"<td>{'' if pd.isna(v) else html.escape(str(round(v, 1) if isinstance(v, float) else v))}</td>"
                          for v in r) + "</tr>"
         for r in df.itertuples(index=False))
-    return f"<table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table>"
+    return f"<div class='tw'><table><thead><tr>{head}</tr></thead><tbody>{body}</tbody></table></div>"
 
 
 def _usda_section() -> str:
@@ -96,7 +96,8 @@ def _usda_section() -> str:
 CHECK_NOTES = {
     "usda_gap": "FAO's and USDA's figures for one country and commodity put its self-sufficiency far "
                 "apart. Different compilations, neither known to be right. Shown on the food's page "
-                "when the item is at least 10% of its group; smaller items are only listed here.",
+                "when the item is at least 10% of its group or could move the group's figure by 5 "
+                "points; the rest cannot move it that much.",
     "trade_vs_fbs": "Trade records far from their food group's typical ratio to the balance. All are "
                     "below it: the balance also counts food contained in processed goods (sugar in "
                     "chocolate and soft drinks, milk in food preparations, wheat gluten in fish feed) "
@@ -129,16 +130,18 @@ def run() -> None:
     withheld = []
     for iso3, c in ssr["countries"].items():
         for group, ind in c.get("indicators", {}).items():
-            for where in ([ind] if group != "all" else [ind.get("protein", {}), ind.get("kcal", {})]):
+            bases = [("tonnes", ind)] if group != "all" else [("protein", ind.get("protein", {})),
+                                                            ("kcal", ind.get("kcal", {}))]
+            for basis, where in bases:
                 w = where.get("withheld")
                 if w:
                     r = w.get("range") or [None, None]
-                    withheld.append({"iso3": iso3, "name": c.get("name"), "group": group,
+                    withheld.append({"iso3": iso3, "name": c.get("name"), "group": group, "basis": basis,
                                      "reason": w["reason"], "low": r[0], "high": r[1]})
             if ind.get("uses_withheld"):
-                withheld.append({"iso3": iso3, "name": c.get("name"), "group": group,
+                withheld.append({"iso3": iso3, "name": c.get("name"), "group": group, "basis": "tonnes",
                                  "reason": "uses breakdown only", "low": None, "high": None})
-    wdf = pd.DataFrame(withheld, columns=["iso3", "name", "group", "reason", "low", "high"])
+    wdf = pd.DataFrame(withheld, columns=["iso3", "name", "group", "basis", "reason", "low", "high"])
     # Trade flows whose records are far above the food balance (checks.trade_verdicts).
     tpath = W / "trade.json"
     tw = json.loads(tpath.read_text(encoding="utf-8"))["meta"].get("withheld", []) if tpath.exists() else []
@@ -193,11 +196,16 @@ def run() -> None:
                             + (f"<p class='note'>{html.escape(note)}</p>" if note else "")
                             + _table(sub.sort_values(["iso3", "group"]), ["iso3", "group", "detail"]))
     page = f"""<!doctype html><html lang="en"><meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1"><title>Data audit</title>
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Atlas data audit</title>
 <style>
-body{{font:14px/1.45 system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:#222;background:#fff}}
-table{{border-collapse:collapse;width:100%;margin:8px 0 24px}}th,td{{border-bottom:1px solid #ddd;padding:4px 8px;text-align:left;vertical-align:top}}
-th{{background:#f4f4f2;position:sticky;top:0}}.note{{color:#555;max-width:80ch}}.ok{{color:#1e6b45}}.bad{{color:#b84a2a;font-weight:600}}.none{{color:#777}}
+:root{{--bg:#fdfcfa;--ink:#23201b;--muted:#57503f;--line:#e3ded4;--head:#efece5;--ok:#2f6f4e;--bad:#a8421f}}
+@media (prefers-color-scheme: dark){{:root:not([data-theme="light"]){{--bg:#1c1a16;--ink:#f1eee8;--muted:#b5ac98;--line:#3a362f;--head:#2b2823;--ok:#8fcfa8;--bad:#f0937a}}}}
+:root[data-theme="dark"]{{--bg:#1c1a16;--ink:#f1eee8;--muted:#b5ac98;--line:#3a362f;--head:#2b2823;--ok:#8fcfa8;--bad:#f0937a}}
+html{{background:var(--bg)}}
+body{{font:14px/1.45 system-ui,sans-serif;max-width:1100px;margin:24px auto;padding:0 16px;color:var(--ink);background:var(--bg)}}
+.tw{{overflow-x:auto;margin:8px 0 24px}}table{{border-collapse:collapse;width:100%}}
+th,td{{border-bottom:1px solid var(--line);padding:4px 8px;text-align:left;vertical-align:top}}
+th{{background:var(--head);position:sticky;top:0}}.ok{{color:var(--ok)}}.bad{{color:var(--bad);font-weight:600}}.none,.note{{color:var(--muted)}}.note{{max-width:80ch}}
 </style>{''.join(sections)}</html>"""
     REPORT.write_text(page, encoding="utf-8")
     log.info("wrote %s (%d withheld, %d trade flows withheld, %d open warnings, %d handled, %d confirmed, "
