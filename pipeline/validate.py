@@ -37,7 +37,7 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
 PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
-             "countries.geojson"]
+             "cropmap.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
 KT_TOL = 0.5  # kt, for identities between exported components
@@ -424,6 +424,30 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
     return out
 
 
+def check_cropmap(cm: dict) -> list[Finding]:
+    """Crop map images (methodology, "Fields"): each image exists, has the size in cropmap.json,
+    corners inside Europe, and only the five shades (or transparent)."""
+    import rasterio
+
+    out = []
+    colors = {tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in cm["meta"]["colors"]}
+    for group, g in cm.get("groups", {}).items():
+        path = config.WEB_DATA / g["file"]
+        if not path.exists():
+            out.append(Finding("cropmap_missing", BLOCK, g["file"], None, group))
+            continue
+        with rasterio.open(path) as r:
+            a = r.read()
+        if [a.shape[2], a.shape[1]] != g["size"]:
+            out.append(Finding("cropmap_size", BLOCK, f"{a.shape} vs {g['size']}", None, group))
+        if not all(-32 <= x <= 46 and 30 <= y <= 72 for x, y in g["coordinates"]):
+            out.append(Finding("cropmap_corners", BLOCK, str(g["coordinates"]), None, group))
+        seen = {tuple(int(v) for v in px) for px in a[:3, a[3] > 0].T[::997]}
+        if seen - colors:
+            out.append(Finding("cropmap_colors", BLOCK, f"unexpected colours {sorted(seen - colors)[:3]}", None, group))
+    return out
+
+
 def check_import_months(imo: dict) -> list[Finding]:
     """Purchases by month (methodology, "When it comes from abroad"): EU members and the EU only,
     twelve months adding up to 100% (rounding), at most four products, a leading supplier that is
@@ -590,6 +614,9 @@ def run(*, write: bool = True) -> list[Finding]:
         findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))
     else:
         findings += check_published(ssr, its, trade)
+    cm = config.WEB_DATA / "cropmap.json"
+    if cm.exists():
+        findings += check_cropmap(json.loads(cm.read_text(encoding="utf-8")))
     imo = config.WEB_DATA / "import_months.json"
     if imo.exists():
         findings += check_import_months(json.loads(imo.read_text(encoding="utf-8")))

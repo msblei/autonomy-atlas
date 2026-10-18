@@ -530,6 +530,57 @@ def import_months(WIN):
     return out
 
 
+CROPMAP_CLASSES = {"cereals": [211, 212, 213, 214, 215, 216, 217, 218, 219], "potatoes_roots": [221],
+                   "sugar": [222], "oilseeds": [232, 233], "pulses": [240]}
+
+
+def cropmap_check(cm, n=4000):
+    """Methodology "Fields": for n sampled image pixels, the shade of the summed class shares at
+    the pixel's centre (nearest 2 km cell). -> {group: (exact share, worst step difference)}."""
+    import rasterio
+    from rasterio.warp import transform as tr
+
+    steps = cm["meta"]["steps"]
+    colors = [tuple(int(c[i:i + 2], 16) for i in (1, 3, 5)) for c in cm["meta"]["colors"]]
+    R = 6378137.0
+    rng = np.random.default_rng(20261018)
+    out = {}
+    for g, info in cm["groups"].items():
+        tot = None
+        for c in CROPMAP_CLASSES[g]:
+            with rasterio.open(ROOT / f"data/raw/eucropmap/crop_percent_on_land_{c}_2km.tif") as r:
+                a = r.read(1).astype("float64")
+                a[a == r.nodata] = np.nan
+                inv = ~r.transform
+            tot = a if tot is None else np.where(np.isnan(tot), a, tot + np.nan_to_num(a))
+        with rasterio.open(OUT_DIR / info["file"]) as im:
+            px = im.read()
+        h, w = px.shape[1], px.shape[2]
+        (lon0, lat0), (lon1, _), (_, lat1) = info["coordinates"][0], info["coordinates"][1], info["coordinates"][2]
+        mx = lambda lon: math.radians(lon) * R  # noqa: E731
+        my = lambda lat: R * math.log(math.tan(math.pi / 4 + math.radians(lat) / 2))  # noqa: E731
+        x0, x1, y0, y1 = mx(lon0), mx(lon1), my(lat0), my(lat1)
+        rows, cols = rng.integers(0, h, n), rng.integers(0, w, n)
+        xs = x0 + (cols + 0.5) * (x1 - x0) / w
+        ys = y0 + (rows + 0.5) * (y1 - y0) / h
+        ex, ey = tr("EPSG:3857", "EPSG:3035", xs.tolist(), ys.tolist())
+        exact, worst = 0, 0
+        for k in range(n):
+            cc, rr = inv * (ex[k], ey[k])
+            ci, ri = int(math.floor(cc)), int(math.floor(rr))
+            v = tot[ri, ci] if 0 <= ri < tot.shape[0] and 0 <= ci < tot.shape[1] else np.nan
+            want = -1
+            for i, lo in enumerate(steps):
+                if not np.isnan(v) and min(v, 1) >= lo:
+                    want = i
+            p = px[:, rows[k], cols[k]]
+            got = -1 if p[3] == 0 else colors.index(tuple(int(x) for x in p[:3]))
+            exact += got == want
+            worst = max(worst, abs(got - want))
+        out[g] = (exact / n, worst)
+    return out
+
+
 def season_rows(res, D):
     """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
     cal = season_calendars()
@@ -1458,7 +1509,8 @@ def main():
     SHAS["comext_gz"] = sha256(COMEXT_GZ)
     SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
     SHAS["baci_zip"] = sha256(BACI_ZIP)
-    for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json"):
+    for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
+              "cropmap.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
     D = load_all()
@@ -1676,6 +1728,14 @@ def main():
                     if (x is None) != (y is None) or (x and (x[0] != y[0] or abs(x[1] - y[1]) > 0.5 + 1e-9)):
                         record("import_months_top", {**w, "field": f"{h}.top.{k + 1}"}, x, y and [y[0], round(y[1])])
 
+    # ---- crop map images (methodology "Fields") ----
+    cmj = json.load(open(OUT_DIR / "cropmap.json"))
+    for g, (exact, worst) in cropmap_check(cmj).items():
+        counts["cropmap_pixels"] += 4000
+        if exact < 0.99:
+            record("cropmap_pixels", {"file": "cropmap.json", "group": g, "field": "shade"},
+                   ">=99% exact", f"{exact:.1%} exact, worst {worst}")
+
     # ---- regions (methodology "Where it is grown") ----
     reg = json.load(open(OUT_DIR / "regions.json"))
     mine_r, mine_b = region_rows(D.WIN)
@@ -1843,7 +1903,7 @@ def main():
         "ok": total == 0,
         "n_mismatches": total,
         "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json",
-                                                              "import_months.json")},
+                                                              "import_months.json", "cropmap.json")},
         "runtime_s": round(time.time() - T0, 1),
         "window": f"{D.WIN[0]}-{D.WIN[-1]}",
         "primary_reading": PRIMARY,

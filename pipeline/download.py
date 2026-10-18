@@ -306,6 +306,17 @@ def seasons(*, force: bool = False) -> list[Path]:
     return out
 
 
+def cropmap(*, force: bool = False) -> list[Path]:
+    """JRC crop shares on land at 2 km from EUCROPMAP 2018, one raster per crop class (14 files,
+    363 MB): pipeline/cropmap.py. CC BY 4.0, © European Union."""
+    from . import cropmap as cm
+
+    out = [fetch(cm.BASE + cm.FILE.format(c=c), cm.RAW / cm.FILE.format(c=c), force=force, timeout=600)
+           for cs in cm.GROUPS.values() for c in cs]
+    out.append(fetch(cm.BASE.rsplit("/", 2)[0] + "/copyright.txt", cm.RAW / "copyright.txt", force=force))
+    return out
+
+
 def crop_calendar() -> None:
     """FAO Crop Calendar API (phase 3). Endpoints are not documented here on purpose —
     inspect the API's OpenAPI/Swagger page first, then implement."""
@@ -327,13 +338,14 @@ ALL = {
     "eumofa": eumofa,
     "comext": comext,
     "seasons": seasons,
+    "cropmap": cropmap,
     "crop_calendar": crop_calendar,
 }
 
 
 def run(sources: list[str] | None = None, *, force: bool = False) -> None:
     config.ensure_dirs()
-    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext", "baci", "seasons"]
+    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext", "baci", "seasons", "cropmap"]
     for name in sources:
         fn = ALL[name]
         log.info("== %s", name)

@@ -575,3 +575,6 @@ def run() -> None:
     from . import comext
 
     comext.export_months()
+    from . import cropmap
+
+    cropmap.run()

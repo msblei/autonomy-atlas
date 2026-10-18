@@ -29,7 +29,7 @@ MANIFEST = config.RAW / "manifest.json"
 
 def raw_inputs() -> dict[str, Path]:
     """Raw files the published figures depend on, keyed by a stable name."""
-    from . import jrc, seasons
+    from . import cropmap, jrc, seasons
 
     f = config.RAW / "faostat"
     return {
@@ -48,6 +48,7 @@ def raw_inputs() -> dict[str, Path]:
         "unsd_cpc_hs": config.RAW / "unsd" / "CPC21-HS2017.csv",
         "unsd_hs2022": config.RAW / "unsd" / "HS2022toHS2017ConversionAndCorrelationTables.xlsx",
         **{f"seasons:{p.name}": p for p in seasons.inputs()},
+        **{f"cropmap:{p.name}": p for p in cropmap.inputs()},
     }
 
 

@@ -27,6 +27,7 @@ const state = {
   flow: "imports", // imports | exports (trade level)
   grown: false, // imports traced back to where they were grown, instead of who sold them
   byValue: false, // trade in euros (Eurostat Comext, EU countries) instead of tonnes
+  fields: false, // "Where it is grown": the 2 km crop map instead of the regions' tonnes
   indicator: "ssr", // ssr | idr (table level only)
   basis: "tonnes", // tonnes | kcal (table level only)
   bloc: false, // zoomed out: EU members are coloured with the EU27 bloc's figures (see EU_ZOOM)
@@ -277,6 +278,7 @@ map.on("load", async () => {
   paintMap();
   renderLegend();
   if (state.level === "trade") fitTrade();
+  else if (state.level === "where" && state.regionGeo) fitRegions();
   else if (state.iso3) flyTo(state.iso3);
   else showWorld(0);
 
@@ -456,9 +458,10 @@ function route() {
   // where the reader already sees it and a jump would only disorient.
   const before = prev.split("/")[0];
   if (state.level === "intro" && before !== "null") showWorld();
-  else if (state.iso3 && state.iso3 !== before && state.level !== "trade" && !clickedOnMap) flyTo(state.iso3);
+  else if (state.iso3 && state.iso3 !== before && !["trade", "where"].includes(state.level) && !clickedOnMap) flyTo(state.iso3);
   clickedOnMap = false;
   if (state.level === "trade" && prev !== `${state.iso3}/${state.group}/${state.level}/${state.flow}`) fitTrade();
+  if (state.level === "where" && prev !== `${state.iso3}/${state.group}/${state.level}/${state.flow}`) fitRegions();
 }
 
 // A click on the map keeps the reader on the same level (and food) for the new country.
@@ -940,6 +943,14 @@ function seasonScale() {
 // The key sits right under the food buttons: what the map shows, then what the colours mean.
 function renderLegend() {
   const el = document.getElementById("legend");
+  if (fieldsOn()) {
+    const m = state.cropmap.meta;
+    const pct = (x) => `${Math.round(x * 100)}`;
+    const labels = m.steps.map((x, i) => (i < m.steps.length - 1 ? `${pct(x)}–${pct(m.steps[i + 1])}%` : `${pct(x)}%+`));
+    el.innerHTML = `<p class="title">Share of the land under <b>${cropWords()}</b>, ${m.year}</p>
+      <div class="scale">${labels.map((l, i) => `<span class="${i === labels.length - 1 ? "last" : ""}"><i style="background:${m.colors[i]}"></i><em>${l}</em></span>`).join("")}</div>`;
+    return;
+  }
   if (state.level === "where" && regionsFor()) {
     const [title, body] = regionLegend();
     el.innerHTML = `<p class="title">${title}</p>${body}`;
@@ -1148,6 +1159,12 @@ function renderFoot() {
     ? `<div class="tools"><a href="${link({ level: "sources" })}"${here("sources")}>How do we know?</a>
        <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
     : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
+  if (fieldsOn()) {
+    el.innerHTML = `${tools}Map: <a href="https://data.jrc.ec.europa.eu/dataset/15f86c84-eae1-4723-8e00-c1b35c8f56b9" target="_blank"
+      rel="noopener">JRC EUCROPMAP ${state.cropmap.meta.year}</a> (crop shares at 2 km). List: Eurostat crop statistics by region.
+      © European Union, CC BY 4.0.`;
+    return;
+  }
   if (state.level === "where" && regionsFor()) {
     el.innerHTML = `${tools}Figures: <a href="https://ec.europa.eu/eurostat/databrowser/view/apro_cpshr/default/table" target="_blank"
       rel="noopener">Eurostat crop statistics by region</a>, ${state.regions.meta.years.replace("-", "–")} averages. Boundaries
@@ -1176,6 +1193,9 @@ function wire(el) {
       if (state.grown) state.byValue = false;
       render(); fitTrade();
     };
+  }
+  for (const b of el.querySelectorAll("[data-fields]")) {
+    b.onclick = () => { state.fields = b.dataset.fields === "1"; render(); };
   }
   for (const b of el.querySelectorAll("[data-mode]")) {
     b.onclick = () => {
@@ -1367,12 +1387,15 @@ function seasonStrip(id) {
 // ---- Where it is grown: regions in Europe (regions.json, methodology "Where it is grown") ----
 let regionsLoading = null;
 function loadRegions() {
-  regionsLoading ??= Promise.all([loadJSON("data/regions.json"), loadJSON("data/regions.geojson")])
-    .then(([d, geo]) => {
+  regionsLoading ??= Promise.all([loadJSON("data/regions.json"), loadJSON("data/regions.geojson"),
+    loadJSON("data/cropmap.json").catch(() => null)])
+    .then(([d, geo, crop]) => {
       state.regions = d;
       state.regionGeo = geo;
+      state.cropmap = crop;
       addRegionLayers();
       if (state.iso3) render();
+      if (state.level === "where") fitRegions();
     })
     .catch((e) => console.error(e));
 }
@@ -1396,8 +1419,16 @@ function viewWhere() {
   const max = top[0].share;
   const name = (code) => state.regions.names[code] ?? code;
   const level = id !== EU && rows.length && rows[0].code.length === 3 ? `${nameOf(id)} reports by state, not by smaller region. ` : "";
+  const fieldsOk = !!state.cropmap?.groups[state.group];
+  const fields = fieldsOk && state.fields;
+  const toggle = fieldsOk ? `
+    <div class="seg sub" role="group" aria-label="How the map shows it">
+      <button type="button" data-fields="0" aria-pressed="${!fields}">By region</button>
+      <button type="button" data-fields="1" aria-pressed="${fields}">Fields</button>
+    </div>` : "";
   return `
     <p class="q">Where ${id === EU ? "in the EU" : `in ${nameOf(id)}`} ${cropWords()} grow</p>
+    ${toggle}
     <ol class="partners">${top.map((x) => `
       <li class="line"><span class="name">${name(x.code)}</span>
         <span class="track"><span class="bar prod" style="width:${(x.share / max) * 100}%"></span></span>
@@ -1407,7 +1438,9 @@ function viewWhere() {
     <details class="notes"><summary>About these figures</summary>
     <ul class="caveats">
       <li>Harvested ${cropWords()} by region from the EU's crop statistics (Eurostat), ${state.regions.meta.years.replace("-", "–")} averages. They are not FAO's food balance, so only the shares are shown here.</li>
-      <li>${level}The map shades each region by how much it grows per square kilometre, so large regions do not look important just for their size.</li>
+      <li>${level}${fields
+        ? `The map shows the fields themselves: how much of the land in each 2 km square was under ${cropWords()} in ${state.cropmap.meta.year}, from the EU's satellite crop map (JRC EUCROPMAP)${state.group === "oilseeds" ? "; it has no sunflower class" : ""}.`
+        : "The map shades each region by how much it grows per square kilometre, so large regions do not look important just for their size."}</li>
       ${r.coverage != null && r.coverage < 100 ? `<li>The regions add up to ${r.coverage}% of ${nameOf(id)}'s total; the rest is not given by region.</li>` : ""}
     </ul></details>`;
 }
@@ -1432,6 +1465,44 @@ function addRegionLayers() {
 
 // The regions of this country (all members' for the EU), shaded by t per km² in the food's
 // classes (regions.json meta.breaks); everything else on the map steps back.
+// "Where it is grown" frames the country's European regions (France without its overseas
+// territories), so the regions and the fields can be seen.
+function fitRegions() {
+  if (!state.mapReady || !state.regionGeo) return;
+  const codes = new Set((regionsFor()?.regions ?? []).map(([c]) => c));
+  if (!codes.size) return;
+  let x0 = 180, y0 = 90, x1 = -180, y1 = -90;
+  const walk = (c) => {
+    if (typeof c[0] === "number") {
+      if (c[0] < -25 || c[0] > 45 || c[1] < 34) return; // overseas regions (French Guiana, Réunion) stay out of the frame
+      x0 = Math.min(x0, c[0]); x1 = Math.max(x1, c[0]); y0 = Math.min(y0, c[1]); y1 = Math.max(y1, c[1]);
+      return;
+    }
+    c.forEach(walk);
+  };
+  for (const f of state.regionGeo.features) if (codes.has(f.id)) walk(f.geometry.coordinates);
+  map.fitBounds([[x0, y0], [x1, y1]], { padding: openArea(20), maxZoom: 7, duration: 900 });
+}
+
+function fieldsOn() {
+  return state.level === "where" && state.fields && !!state.cropmap?.groups[state.group];
+}
+
+// The crop map: one image per food (cropmap.json), shown under the region outlines.
+function paintFields() {
+  for (const g of Object.keys(state.cropmap?.groups ?? {})) {
+    const id = `fields-${g}`;
+    if (map.getLayer(id)) map.setLayoutProperty(id, "visibility", fieldsOn() && g === state.group ? "visible" : "none");
+  }
+  if (!fieldsOn()) return;
+  const g = state.cropmap.groups[state.group];
+  const id = `fields-${state.group}`;
+  if (!map.getSource(id)) {
+    map.addSource(id, { type: "image", url: `data/${g.file}`, coordinates: g.coordinates });
+    map.addLayer({ id, type: "raster", source: id, paint: { "raster-opacity": 1, "raster-resampling": "nearest" } }, "regions-line");
+  }
+}
+
 function paintRegions() {
   const r = regionsFor();
   const codes = r ? r.regions.map(([c]) => c) : [];
@@ -1442,12 +1513,15 @@ function paintRegions() {
     ["==", ["typeof", ["feature-state", "d"]], "number"],
     ["case", [">", ["feature-state", "d"], 0], step, NO_DATA], NO_DATA]);
   for (const [code, , , d] of r?.regions ?? []) map.setFeatureState({ source: "regions", id: code }, { d });
-  map.setFilter("regions-fill", ["in", ["get", "code"], ["literal", codes]]);
+  map.setFilter("regions-fill", fieldsOn() ? ["==", ["get", "code"], ""] : ["in", ["get", "code"], ["literal", codes]]);
   map.setFilter("regions-line", ["in", ["get", "code"], ["literal", codes]]);
+  map.setPaintProperty("regions-line", "line-color", fieldsOn() ? "#57503f" : "#f8f6f1");
+  paintFields();
 }
 
 function hideRegions() {
   if (!map.getLayer("regions-fill")) return;
+  paintFields();
   map.setFilter("regions-fill", ["==", ["get", "code"], ""]);
   map.setFilter("regions-line", ["==", ["get", "code"], ""]);
 }

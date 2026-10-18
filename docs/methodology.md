@@ -679,6 +679,34 @@ Licence: Eurostat (CC BY 4.0); boundaries GISCO NUTS 2024 and 2021, 1:20 million
 - **Not the FBS:** Eurostat's crop statistics (EU standard humidity, harvested production) are not
   FAO's balance; the page shows shares and regional tonnes only, never next to the balance figures.
 
+### Fields: the crop map at 2 km
+
+Inside the regions, where the fields are: JRC's crop proportions derived from EUCROPMAP 2018
+(the 10 m crop-type map of the EU and the UK from Sentinel-1, d'Andrimont et al. 2021), as the
+share of the land under each crop class in 2 km cells (`DRLL/CropDiversity/CropProportionLand`,
+EPSG:3035; CC BY 4.0, © European Union; `atlas download --source cropmap`, 14 files, 363 MB;
+`pipeline/cropmap.py`). The 10 m map itself (2018 and 2022, 7.3 GB per year, no overviews) is not
+read: aggregating it here would mean decoding about 150 billion pixels for the same picture.
+
+- **Classes per food:** cereals 211–219 (common and durum wheat, barley, rye, oats, maize,
+  rice, triticale, other cereals); potatoes 221; sugar beet 222; oilseeds 232 (rapeseed) and 233
+  (soya), sunflower being no class of the 2018 product; pulses 240 (dry pulses). A food's share
+  of a cell = the sum of its classes (at most 1).
+- **Image:** reprojected to Web Mercator (EPSG:3857) at 2 km per pixel at the equator scale
+  (nearest cell: every pixel shows a real cell's value; bilinear smoothing invented in-between
+  values at field edges and failed the check below), cropped to the cells with data, and drawn in five shades by share of the land:
+  2–10%, 10–20%, 20–35%, 35–50%, 50% and more; under 2% is transparent. One PNG per food
+  (`cropmap_<group>.png`) with its corners in `cropmap.json`.
+- **Shown** as the "Fields" reading of "Where … do they grow?", with the regions' outlines over
+  it and its own legend; the page says it is the 2018 map. The regions' tonnes are not shown at
+  the same time (one measure per view).
+- **Checked:** `atlas validate` checks that the image's corners match `cropmap.json` and its
+  colours are the five shades; `verify/recompute.py` re-reads the class rasters, sums the classes
+  at 4,000 sampled image pixels per food (nearest cell) and requires the same shade for at least
+  99% of them (2026-10-18: 99.45–99.95%). The rest are pixels whose centre falls on a cell
+  border, where the reprojection and the check can pick neighbouring cells with very different
+  shares.
+
 ## Scenario "without trade" (considered, not built)
 
 With all trade stopped a country keeps its production, so "available without trade" per person is

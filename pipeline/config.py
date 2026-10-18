@@ -144,6 +144,14 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence": "CC BY 4.0",
         "licence_url": "https://creativecommons.org/licenses/by/4.0/",
     },
+    "jrc_eucropmap": {
+        "title": "Crop proportions on land at 2 km, from EUCROPMAP 2018 (EU crop type map, 10 m)",
+        "publisher": "European Commission, Joint Research Centre (d'Andrimont et al. 2021)",
+        "url": "https://data.jrc.ec.europa.eu/dataset/15f86c84-eae1-4723-8e00-c1b35c8f56b9",
+        "file_url": "https://jeodpp.jrc.ec.europa.eu/ftp/jrc-opendata/DRLL/CropDiversity/CropProportionLand/",
+        "licence": "CC BY 4.0 (© European Union)",
+        "licence_url": "https://creativecommons.org/licenses/by/4.0/",
+    },
     "cepii_baci": {
         "title": "BACI, international trade database at the product level (HS 2017, release 202601)",
         "publisher": "CEPII; Gaulier and Zignago (2010), CEPII Working Paper 2010-23",

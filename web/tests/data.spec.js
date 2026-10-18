@@ -239,3 +239,15 @@ test("when it comes from abroad: products, shaded months and leading suppliers a
   await open(page, "USA/vegetables"); // outside the EU: no monthly trade figures
   await expect(view(page).locator(".season.imports")).toHaveCount(0);
 });
+
+test("fields: the crop map image replaces the regions' shading, with its own legend and source", async ({ page }) => {
+  const cm = JSON.parse(readFileSync(new URL("../public/data/cropmap.json", import.meta.url), "utf8"));
+  await open(page, "DEU/cereals/where");
+  await view(page).locator('[data-fields="1"]').click();
+  await expect(page.locator("#legend")).toContainText(`Share of the land under cereals, ${cm.meta.year}`);
+  await expect(page.locator("#foot")).toContainText(`JRC EUCROPMAP ${cm.meta.year}`);
+  const img = await page.request.get(`data/${cm.groups.cereals.file}`);
+  expect(img.ok()).toBe(true);
+  await view(page).locator('[data-fields="0"]').click();
+  await expect(page.locator("#legend")).toContainText("tonnes per km²");
+});

@@ -21,3 +21,13 @@ def test_two_significant_digits():
     assert regions.nice(0.03456) == pytest.approx(0.035)
     assert regions.nice(123.4) == 120
     assert regions.nice(0) == 0
+
+
+def test_crop_map_shades_and_transparency():
+    import numpy as np
+
+    from pipeline import cropmap
+
+    v = np.array([np.nan, 0.0, 0.019, 0.02, 0.1, 0.2, 0.35, 0.5, 0.99])
+    assert cropmap.shade(v).tolist() == [-1, -1, -1, 0, 1, 2, 3, 4, 4]
+    assert len(cropmap.STEPS) == len(cropmap.COLORS)

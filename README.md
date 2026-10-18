@@ -71,6 +71,7 @@ data/       raw / interim / processed (gitignored)
 | [FAO Technical Conversion Factors](https://www.fao.org/fileadmin/templates/ess/documents/methodology/tcf.pdf) | processed trade back to raw product | FAO publication (cite FAO) |
 | [GGCMI Phase 3 crop calendar](https://zenodo.org/records/5062513) (Jägermeyr et al. 2021), [ISIMIP3a](https://data.isimip.org) land use and country masks | when crops are sown and harvested | CC BY 4.0 |
 | [FAO Crop Calendar](https://cropcalendar.apps.fao.org) | seasons of fruit and vegetables (planned) | free API |
+| [JRC EUCROPMAP](https://data.jrc.ec.europa.eu/dataset/15f86c84-eae1-4723-8e00-c1b35c8f56b9) crop shares at 2 km (2018) | where the fields are | CC BY 4.0, © European Union |
 | [Eurostat GISCO](https://ec.europa.eu/eurostat/web/gisco) NUTS | boundaries | non-commercial, © EuroGeographics |
 | [Natural Earth](https://www.naturalearthdata.com) | country boundaries | public domain |
 | [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/) (Braille Institute) | typeface, also on the map | SIL Open Font License |
