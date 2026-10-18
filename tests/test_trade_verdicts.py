@@ -80,3 +80,27 @@ def test_underreported_group_takes_partners_figures():
     out = trade.fill_underreported(_yearly(rows), years, hub)
     au = out[(out["reporter"] == "AUS") & (out["flow"] == "exports")]
     assert set(au["source"]) == {"reported"}
+
+
+def test_every_dairy_item_converts_to_milk_equivalent():
+    import csv
+
+    from pipeline import config, trade
+
+    factors = trade.load_item_factors()
+    with (config.MAPPINGS / "trade_items.csv").open(encoding="utf-8") as f:
+        rows = list(csv.DictReader(line for line in f if not line.startswith("#")))
+    dairy = [int(r["item_code"]) for r in rows if r["group"] == "dairy"]
+    assert dairy and all(i in factors for i in dairy)
+    assert all(int(r["item_code"]) not in factors for r in rows if r["group"] != "dairy")
+    assert factors[901] > 3 and factors[882] == 1  # cheese vs raw milk
+
+
+def test_partner_shares_use_the_converted_figures():
+    from pipeline import trade
+
+    # 1 t of cheese (3.58 t of milk) from A, 2 t of raw milk from B: B leads by weight, A by milk.
+    df = pd.DataFrame([("X", "A", "dairy", "imports", 2022, 1.0, 3.58), ("X", "B", "dairy", "imports", 2022, 2.0, 2.0)],
+                      columns=["reporter", "partner", "group", "flow", "year", "value", "primary"])
+    out = trade.average(trade.yearly(df), (2022, 2022)).set_index("partner")["tonnes"]
+    assert out["A"] > out["B"]

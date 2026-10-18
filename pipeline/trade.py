@@ -5,8 +5,9 @@ Output data/processed/trade_partners.parquet, one row per country × group × fl
     source (reported | mirror | traced), years
 
 `tonnes` is the yearly mean over the same window as the FBS figures, in product weight as traded
-(a tonne of flour or cheese counts as a tonne; mappings/trade_items.csv). That is fine for "which
-share comes from where" within one food group, not for comparing with FBS totals.
+(a tonne of flour counts as a tonne; mappings/trade_items.csv), except dairy, which is in milk
+equivalent (`to_primary`, the EU's factors: a tonne of cheese is 3.58 t of milk, of milk powder
+7.57 t). That is fine for "which share comes from where" within one food group.
 
 Flows come from the reporting country. When a country reported nothing for a flow in a year
 (Russia, Belarus and others since 2022), its partners' reports are used instead: exports that
@@ -63,7 +64,17 @@ def load_item_groups() -> dict[int, str]:
         return {int(r["item_code"]): r["group"] for r in rows if r["group"]}
 
 
-def read_matrix(years: tuple[int, int], items: dict[int, str]) -> pd.DataFrame:
+def load_item_factors() -> dict[int, float]:
+    """Trade item code -> kg of primary product per kg traded (`to_primary`; dairy in milk
+    equivalent). Items without a factor count as traded."""
+    path = config.MAPPINGS / "trade_items.csv"
+    with path.open(encoding="utf-8") as f:
+        rows = csv.DictReader(line for line in f if not line.startswith("#"))
+        return {int(r["item_code"]): float(r["to_primary"]) for r in rows if r.get("to_primary")}
+
+
+def read_matrix(years: tuple[int, int], items: dict[int, str],
+                factors: dict[int, float] | None = None) -> pd.DataFrame:
     """Stream the 8.5 GB CSV out of the zip, keeping food quantities in tonnes for `years`."""
     path = config.RAW / "faostat" / TM_ZIP
     codes = pa.array(sorted(items), pa.int64())
@@ -96,6 +107,9 @@ def read_matrix(years: tuple[int, int], items: dict[int, str]) -> pd.DataFrame:
         df[c] = df[c].str.lstrip("'").str.zfill(3)
     df["group"] = df["item_code"].map(items)
     df["flow"] = df["element"].map(FLOWS)
+    # "value": tonnes as traded; "primary": in the FBS basis where the mapping converts (dairy in
+    # milk equivalent). Partner lists use "primary", the EU-bloc shares behind the balances "value".
+    df["primary"] = df["value"] * df["item_code"].map(factors or {}).fillna(1.0)
     log.info("trade matrix: %d food rows for %d-%d", len(df), y0, y1)
     return df
 
@@ -122,9 +136,9 @@ def to_iso3(df: pd.DataFrame) -> pd.DataFrame:
 def yearly(df: pd.DataFrame) -> pd.DataFrame:
     """Flows per reporter × partner × group × flow × year: the reporter's own figures, plus mirror
     flows (partners' reports of the opposite flow) where it reported nothing for a flow and year.
-    Columns: reporter, partner, group, flow, year, value, source."""
+    Columns: reporter, partner, group, flow, year, value, primary, source."""
     keys = ["reporter", "partner", "group", "flow", "year"]
-    rep = df.groupby(keys, as_index=False)["value"].sum()
+    rep = _with_primary(df).groupby(keys, as_index=False)[["value", "primary"]].sum()
     reported = set(rep[["reporter", "flow", "year"]].itertuples(index=False, name=None))
 
     mirror = rep.rename(columns={"reporter": "partner", "partner": "reporter"})
@@ -154,13 +168,13 @@ def fill_underreported(both: pd.DataFrame, years: tuple[int, int],
     limit keeps trading hubs (UAE, Switzerland) on their own reports. For the partner lists
     only: the EU-bloc shares keep the per-year rule (methodology, "Trade partners",
     "Under-reported food groups")."""
-    both = both[both["year"].between(*years)]
+    both = _with_primary(both[both["year"].between(*years)])
     keys = ["reporter", "group", "flow"]
     rep = both[both["source"] == "reported"]
     mirror = rep.rename(columns={"reporter": "partner", "partner": "reporter"})
     mirror = mirror.assign(flow=mirror["flow"].map(MIRROR), source="mirror")
-    used = both.groupby(keys)["value"].sum()
-    theirs = mirror.groupby(keys)["value"].sum()
+    used = both.groupby(keys)["primary"].sum()
+    theirs = mirror.groupby(keys)["primary"].sum()
     n_years = years[1] - years[0] + 1
     j = pd.concat([used.rename("used"), theirs.rename("theirs")], axis=1).fillna(0.0)
     if groups is not None:
@@ -181,6 +195,11 @@ def fill_underreported(both: pd.DataFrame, years: tuple[int, int],
     return pd.concat([both[~hit], mirror[take]], ignore_index=True)
 
 
+def _with_primary(df: pd.DataFrame) -> pd.DataFrame:
+    """No `primary` column (no conversion factors applied): primary = as traded."""
+    return df if "primary" in df else df.assign(primary=df["value"])
+
+
 def _source_label(s: pd.Series) -> str:
     """reported / mirror when every year agrees, mixed when some years are partners' reports."""
     kinds = set(s)
@@ -189,10 +208,10 @@ def _source_label(s: pd.Series) -> str:
 
 def average(both: pd.DataFrame, years: tuple[int, int]) -> pd.DataFrame:
     """Yearly flows -> yearly mean over `years` per country × group × flow × partner."""
-    both = both[both["year"].between(*years)]
+    both = _with_primary(both[both["year"].between(*years)])
     n_years = years[1] - years[0] + 1
     out = (both.groupby(["reporter", "group", "flow", "partner"], as_index=False)
-           .agg(tonnes=("value", "sum"), source=("source", _source_label)))
+           .agg(tonnes=("primary", "sum"), source=("source", _source_label)))
     out["tonnes"] /= n_years
     return out.rename(columns={"reporter": "iso3"})
 
@@ -307,7 +326,7 @@ def extract() -> None:
         return
     fbs_years = pd.read_parquet(config.INTERIM / "fbs.parquet", columns=["year"])["year"]
     years = (int(fbs_years.min()), int(fbs_years.max()))
-    both = yearly(to_iso3(read_matrix(years, load_item_groups())))
+    both = yearly(to_iso3(read_matrix(years, load_item_groups(), load_item_factors())))
     both.to_parquet(config.INTERIM / YEARLY, index=False)
     shares = extra_eu_shares(both)
     shares.to_parquet(config.INTERIM / SHARES, index=False)

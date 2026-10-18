@@ -272,8 +272,22 @@ figures, yearly mean. Items are mapped to the food groups by CPC code in
 `pipeline/mappings/trade_items.csv` (feed such as oilcakes, live animals, fibres, tobacco and nuts
 other than groundnuts are left out). FAO's trade data has no fish.
 
-- **Product weight, not primary equivalent.** A tonne of flour, juice or cheese counts as a tonne.
-  Use it for partner shares within one group, never to compare with FBS totals.
+- **Product weight, except dairy.** A tonne of flour or juice counts as a tonne. Dairy is counted
+  in milk equivalent, the basis of its food balance (`to_primary` in `trade_items.csv`): with the
+  EU's own factors, derived from the DG AGRI–JRC balance sheets 2021–2023 as milk equivalent per
+  tonne traded (cheese 3.58, butter 6.57, milk powders 7.57, cream 3.21, drinking milk 0.85,
+  acidified milk 0.98); products the EU does not list take the factor of the closest product or an
+  estimate, marked in the file. By weight, a country shipping liquid milk across a border looked
+  like a large supplier and one selling cheese or powder like a small one: half the absolute
+  change in partner shares was 14 points for the median country, and the largest supplier changed
+  for 15 of 73 buyers (Germany's: the Netherlands 17% by weight, 28% in milk equivalent).
+  The EU-bloc shares behind the balance figures (section "National vs EU-bloc view") stay in
+  product weight, so no balance figure changes.
+  *Checked, not converted:* other groups move far less (median under 3 points for fruit, meat and
+  sugar; none for cereals, oilseeds, pulses, oils, eggs, wine and beer). Potatoes and roots (dried
+  cassava, frozen fries, starch), coffee/cocoa/tea (chocolate, roasted coffee, extracts) and
+  vegetables (tomato paste) would move 6–11 points, but need sourced factors (FAO technical
+  conversion factors) before they are converted.
 - **Reporter first, mirror second.** A country's own import/export reports are used; for a
   country, flow and year with no report at all, partners' reports of the opposite flow are used
   instead (`source = mirror`; Russia, Belarus and small states). A partner whose window mixes
@@ -283,7 +297,8 @@ other than groundnuts are left out). FAO's trade data has no fish.
   of one group may mean "none", and partners' figures are not put in its place.
 - **Under-reported food groups.** Some countries keep single products out of their own reports
   (Australia 2021–2023: 110 kt of sugar exports in its own figures, 3,315 kt in its buyers'). For
-  the partner lists only, per country, flow and food group over the window: when partners report
+  the partner lists only, per country, flow and food group over the window (in the partner
+  lists' basis: product weight, dairy in milk equivalent): when partners report
   more than 3 times the figures above would use, and at least 20 kt a year, and their total is no
   more than 1.5 times the country's FBS flow for that group (`components_kt` as published, or
   `withheld.components_kt`; no limit for a country without a food balance), the partners' reports
@@ -298,8 +313,9 @@ other than groundnuts are left out). FAO's trade data has no fish.
   of the other rice items converted to milled weight (checked row by row in the 2022 data);
   mapping it counted rice twice (EU27 cereal imports 1.9 Mt/year too high). `tests/test_trade.py`
   keeps any "…equivalent" item out.
-- **"Grown in" shares** (re-export tracing) are in FBS primary equivalents, not product weight;
-  `trade.json` `meta.basis` gives the basis per flow.
+- **"Grown in" shares** (re-export tracing): totals in FBS primary equivalents, splits by country
+  in the trade records' basis (product weight; dairy in milk equivalent); `trade.json`
+  `meta.basis` gives the basis per flow.
 - **Partners without a food balance** (Japan, Singapore, Benin…) are kept via
   `pipeline/mappings/trade_only.csv` (without them 4.7% of tonnes would be lost). Regions, income
   groups and historical areas would be dropped, but none appear in the 2021–2023 rows.
@@ -313,10 +329,11 @@ other than groundnuts are left out). FAO's trade data has no fish.
 
 ### Trade records against the food balance
 
-Trade records (product weight) and the FBS import or export total (primary equivalent) are not
-the same number, but for one food group they stand in a typical ratio: a tonne of cheese is about
-eight tonnes of milk, so dairy trade records are typically about a fifth of the balance; for
-pulses or wine they are about equal. A country far from its group's typical ratio has trade
+Trade records (product weight; dairy in milk equivalent) and the FBS import or export total
+(primary equivalent) are not the same number, but for one food group they stand in a typical
+ratio: dried cassava and starch weigh far less than the fresh roots the balance counts, so trade
+records for potatoes and roots are typically about 0.6 of the balance; for pulses or wine they
+are about equal. A country far from its group's typical ratio has trade
 records that do not describe its balance (transit cargo, misreported or mirrored flows).
 
 For each flow (imports, exports), each food group except fish, and each country with a food

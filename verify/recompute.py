@@ -100,6 +100,10 @@ REGION = {c["iso3"]: c["group"] for c in EUROPE}
 PRODUCTS = yaml.safe_load(open(MAP / "products.yaml"))["groups"]
 TRADE_ITEMS = {int(r["item_code"]): r["group"] for r in read_csv_comments(MAP / "trade_items.csv")
                if r["group"].strip()}
+# Methodology, "Trade partners": partner lists in the FBS basis where trade_items.csv gives a factor
+# (dairy in milk equivalent); the EU-bloc shares stay in product weight.
+TO_PRIMARY = {int(r["item_code"]): float(r["to_primary"]) for r in read_csv_comments(MAP / "trade_items.csv")
+              if r.get("to_primary")}
 assert len(EU) == 27
 
 
@@ -205,10 +209,13 @@ def load_tm():
     return t
 
 
-def bilateral(tm, years):
+def bilateral(tm, years, factors=None):
     """Reporter first; mirror (partners' opposite flow) where a country reported nothing at all
-    for that flow and year. -> [c, partner, flow, year, group, t, src]."""
+    for that flow and year. -> [c, partner, flow, year, group, t, src]. `factors`: item -> kg of
+    primary product per kg traded (partner lists); None = product weight (EU-bloc shares)."""
     t = tm[tm["year"].isin(years)]
+    if factors:
+        t = t.assign(t=t["t"] * t["item"].map(factors).fillna(1.0))
     rep_set = set(map(tuple, t.loc[t["r"].notna(), ["r", "flow", "year"]].drop_duplicates()
                       .to_numpy()))
     t = t.assign(group=t["item"].map(TRADE_ITEMS))
@@ -877,7 +884,7 @@ def fill_underreported(bil, res, n):
 
 def build_trade(D, res, min_origin_t=0.0):
     WIN, n = D.WIN, len(D.WIN)
-    bil = fill_underreported(bilateral(D.tm, WIN), res, n)
+    bil = fill_underreported(bilateral(D.tm, WIN, TO_PRIMARY), res, n)
     out = defaultdict(lambda: defaultdict(dict))  # out[c][group][flow] = {partner: t}
     for (c, flow, g, p), v in (bil.groupby(["c", "flow", "group", "partner"])["t"].sum() / n).items():
         out[c][g].setdefault(flow, {})[p] = v

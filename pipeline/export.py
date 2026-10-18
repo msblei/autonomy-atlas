@@ -455,8 +455,8 @@ def export_trade() -> None:
             "source": "fao_tm",
             "years": t["years"].iloc[0],
             "basis": {
-                "imports": "tonnes as traded (product weight)",
-                "exports": "tonnes as traded (product weight)",
+                "imports": "tonnes as traded (product weight); dairy in milk equivalent",
+                "exports": "tonnes as traded (product weight); dairy in milk equivalent",
                 # trade.trace_origins scales the splits to FBS import totals.
                 "grown": "tonnes in FBS primary equivalents (shares only)",
             },
