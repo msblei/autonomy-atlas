@@ -1928,7 +1928,8 @@ function checks() {
       second program, written separately from the first, works out every number again from those
       files and must agree on every number we publish; and we test that this page shows exactly those
       numbers. We also compare FAO's figures with an independent source, the US Department of
-      Agriculture's, and say so where the two disagree a lot.</p>
+      Agriculture's, and say so where the two disagree a lot. How much of the EU's animal feed comes
+      from abroad we compare with the European Commission's own feed protein balance.</p>
     <p>FAO's figures for ${n} combinations of country and food contradict themselves, for example
       more sold abroad than there was. We leave those out, say so where they would appear, and show
       FAO's own lines so you can see why.</p>`;

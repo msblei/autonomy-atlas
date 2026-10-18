@@ -20,6 +20,7 @@ from . import (
     download,
     export,
     feed,
+    feedcheck,
     harmonise,
     manifest,
     regions,
@@ -91,6 +92,7 @@ def main(argv: list[str] | None = None) -> int:
         regions.run()
         comext.run_months(trade.fbs_window())
         feed.run()
+        feedcheck.run()
         scenario.run()
         usda.run()
     elif args.cmd == "export":
@@ -111,6 +113,7 @@ def main(argv: list[str] | None = None) -> int:
         regions.run()
         comext.run_months(trade.fbs_window())
         feed.run()
+        feedcheck.run()
         scenario.run()
         usda.run()
         export.run()

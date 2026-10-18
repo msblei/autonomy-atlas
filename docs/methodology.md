@@ -756,6 +756,19 @@ self-sufficiency is left for the animals that live on it.
   overstate their dependence. Withheld groups get no adjusted figure.
 - **Export:** `ssr.json` country `feed`: `{imported_pct, top: [[item, % of imported protein] × ≤3],
   meat_ssr, eggs_ssr, items_pct}` (`items_pct` = share of the feed tonnage the table covers).
+- **Second opinion (EU):** DG AGRI's *EU feed protein balance sheet* (`pipeline/feedcheck.py`)
+  gives per marketing year and protein source the EU's feed use in crude protein (column H) and
+  the part of EU origin (I), counting meal from imported beans as not of EU origin, as here.
+  Compared: the marketing years starting in the window's years (2021 → 2021/22), averaged;
+  DG AGRI's roughage (grass, silage maize, fodder legumes) left out, since FAO's accounts have
+  none; imported = H − I. Per source: whole cereals, soya bean, rapeseed and sunflower meal
+  (our items in `feedcheck.SOURCES`), and all concentrate feed. A gap over 10 points in the
+  imported share of all concentrate feed is a warning (`feed_dgagri_gap`). On the audit page,
+  never on the site. With the 2021–2023 window: 41.9% imported against DG AGRI's 40.7%; soya
+  bean meal 93% against 97%, rapeseed meal 28% against 30%, sunflower meal 43% against 48%,
+  cereals 10% against 15% (not traced further). Total concentrate protein 38 Mt against 42 Mt:
+  DG AGRI also counts sources FAO's accounts do not list as feed, among them wet distillers'
+  grains, former foodstuff and processed animal protein (together about 1.8 Mt).
 
 ## Scenario: without Russia and Ukraine
 

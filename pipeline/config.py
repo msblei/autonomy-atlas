@@ -86,6 +86,15 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence": "US government work, public domain",
         "licence_url": "https://www.usa.gov/government-copyright",
     },
+    "dgagri_feed_protein": {
+        "title": "EU feed protein balance sheet",
+        "publisher": "European Commission, DG Agriculture and Rural Development",
+        "url": "https://agriculture.ec.europa.eu/data-and-analysis/markets/overviews/balance-sheets-sector/oilseeds-and-protein-crops_en",
+        "file_url": "https://agriculture.ec.europa.eu/document/download/67d303ed-196f-47df-905f-0ac3866610e5_en"
+                    "?filename=eu-feed-protein-balance-sheet_en.xlsx",
+        "licence": "Commission reuse notice (Decision 2011/833/EU), attribution",
+        "licence_url": "https://commission.europa.eu/legal-notice_en",
+    },
     "eurostat_comext": {
         "title": "EU trade since 1988 by HS2-4-6 and CN8 (DS-045409)",
         "publisher": "Eurostat, Comext",

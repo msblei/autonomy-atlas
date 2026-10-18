@@ -30,6 +30,7 @@ SUA_ZIP = config.RAW / "faostat" / "SUA_Crops_Livestock_E_All_Data_(Normalized).
 SUA_CSV = "SUA_Crops_Livestock_E_All_Data_(Normalized).csv"
 EU_EXTRA = "eu_feed_extra.parquet"
 OUT = "feed.parquet"
+EU_ITEMS = "feed_eu_items.parquet"  # the EU's items, for the comparison with DG AGRI (feedcheck.py)
 ELEMENTS = {"Production": "P", "Import quantity": "M", "Feed": "F"}
 
 
@@ -74,7 +75,10 @@ def read_sua(years: tuple[int, int], codes: set[int]) -> pd.DataFrame:
     return d.dropna(subset=["iso3"])[["iso3", "item_code", "element", "year", "t"]]
 
 
-def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFrame) -> pd.DataFrame:
+def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFrame,
+            detail: list | None = None) -> pd.DataFrame:
+    """Per country. `detail`, when given, receives the EU's items: item_code, item, protein_t
+    (crude protein fed, t a year) and imported_t (its share from outside the EU)."""
     items = load_items()
     n = years[1] - years[0] + 1
     sua = read_sua(years, set(items) | {i["parent"] for i in items.values() if i["parent"]})
@@ -109,6 +113,9 @@ def compute(years: tuple[int, int], groups: pd.DataFrame, items_fbs: pd.DataFram
         imported = pd.Series({c: prot[c] * (1 - s[c]) for c in fed.index})
         if not prot.sum() > 0:
             continue
+        if detail is not None and iso3 == "EU27":
+            detail += [{"item_code": int(c), "item": items[c]["item"], "protein_t": prot[c],
+                        "imported_t": imported[c]} for c in fed.index]
         f = imported.sum() / prot.sum()
         top = imported.sort_values(ascending=False)
         top = [[items[c]["item"], round(100 * v / imported.sum())] for c, v in top.head(3).items()
@@ -146,7 +153,9 @@ def run() -> None:
     items = pd.read_parquet(config.PROCESSED / "ssr_items.parquet")
     if "basis" in items:
         items = items[items["basis"] == "tonnes"]
-    out = compute(fbs_window(), groups, items)
+    detail = []
+    out = compute(fbs_window(), groups, items, detail)
     out.to_parquet(dest, index=False)
+    pd.DataFrame(detail).to_parquet(config.PROCESSED / EU_ITEMS, index=False)
     log.info("wrote %s (%d countries; median imported feed protein %.0f%%)", dest, len(out),
              out["imported_pct"].median())

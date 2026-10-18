@@ -306,6 +306,23 @@ def check_usda() -> list[Finding]:
     return out
 
 
+def check_feed_dgagri() -> list[Finding]:
+    """The EU's imported share of concentrate feed protein against DG AGRI's own balance
+    (pipeline/feedcheck.py): a gap over feedcheck.GAP_PP points needs a look."""
+    from . import feedcheck
+
+    if not feedcheck.OUT.exists():
+        return [Finding("feed_dgagri_missing", WARN, "no feed_check.parquet: `atlas download "
+                        "--source dgagri` and `atlas build`")]
+    c = pd.read_parquet(feedcheck.OUT).iloc[-1]
+    gap = c["fao_imported_pct"] - c["dgagri_imported_pct"]
+    if abs(gap) <= feedcheck.GAP_PP:
+        return []
+    return [Finding("feed_dgagri_gap", WARN, f"imported concentrate feed protein: FAO "
+                    f"{c['fao_imported_pct']:.0f}%, DG AGRI {c['dgagri_imported_pct']:.0f}%", "EU27",
+                    "feed", _f(gap))]
+
+
 # ------------------------------------------------------------------------------------------------
 # published JSON
 
@@ -690,6 +707,7 @@ def run(*, write: bool = True) -> list[Finding]:
     findings += check_eu_bloc(groups, items)
     findings += check_jrc(groups, items)
     findings += check_usda()
+    findings += check_feed_dgagri()
     if partners is None:
         findings.append(Finding("trade_missing", BLOCK, "no trade_partners.parquet"))
     else:

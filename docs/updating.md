@@ -31,6 +31,7 @@ trade, Comext, BACI, regions, feed and scenario take the same window. No year is
 | FAOSTAT FBS, SUA (SCL), trade matrix, QCL | once a year (the latest in December; the next is due December 2026) | `--force` download. Bulk file names are in `config.FAOSTAT_FILES`; FAO renames files now and then: check them against `datasets_E.xml` (downloaded every time). Area names change too: joins use M49 codes, `harmonise` stops on an unknown area |
 | DG AGRI–JRC EU balance sheets | a few times a year | **manual** (below) |
 | USDA PSD | monthly | `--force` download; only a comparison |
+| DG AGRI EU feed protein balance | at least once a year (last: May 2026) | `--force` download; only a comparison. The link is a Commission document id: if a new edition gets a new id, take it from the oilseeds balance-sheet page in `config.SOURCES["dgagri_feed_protein"]["url"]`. One sheet per marketing year named `2023-24`: `feedcheck` stops if a row or the (H)/(I) columns are gone |
 | Eurostat Comext (annual and monthly) | monthly | `--force` download (about 300 queued requests, 20 minutes); years run from `config.COMEXT_FIRST_YEAR` (2021) and `COMEXT_FISH_FIRST_YEAR` (2010) to the latest; the FBS window picks its years |
 | CEPII BACI | once a year (January) | the file name carries the release (`V202601`): change `config.SOURCES["cepii_baci"]["file_url"]` **and** `baci.RELEASE` together, then download |
 | Eurostat `apro_cpshr` | a few times a year | `--force` download |

@@ -92,6 +92,22 @@ def _usda_section() -> str:
             + _table(rows.sort_values("median", ascending=False)))
 
 
+def _feed_section() -> str:
+    from . import feedcheck
+
+    if not feedcheck.OUT.exists():
+        return ("<h2>EU feed protein against DG AGRI</h2><p class='bad'>No comparison "
+                "(download the DG AGRI feed protein balance).</p>")
+    c = pd.read_parquet(feedcheck.OUT)
+    r = c.iloc[-1]
+    return ("<h2>EU feed protein: FAO against DG AGRI</h2>"
+            f"<p>The EU's imported share of concentrate feed protein (roughage left out: FAO has none), "
+            f"FAO SUA {r['years']} against DG AGRI's EU feed protein balance sheet ({r['dgagri_years']}): "
+            f"{r['fao_imported_pct']:.1f}% against {r['dgagri_imported_pct']:.1f}%, a warning above "
+            f"{feedcheck.GAP_PP} points. Million tonnes of crude protein a year.</p>"
+            + _table(c.drop(columns=["years", "dgagri_years"]).round(1)))
+
+
 COMPARE_MIN_KT = 20  # member-group-flows smaller than this on both sides are not summarised
 
 
@@ -235,6 +251,7 @@ def run() -> None:
         rec_line,
         "<h2>Blocking findings</h2>" + _table(block, ["check", "iso3", "group", "detail"]),
         _usda_section(),
+        _feed_section(),
         _comext_section(),
         _baci_section(),
         f"<h2>Largest changes since the last release{' (' + rel['stamp'] + ')' if rel else ''}</h2>"

@@ -41,6 +41,7 @@ def raw_inputs() -> dict[str, Path]:
         "jrc_bal": jrc.CSV,
         "gisco_countries": config.RAW / "gisco" / "CNTR_RG_20M_2024_4326.geojson",
         "usda_psd": config.RAW / "usda" / "psd_alldata_csv.zip",
+        "dgagri_feed_protein": config.RAW / "dgagri" / "eu-feed-protein-balance-sheet_en.xlsx",
         "comext": config.RAW / "comext" / "DS-045409_food.csv.gz",
         "comext_query": config.RAW / "comext" / "query.json",
         "comext_monthly": config.RAW / "comext" / "DS-045409_monthly_imports.csv.gz",
