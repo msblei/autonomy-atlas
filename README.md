@@ -77,6 +77,8 @@ data/       raw / interim / processed (gitignored)
 | [Natural Earth](https://www.naturalearthdata.com) | country boundaries | public domain |
 | [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/) (Braille Institute) | typeface, also on the map | SIL Open Font License |
 
+To update the data: `docs/updating.md`.
+
 See `docs/research-report.md` for the full inventory, including crop-type maps, JRC MARS, USDA
 crop calendars and the methodological caveats (re-exports, feed use, measurement basis, Ukraine data
 gaps).

@@ -7,6 +7,8 @@ chart-based and has no API; global tools lack European depth and seasonality).
 
 Full background: `docs/research-report.md` (existing tools, data inventory, pitfalls).
 Formulas and methodological rules: `docs/methodology.md`.
+Updating the data (what changes when, the manual JRC step, versions, review lists, known dates):
+`docs/updating.md`.
 
 ## Decisions already made (don't relitigate without asking)
 
@@ -71,6 +73,7 @@ make build       # atlas build   (harmonise + compute)
 make export      # atlas export  (write web/public/data)
 make test        # pytest
 make verify      # every data check: tests, atlas validate, verify/recompute.py, browser tests, audit page
+make refresh     # new data from every source: download --force + build + export (docs/updating.md)
 make release     # all + verify + gated web build (web/scripts/check-data.mjs)
 make serve       # cd web && npm run dev
 ```

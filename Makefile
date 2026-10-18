@@ -1,4 +1,4 @@
-.PHONY: setup download build export all test verify release serve clean
+.PHONY: setup download refresh build export all test verify release serve clean
 
 PY ?= python3
 VENV := .venv
@@ -12,6 +12,12 @@ setup:
 
 download:
 	$(ATLAS) download
+
+# New data from every source (plain `download` keeps files it already has): docs/updating.md.
+refresh:
+	$(ATLAS) download --force
+	$(ATLAS) build
+	$(ATLAS) export
 
 build:
 	$(ATLAS) build
