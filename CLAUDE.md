@@ -75,10 +75,15 @@ make serve       # cd web && npm run dev
 
 ## Roadmap
 
-1. **Phase 1 (current):** world choropleth of FBS-based SSR and IDR for ~14 product groups plus
-   "all food" protein coverage, tonnes/kcal basis, EU bloc when zoomed out, 3-year average, trends.
-2. **Phase 2:** partner-flow arcs from Eurostat Comext (intra + extra EU, CN8) and CEPII BACI
-   (non-EU reporters), with import-concentration (HHI) and share-from-RU/UA indicators.
+1. **Phase 1 (done, 2026-10):** world choropleth of FBS-based SSR and IDR for ~14 product groups
+   plus "all food" protein coverage, tonnes/kcal basis, EU bloc when zoomed out, 3-year average,
+   trends; JRC balances for EU dairy/tomatoes/olive oil/wine; USDA second opinion; every published
+   number verified (`make verify`, independent recompute), every audit warning resolved.
+2. **Phase 2 (in part):** partner flows and arcs come from the FAOSTAT Detailed Trade Matrix for
+   now (partners' reports where a country under-reports; processed goods converted to the FBS
+   basis; implausible flows withheld) with the share from Russia and Ukraine on the trade page.
+   Still to do: Eurostat Comext (intra + extra EU, CN8) and CEPII BACI, and import concentration
+   (HHI).
 3. **Phase 3:** seasons (FAO Crop Calendar API, USDA IPAD, GGCMI) as a 12-month strip per
    country × crop; NUTS2 production from Eurostat `apro_cpshr` and JRC EUCROPMAP rasters as a
    "what is grown where" layer.
