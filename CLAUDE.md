@@ -81,9 +81,9 @@ make serve       # cd web && npm run dev
    number verified (`make verify`, independent recompute), every audit warning resolved.
 2. **Phase 2 (in part):** partner flows and arcs come from the FAOSTAT Detailed Trade Matrix for
    now (partners' reports where a country under-reports; processed goods converted to the FBS
-   basis; implausible flows withheld) with the share from Russia and Ukraine on the trade page.
-   Still to do: Eurostat Comext (intra + extra EU, CN8) and CEPII BACI, and import concentration
-   (HHI).
+   basis; implausible flows withheld), with the share from Russia and Ukraine on the trade page
+   and import/export concentration (HHI) on "All the numbers". Still to do: Eurostat Comext
+   (intra + extra EU, CN8) and CEPII BACI.
 3. **Phase 3:** seasons (FAO Crop Calendar API, USDA IPAD, GGCMI) as a 12-month strip per
    country × crop; NUTS2 production from Eurostat `apro_cpshr` and JRC EUCROPMAP rasters as a
    "what is grown where" layer.
