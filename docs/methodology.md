@@ -774,9 +774,23 @@ self-sufficiency is left for the animals that live on it.
   5% imported, maize 24%; DG AGRI 17% and 30%). We keep the even mix: it is one rule for every
   country and item, applied per member before the EU is summed, while DG AGRI's is an expert
   judgement for the EU alone. With DG AGRI's rule for cereals the EU's imported share would be
-  about 44% instead of 41.9% (0.8 Mt more imported cereal protein). Total concentrate protein 38 Mt against 42 Mt:
-  DG AGRI also counts sources FAO's accounts do not list as feed, among them wet distillers'
-  grains, former foodstuff and processed animal protein (together about 1.8 Mt).
+  about 44% instead of 41.9% (0.8 Mt more imported cereal protein). Total concentrate protein 38.1 Mt against 42.2 Mt
+  (4.2 Mt, traced by category, DG AGRI minus ours):
+  - **Sources FAO's accounts have no item for: 3.8 Mt.** Distillers' dried grains 1.20, wet
+    distillers' grains 0.33, beet pulp 0.54, citrus pulp 0.01 (other co-products); processed
+    animal protein 0.92, former foodstuff 0.51, fish meal 0.30 (non-plant). FAO's SUA lists none
+    of these with a feed use. They are mostly of EU origin (0.41 Mt imported): counted in, our
+    imported share would be 39.1% instead of 41.9%.
+  - **Different estimates of the same feed: +1.1 Mt net.** Cereal grain +0.8 (FAO records 38 Mt of
+    wheat fed, DG AGRI 43), starch-industry protein +0.9 (DG AGRI 1.18, our gluten feed and maize
+    gluten 0.33), oilseed meals +0.4 (sunflower meal 2.5 against 1.8, soy protein concentrate
+    0.2), pulses +0.2; against brans and germs −0.7 (FAO's brans 2.0, DG AGRI's wheat bran 1.1),
+    milk and whey −0.7 (FAO counts liquid milk and whey fed to calves, 0.8 against 0.13),
+    whole oilseeds −0.1, roots −0.1.
+  - **Items FAO does list as feed but `feed_items.csv` leaves out** (outside the 98.7% of the
+    world's feed tonnage the table covers): in the EU among them rye bran 0.31 Mt, wheat gluten
+    0.13 Mt, casein 0.11 Mt and flours, a few tenths of a Mt of protein at typical contents. Left
+    out, as everywhere, so that one table serves every country.
 
 ## Scenario: without Russia and Ukraine
 
