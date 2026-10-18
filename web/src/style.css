@@ -339,6 +339,19 @@ td small { color: var(--ink-soft); font-size: 12px; }
 #foods button[aria-pressed="true"] { background: var(--ink); color: var(--paper); font-weight: 700; }
 #foods button[aria-pressed="true"] .ficon { color: var(--paper); }
 #foods .sep { height: 1px; margin: 3px 8px; background: var(--edge); }
+/* wide screens: one button with the food shown; the list opens under it */
+#foodrail { width: auto; min-width: 150px; }
+#foods .current { width: 100%; font-weight: 700; min-height: 34px; }
+#foods .current .chev { width: 16px; height: 16px; margin-left: auto; fill: none; stroke: currentColor; stroke-width: 2;
+  stroke-linecap: round; stroke-linejoin: round; transition: transform 200ms ease; }
+#foods .current[aria-expanded="true"] .chev { transform: rotate(180deg); }
+#foods .list { display: none; flex-direction: column; gap: 1px; }
+#foodrail.open #foods .list { display: flex; margin-top: 3px; padding-top: 3px; border-top: 1px solid var(--edge); }
+#foodrail.open #foods .list > * { animation: wi-item 180ms ease-out both; animation-delay: calc(var(--i, 0) * 12ms); }
+@media (prefers-reduced-motion: reduce) {
+  #foodrail.open #foods .list > * { animation: none; }
+  #foods .current .chev { transition: none; }
+}
 
 #legend {
   position: absolute; z-index: 1; bottom: 14px;
@@ -424,6 +437,10 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   h2, .answer { font-size: 24px; }
   #foodrail { top: 6px; left: 6px; right: 6px; width: auto; padding: 3px; overflow: hidden; }
   #foods { flex-direction: row; overflow-x: auto; scrollbar-width: none; }
+  /* phones: the strip itself, no menu button */
+  #foods .current { display: none; }
+  #foods .list, #foodrail.open #foods .list { display: flex; flex-direction: row; gap: 1px; margin: 0; padding: 0; border: 0; }
+  #foodrail.open #foods .list > * { animation: none; }
   #foods::-webkit-scrollbar { display: none; }
   #foods button { flex: none; gap: 6px; padding: 0 10px 0 8px; min-height: 34px; }
   #foods .sep { width: 1px; height: auto; margin: 6px 3px; flex: none; }

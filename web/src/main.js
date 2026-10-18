@@ -1199,15 +1199,36 @@ function renderLegend() {
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
 // and the level, so switching from coffee imports to meat imports is a single tap.
+// The food menu: on wide screens one button with the food shown, opening the list; on phones the
+// list is a strip of its own (CSS), so .current is hidden there.
+let foodsOpen = false;
+const CHEVRON_DOWN = `<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>`;
 function renderControls() {
   const foods = document.getElementById("foods");
-  foods.innerHTML = state.data.groups.map((g, i) => `
+  const cur = state.data.groups.find((g) => g.key === state.group) ?? state.data.groups[0];
+  document.getElementById("foodrail").classList.toggle("open", foodsOpen);
+  foods.innerHTML = `
+    <button type="button" class="current" aria-expanded="${foodsOpen}" aria-controls="foodlist">
+      ${foodIcon(cur.key)}<span>${SHORT[cur.key] ?? cur.label}</span>${CHEVRON_DOWN}</button>
+    <div class="list" id="foodlist">${state.data.groups.map((g, i) => `
     ${i === 1 ? `<span class="sep" aria-hidden="true"></span>` : ""}
-    <button type="button" data-food="${g.key}" title="${g.label}" class="${g.key === "all" ? "all" : ""}"
-      aria-pressed="${g.key === state.group}">${foodIcon(g.key)}<span>${SHORT[g.key] ?? g.label}</span></button>`).join("");
-  for (const b of foods.querySelectorAll("[data-food]")) b.onclick = () => chooseFood(b.dataset.food);
-  foods.querySelector('[aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
+    <button type="button" data-food="${g.key}" title="${g.label}" class="${g.key === "all" ? "all" : ""}" style="--i:${i}"
+      aria-pressed="${g.key === state.group}">${foodIcon(g.key)}<span>${SHORT[g.key] ?? g.label}</span></button>`).join("")}</div>`;
+  foods.querySelector(".current").onclick = (e) => {
+    e.stopPropagation();
+    foodsOpen = !foodsOpen;
+    renderControls();
+    foods.querySelector(".current").focus();
+  };
+  for (const b of foods.querySelectorAll("[data-food]")) b.onclick = () => { foodsOpen = false; chooseFood(b.dataset.food); };
+  foods.querySelector('.list [aria-pressed="true"]')?.scrollIntoView({ block: "nearest", inline: "nearest" });
 }
+document.addEventListener("click", (e) => {
+  if (foodsOpen && !e.target.closest("#foodrail")) { foodsOpen = false; renderControls(); }
+});
+document.addEventListener("keydown", (e) => {
+  if (e.key === "Escape" && foodsOpen) { foodsOpen = false; renderControls(); document.querySelector("#foods .current")?.focus(); }
+});
 
 function chooseFood(group) {
   if (!state.iso3 || !country(state.iso3) && state.level !== "trade") {

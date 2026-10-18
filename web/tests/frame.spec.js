@@ -4,6 +4,11 @@
 import { expect, test } from "@playwright/test";
 
 const card = (page) => page.locator("#card");
+// The food menu opens from its button on wide screens.
+async function pick(page, food) {
+  await page.locator("#foods .current").click();
+  await page.locator(`#foods [data-food='${food}']`).click();
+}
 async function cardTop(page) {
   return Math.round((await card(page).boundingBox()).y);
 }
@@ -13,13 +18,13 @@ test("the card keeps its place and its four rows", async ({ page }) => {
   await expect(card(page).locator(".sum-row")).toHaveCount(4);
   const top = await cardTop(page);
   const steps = [
-    () => page.locator("#foods [data-food='fruit']").click(),
+    () => pick(page, "fruit"),
     () => card(page).locator("[data-row='imports']").click(),
     () => card(page).locator("[data-row='exports']").click(),
     () => card(page).locator("[data-row='used']").click(),
-    () => page.locator("#foods [data-food='cereals']").click(),
-    () => page.locator("#foods [data-food='fish']").click(),
-    () => page.locator("#foods [data-food='all']").click(),
+    () => pick(page, "cereals"),
+    () => pick(page, "fish"),
+    () => pick(page, "all"),
     () => page.goto("./#POL/meat"),
     () => page.goto("./#JPN"),
     () => page.goto("./#EU27/dairy/used"),
