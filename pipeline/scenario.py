@@ -176,7 +176,7 @@ def export() -> None:
                              "sellers (bought from them for fish); nothing replaces it",
                     "eu_bloc": EU_BLOC, "eu27": list(config.EU27), "min_lack": MIN_LACK,
                     # sellers: ISO3 codes, or the rule ("eu27", "outside_europe") as in scenarios.yaml
-                    "scenarios": [{"key": k, "label": v["label"], "note": v.get("note"), "sellers": v["sellers"]}
+                    "scenarios": [{"key": k, "label": v["label"], "food": v.get("food", "all"), "sellers": v["sellers"]}
                                   for k, v in scen.items()],
                     "sellers": sellers, "cover": cover},
            "scenarios": by}

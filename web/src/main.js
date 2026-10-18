@@ -609,7 +609,7 @@ function mapValue(id) {
 }
 
 // ---- What if some countries stopped selling? (scenario.json, methodology "Scenarios") ----
-// state.scenario: a predefined key ("ru_ua") or "seller:BRA", every country being a scenario of its
+// state.scenario: a predefined key ("black_sea") or "seller:BRA", every country being a scenario of its
 // own (whatif/BRA.json, fetched when chosen). Files keep figures from meta.min_lack on; below that
 // a food in meta.cover is 0, one outside it has no figure.
 let scenLoading = null;
@@ -683,12 +683,15 @@ function leave(sel, then) {
   el.classList.add("leaving");
   setTimeout(then, 140);
 }
+// Picking a scenario also shows the food it is about (cocoa for Côte d'Ivoire and Ghana).
 function setScenario(key) {
   const c = sellerOf(key);
   if (c) loadSeller(c);
   state.scenario = key;
   whatIfOpen = false;
-  render();
+  const food = !c && key ? scenInfo(key)?.food : null;
+  if (food && food !== state.group) chooseFood(food);
+  else render();
 }
 function renderWhatIf() {
   const el = document.getElementById("whatif");
@@ -701,7 +704,7 @@ function renderWhatIf() {
   const items = (sellerOf() ? [scenInfo()] : []).concat(list);
   const menu = whatIfOpen && state.scen ? `<ul class="menu" role="menu">${items.map((x, i) => `
       <li role="none" style="--i:${i}"><button type="button" role="menuitemradio" aria-checked="${x.key === state.scenario}"
-        data-pick="${x.key}"><span>${x.label}</span>${x.note ? `<small>${x.note}</small>` : ""}</button></li>`).join("")}</ul>` : "";
+        data-pick="${x.key}">${x.label}</button></li>`).join("")}</ul>` : "";
   const pop = on && shownBadge !== state.scenario ? " pop" : "";
   shownBadge = on ? state.scenario : null;
   el.innerHTML = on

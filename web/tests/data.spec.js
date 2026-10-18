@@ -278,12 +278,12 @@ test("feed from abroad: the imported share and the feed-adjusted meat as exporte
 
 test("what if: scenarios from the button on the map, a badge while one is on", async ({ page }) => {
   const sc = JSON.parse(readFileSync(new URL("../public/data/scenario.json", import.meta.url), "utf8"));
-  const v = sc.scenarios.ru_ua.EGY.cereals;
+  const v = sc.scenarios.black_sea.EGY.cereals;
   await open(page, "EGY/cereals");
   await expect(view(page)).not.toContainText("would be missing"); // no scenario text until one is on
   await page.locator("#whatif [data-open]").click();
-  await page.locator('#whatif [data-pick="ru_ua"]').click();
-  await expect(page.locator("#whatif .badge")).toContainText("Russia and Ukraine stop selling");
+  await page.locator('#whatif [data-pick="black_sea"]').click();
+  await expect(page.locator("#whatif .badge")).toContainText("The Black Sea closes");
   await expect(page.locator("#legend")).toContainText("would be missing");
   await expect(view(page)).toContainText(`${Math.round(v)}% of the cereals it uses would be missing`);
   await page.locator("#whatif [data-end]").click(); // and off again
@@ -396,4 +396,12 @@ test("what if one country stopped selling: from its sales page, figures as expor
   await expect(page.locator("#whatif .badge")).toContainText("Brazil stops selling");
   await open(page, "DEU/stimulants");
   await expect(view(page)).toContainText(`${Math.round(bra.DEU.stimulants)}% of the coffee, cocoa, tea it uses would be missing`);
+});
+
+test("what if: a scenario shows its own food", async ({ page }) => {
+  await open(page, "DEU");
+  await page.locator("#whatif [data-open]").click();
+  await page.locator('#whatif [data-pick="cocoa"]').click();
+  await expect(page).toHaveURL(/#DEU\/stimulants$/);
+  await expect(page.locator("#legend")).toContainText("coffee, cocoa, tea");
 });
