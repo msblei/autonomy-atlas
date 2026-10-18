@@ -272,8 +272,17 @@ figures, yearly mean. Items are mapped to the food groups by CPC code in
 `pipeline/mappings/trade_items.csv` (feed such as oilcakes, live animals, fibres, tobacco and nuts
 other than groundnuts are left out). FAO's trade data has no fish.
 
-- **Product weight, except dairy.** A tonne of flour or juice counts as a tonne. Dairy is counted
-  in milk equivalent, the basis of its food balance (`to_primary` in `trade_items.csv`): with the
+- **Product weight, except where processing changes it a lot.** Partner shares count each
+  shipment in the FBS basis of its group (`to_primary` in `trade_items.csv`; other items as
+  traded: a tonne of flour or juice counts as a tonne).
+  *Potatoes and roots, tomato products, coffee and cocoa products* in fresh, green or bean
+  equivalent, with FAO's *Technical Conversion Factors for Agricultural Commodities*: the median
+  extraction rate over the countries that list the product, factor = 100 / rate (dried cassava 4.0,
+  cassava starch and tapioca 5.0, frozen potatoes 1.43, potato flour 5.0, tomato paste 3.85, tomato
+  juice 1.33, roasted coffee 1.25, coffee extracts 3.03, cocoa paste 1.25). Cocoa butter and powder
+  are joint products of the paste (each 1.25); chocolate is 470% of the cocoa paste it contains
+  (0.27). Tea extracts and frozen or dried vegetables have no factor there and stay as traded.
+  *Dairy* is counted in milk equivalent, the basis of its food balance, with the
   EU's own factors, derived from the DG AGRI–JRC balance sheets 2021–2023 as milk equivalent per
   tonne traded (cheese 3.58, butter 6.57, milk powders 7.57, cream 3.21, drinking milk 0.85,
   acidified milk 0.98); products the EU does not list take the factor of the closest product or an
@@ -283,11 +292,9 @@ other than groundnuts are left out). FAO's trade data has no fish.
   for 15 of 73 buyers (Germany's: the Netherlands 17% by weight, 28% in milk equivalent).
   The EU-bloc shares behind the balance figures (section "National vs EU-bloc view") stay in
   product weight, so no balance figure changes.
-  *Checked, not converted:* other groups move far less (median under 3 points for fruit, meat and
-  sugar; none for cereals, oilseeds, pulses, oils, eggs, wine and beer). Potatoes and roots (dried
-  cassava, frozen fries, starch), coffee/cocoa/tea (chocolate, roasted coffee, extracts) and
-  vegetables (tomato paste) would move 6–11 points, but need sourced factors (FAO technical
-  conversion factors) before they are converted.
+  *Checked, not converted:* fruit, meat and sugar move under 3 points (median) with typical
+  factors (juice, boneless meat, refined sugar); cereals, oilseeds, pulses, oils, eggs, wine and
+  beer are nearly all traded raw.
 - **Reporter first, mirror second.** A country's own import/export reports are used; for a
   country, flow and year with no report at all, partners' reports of the opposite flow are used
   instead (`source = mirror`; Russia, Belarus and small states). A partner whose window mixes

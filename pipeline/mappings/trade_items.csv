@@ -6,9 +6,12 @@
 # Left out on purpose: 30 "Rice; paddy (rice milled equivalent)" is FAO's own total of the
 # other rice items (27, 28, 29, 31, 32) converted to milled weight; mapping it counted rice twice.
 # to_primary: kg of primary product per kg traded, so partner shares are in the FBS basis.
-# Dairy only, in milk equivalent: factors from the DG AGRI-JRC EU balance sheets 2021-2023
+# Dairy in milk equivalent: factors from the DG AGRI-JRC EU balance sheets 2021-2023
 # (milk-equivalent / product weight of traded quantities); "as X" in to_primary_source uses the
 # EU factor of the closest product, "est." is our estimate (methodology, "Trade partners").
+# Potatoes and roots, tomato products, coffee and cocoa products: FAO, Technical Conversion
+# Factors for Agricultural Commodities (TCF), median extraction rate over the countries that list
+# the product, factor = 100 / rate; cocoa butter and powder are joint products of the paste.
 item_code,cpc,item,group,to_primary,to_primary_source
 15,0111,Wheat,cereals,,
 56,0112,Maize (corn),cereals,,
@@ -53,8 +56,8 @@ item_code,cpc,item,group,to_primary,to_primary_source
 20,F0020,Bread,cereals,,
 22,F0022,Pastry,cereals,,
 30,F0030,Rice; paddy (rice milled equivalent),,,
-882,02211,Raw milk of cattle,dairy,1,
-982,02291,Raw milk of sheep,dairy,1,
+882,02211,Raw milk of cattle,dairy,1,milk itself
+982,02291,Raw milk of sheep,dairy,1,milk itself
 888,22110.02,Skim milk of cows,dairy,0.85,as drinking milk
 908,22110.03,Reconstituted milk,dairy,0.85,as drinking milk
 885,22120,Cream; fresh,dairy,3.21,EU
@@ -215,20 +218,20 @@ item_code,cpc,item,group,to_primary,to_primary_source
 262,F0262,Olives preserved,oilseeds,,
 116,01510,Potatoes,potatoes_roots,,
 125,01520.01,Cassava; fresh,potatoes_roots,,
-128,01520.02,Cassava; dry,potatoes_roots,,
+128,01520.02,Cassava; dry,potatoes_roots,4.0,FAO TCF
 122,01530,Sweet potatoes,potatoes_roots,,
 137,01540,Yams,potatoes_roots,,
 136,01550,Taro,potatoes_roots,,
 135,01591,Yautia,potatoes_roots,,
 149,01599.10,Edible roots and tubers with high starch or inulin content; n.e.c.; fresh,potatoes_roots,,
-151,01599.20,Edible roots and tubers with high starch or inulin content; n.e.c.; dry,potatoes_roots,,
-118,21313,Potatoes; frozen,potatoes_roots,,
-117,21392,Flour; meal; powder; flakes; granules and pellets of potatoes,potatoes_roots,,
-126,23170.01,Flour of cassava,potatoes_roots,,
-150,23170.02,Flour of roots and tubers n.e.c.,potatoes_roots,,
-129,23220.06,Starch of cassava,potatoes_roots,,
-121,23230.01,Tapioca of potatoes,potatoes_roots,,
-127,23230.02,Tapioca of cassava,potatoes_roots,,
+151,01599.20,Edible roots and tubers with high starch or inulin content; n.e.c.; dry,potatoes_roots,4.0,"as cassava dried, FAO TCF"
+118,21313,Potatoes; frozen,potatoes_roots,1.43,FAO TCF
+117,21392,Flour; meal; powder; flakes; granules and pellets of potatoes,potatoes_roots,5.0,FAO TCF (flour of potatoes)
+126,23170.01,Flour of cassava,potatoes_roots,4.0,FAO TCF
+150,23170.02,Flour of roots and tubers n.e.c.,potatoes_roots,4.0,as flour of cassava
+129,23220.06,Starch of cassava,potatoes_roots,5.0,FAO TCF
+121,23230.01,Tapioca of potatoes,potatoes_roots,6.45,"as potato starch, FAO TCF"
+127,23230.02,Tapioca of cassava,potatoes_roots,5.0,FAO TCF (cassava tapioca)
 176,01701,Beans; dry,pulses,,
 181,01702,Broad beans and horse beans; dry,pulses,,
 191,01703,Chick peas; dry,pulses,,
@@ -245,13 +248,13 @@ item_code,cpc,item,group,to_primary,to_primary_source
 667,01620,Tea leaves,stimulants,,
 671,01630,Maté leaves,stimulants,,
 661,01640,Cocoa beans,stimulants,,
-662,23610.01,Cocoa paste not defatted,stimulants,,
-664,23620,Cocoa butter; fat and oil,stimulants,,
-657,23911,Coffee; decaffeinated or roasted,stimulants,,
-659,23912.02,Coffee extracts,stimulants,,
+662,23610.01,Cocoa paste not defatted,stimulants,1.25,FAO TCF
+664,23620,Cocoa butter; fat and oil,stimulants,1.25,FAO TCF: joint product of cocoa paste
+657,23911,Coffee; decaffeinated or roasted,stimulants,1.25,FAO TCF
+659,23912.02,Coffee extracts,stimulants,3.03,FAO TCF
 672,23914,Extracts; essences and concentrates of tea or mate; and preparations with a basis thereof or with a basis of tea or maté,stimulants,,
-665,F0665,Cocoa powder and cake,stimulants,,
-666,F0666,Chocolate products nes,stimulants,,
+665,F0665,Cocoa powder and cake,stimulants,1.25,FAO TCF: joint product of cocoa paste
+666,F0666,Chocolate products nes,stimulants,0.27,FAO TCF: 470% of cocoa paste
 1182,02910,Natural honey,sugar,,
 166,23210.03,Other fructose and syrup,sugar,,
 167,23210.04,Sugar and syrups n.e.c.,sugar,,
@@ -309,7 +312,7 @@ item_code,cpc,item,group,to_primary,to_primary_source
 446,01290.01,Green corn (maize),vegetables,,
 463,01290.90,Other vegetables; fresh n.e.c.,vegetables,,
 447,21319.01,Sweet corn; frozen,vegetables,,
-390,21321,Tomato juice,vegetables,,
+390,21321,Tomato juice,vegetables,1.33,FAO TCF (single strength)
 466,21329,Other vegetable juices,vegetables,,
 474,21330.90,Other vegetables provisionally preserved,vegetables,,
 471,21340,Vegetables; pulses and potatoes; preserved by vinegar or acetic acid,vegetables,,
@@ -317,8 +320,8 @@ item_code,cpc,item,group,to_primary,to_primary_source
 469,21393.90,Vegetables; dehydrated,vegetables,,
 451,21397.01,Canned mushrooms,vegetables,,
 465,21399,Other vegetables and pulses; preserved other than by vinegar; acetic acid or sugar; n.e.c.,vegetables,,
-391,21399.01,Paste of tomatoes,vegetables,,
-392,21399.02,Tomatoes; peeled (o/t vinegar),vegetables,,
+391,21399.01,Paste of tomatoes,vegetables,3.85,FAO TCF
+392,21399.02,Tomatoes; peeled (o/t vinegar),vegetables,1.25,FAO TCF
 448,21399.03,Sweet corn; prepared or preserved,vegetables,,
 476,23991.02,Homogenized vegetable preparations,vegetables,,
 472,F0472,Vegetables preserved nes (o/t vinegar),vegetables,,

@@ -92,8 +92,11 @@ def test_every_dairy_item_converts_to_milk_equivalent():
         rows = list(csv.DictReader(line for line in f if not line.startswith("#")))
     dairy = [int(r["item_code"]) for r in rows if r["group"] == "dairy"]
     assert dairy and all(i in factors for i in dairy)
-    assert all(int(r["item_code"]) not in factors for r in rows if r["group"] != "dairy")
+    converted = {r["group"] for r in rows if int(r["item_code"]) in factors}
+    assert converted == {"dairy", "potatoes_roots", "vegetables", "stimulants"}
+    assert all(r["to_primary_source"] for r in rows if int(r["item_code"]) in factors)  # sourced
     assert factors[901] > 3 and factors[882] == 1  # cheese vs raw milk
+    assert factors[391] > 3 and factors[666] < 1  # tomato paste; chocolate is mostly not cocoa
 
 
 def test_partner_shares_use_the_converted_figures():
