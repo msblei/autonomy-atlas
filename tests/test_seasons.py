@@ -49,3 +49,20 @@ def test_sugar_shares_are_of_the_sugar_crops():
     assert seasons.rows_for(s, items, {})["XXX"]["sugar"][0]["share"] == pytest.approx(5)
     items.loc[0, "production"] = 5.0  # 2.5%: a cane country shows no strip
     assert "XXX" not in seasons.rows_for(s, items, {})
+
+
+def test_wheat_harvest_check():
+    # Austria (IWC: July-August): GGCMI's "ripe 24 June" wheat fails, an August barley passes
+    ref = seasons.wheat_reference()
+    assert ref["AUT"] == {6, 7} and ref["AUS"] == {9, 10, 11, 0}
+    june = {"crop": "wheat", "harvest": [0, 0, 0, 0, 0, 85, 2, 13, 0, 0, 0, 0]}
+    assert seasons.fails_reference(june, ref["AUT"])
+    barley = {"crop": "bar", "harvest": [0] * 7 + [90, 10, 0, 0, 0]}
+    assert not seasons.fails_reference(barley, ref["AUT"])
+    peas = {"crop": "pea", "harvest": [0] * 9 + [100, 0, 0]}  # "ripe 31 October"
+    assert seasons.fails_reference(peas, ref["AUT"])
+    # maize is not tied to wheat; a country the table does not list is not checked
+    assert not seasons.fails_reference({"crop": "mai", "harvest": peas["harvest"]}, ref["AUT"])
+    assert not seasons.fails_reference(june, ref.get("NOR"))
+    # Australia's wheat months are not a northern summer: its barley is not checked against them
+    assert not seasons.fails_reference({"crop": "bar", "harvest": [0] * 5 + [100] + [0] * 6}, ref["AUS"])

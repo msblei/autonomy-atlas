@@ -313,3 +313,26 @@ test("all food: countries are compared on today's menu (capped), not on the head
   const pool = Object.keys(C).filter((id) => id !== "EU27" && menu(id) != null).sort((a, b) => menu(b) - menu(a));
   expect(top).toEqual(pool.slice(0, 5));
 });
+
+test("crops whose calendar fails the wheat-harvest check are named, not drawn", async ({ page }) => {
+  const sea = JSON.parse(readFileSync(new URL("../public/data/seasons.json", import.meta.url), "utf8"));
+  const out = sea.left_out.DEU.pulses; // GGCMI's peas: "ripe 31 October" (methodology, "Seasons")
+  expect(out).toContain("Peas");
+  await open(page, "DEU/pulses");
+  await expect(view(page)).toContainText("Not shown: peas");
+  await expect(view(page).locator(".season .crop", { hasText: "Peas" })).toHaveCount(0);
+});
+
+test("the crop map says which countries it leaves blank, with both areas", async ({ page }) => {
+  const cm = JSON.parse(readFileSync(new URL("../public/data/cropmap.json", import.meta.url), "utf8"));
+  const r = cm.groups.potatoes_roots.left_out.POL; // EUCROPMAP finds about a quarter of Poland's potatoes
+  await open(page, "POL/potatoes_roots/where");
+  await expect(view(page).locator('[data-fields="1"]')).toHaveCount(0); // no blank map to switch to
+  await view(page).locator("details.notes summary").last().click();
+  await expect(view(page)).toContainText(`finds ${Math.round(r.map_kha)} thousand hectares`);
+  await expect(view(page)).toContainText(`${Math.round(r.eurostat_kha)} thousand`);
+  await open(page, "DEU/potatoes_roots/where"); // Germany is drawn; the notes name the blank ones
+  await view(page).locator('[data-fields="1"]').click();
+  await view(page).locator("details.notes summary").last().click();
+  await expect(view(page)).toContainText("Poland");
+});

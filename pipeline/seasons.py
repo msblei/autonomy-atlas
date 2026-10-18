@@ -179,11 +179,51 @@ def state(sown: float, growing: float, harvest: float) -> str:
     return ""
 
 
-def rows_for(s: pd.DataFrame, items: pd.DataFrame, groups: dict[str, list[str]]) -> dict:
+# Checked against the wheat harvest (docs/methodology.md, "Seasons"): GGCMI's calendars for Europe
+# are often month-level placeholders (peas "sown 1 May, ripe 31 October" from Spain to Ukraine;
+# wheat "ripe 23 June" in Ireland, Sweden and Austria). Wheat must have at least CHECK_SHARE % of
+# its harvest in the International Wheat Council's harvest months for the country; barley, rye,
+# rapeseed and peas, which are harvested with or just before wheat, too, where those months lie in
+# May-September (northern summer harvests). A row that fails is not shown.
+WHEAT_REF = config.MAPPINGS / "wheat_harvest_iwc.csv"
+CHECK_SHARE = 50.0
+WITH_WHEAT = ("bar", "rye", "rap", "pea")
+SUMMER = set(range(4, 9))  # May-September, month index 0-11
+
+
+def wheat_reference() -> dict[str, set[int]]:
+    """iso3 -> harvest month indexes (0-11) from mappings/wheat_harvest_iwc.csv."""
+    import csv
+
+    out = {}
+    with WHEAT_REF.open(encoding="utf-8") as f:
+        for r in csv.DictReader(line for line in f if not line.startswith("#")):
+            months = set()
+            for span in r["months"].split():
+                a, b = (int(x) - 1 for x in span.split("-"))
+                months |= {(a + k) % 12 for k in range((b - a) % 12 + 1)}
+            out[r["iso3"]] = months
+    return out
+
+
+def fails_reference(row: dict, window: set[int] | None) -> bool:
+    """True when the row must be checked and has under CHECK_SHARE % of its harvest in `window`."""
+    if window is None:
+        return False
+    if row["crop"] != "wheat" and not (row["crop"] in WITH_WHEAT and window <= SUMMER):
+        return False
+    total = sum(row["harvest"])
+    return total > 0 and 100 * sum(row["harvest"][k] for k in window) / total < CHECK_SHARE
+
+
+def rows_for(s: pd.DataFrame, items: pd.DataFrame, groups: dict[str, list[str]],
+             dropped: dict | None = None) -> dict:
     """{iso3: {group: [{crop, label, item, share, sown, growing, harvest}]}} for the export.
 
     `items`: ssr_items rows on the tonnes basis (iso3, item, production); `groups`: products.yaml
-    group -> FBS items (sugar uses the sugar crops instead, methodology "Seasons")."""
+    group -> FBS items (sugar uses the sugar crops instead, methodology "Seasons"). Rows that fail
+    the wheat-harvest check go to `dropped` ({iso3: {group: [label]}}) instead."""
+    ref = wheat_reference()
     prod = items.set_index(["iso3", "item"])["production"]
     s = combine_wheat(s)
     by = {k: g for k, g in s.groupby(["iso3", "crop"])}
@@ -201,10 +241,15 @@ def rows_for(s: pd.DataFrame, items: pd.DataFrame, groups: dict[str, list[str]])
                 share = 100 * float(prod.get((iso3, item), 0) or 0) / gp
                 if share >= MIN_SHARE:
                     c = by[(iso3, crop)].sort_values("month")
-                    cand.append({"crop": crop, "label": label, "item": item, "share": round(share),
-                                 "sown": [round(x) for x in c["sown"]],
-                                 "growing": [round(x) for x in c["growing"]],
-                                 "harvest": [round(x) for x in c["harvest"]]})
+                    row = {"crop": crop, "label": label, "item": item, "share": round(share),
+                           "sown": [round(x) for x in c["sown"]],
+                           "growing": [round(x) for x in c["growing"]],
+                           "harvest": [round(x) for x in c["harvest"]]}
+                    if fails_reference(row, ref.get(iso3)):
+                        if dropped is not None:
+                            dropped.setdefault(iso3, {}).setdefault(group, []).append(label)
+                        continue
+                    cand.append(row)
             if cand:
                 cand.sort(key=lambda r: -r["share"])
                 out.setdefault(iso3, {})[group] = cand[:MAX_ROWS]

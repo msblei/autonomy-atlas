@@ -537,6 +537,51 @@ CROPMAP_CLASSES = {"cereals": [211, 212, 213, 214, 215, 216, 217, 218, 219], "po
                    "sugar": [222], "oilseeds": [232, 233], "pulses": [240]}
 
 
+CROPMAP_EUROSTAT = {"cereals": ["C0000", "G3000"], "potatoes_roots": ["R1000"], "sugar": ["R2000"],
+                    "oilseeds": ["I1110", "I1130"], "pulses": ["P0000"]}
+
+
+def cropmap_areas():
+    """Methodology "Fields", "Checked against the statistics": the 2 km grid's country per cell
+    (EU27 + United Kingdom, GISCO countries) and {group: {iso3: (map kha, Eurostat kha 2018)}}."""
+    import rasterio
+    from rasterio.features import rasterize
+    from rasterio.warp import transform_geom
+
+    with rasterio.open(ROOT / "data/raw/eucropmap/crop_percent_on_land_211_2km.tif") as r:
+        T, crs, shape = r.transform, r.crs, (r.height, r.width)
+    covers = set(EU) | {"GBR"}
+    feats = json.load(open(ROOT / "data/raw/gisco/CNTR_RG_20M_2024_4326.geojson"))["features"]
+    names = [f["properties"]["ISO3_CODE"] for f in feats if f["properties"].get("ISO3_CODE") in covers]
+    shapes = [(transform_geom("EPSG:4326", crs, f["geometry"]), names.index(f["properties"]["ISO3_CODE"]) + 1)
+              for f in feats if f["properties"].get("ISO3_CODE") in covers]
+    grid = rasterize(shapes, out_shape=shape, transform=T, fill=0, dtype="int32")
+    t = pd.read_csv(ROOT / "data/raw/eurostat/apro_cpshr.tsv.gz", sep="\t", dtype=str)
+    t.columns = [c.strip() for c in t.columns]
+    keys = t.iloc[:, 0].str.split(",", expand=True)
+    t = t.assign(crop=keys[1], unit=keys[2], geo=keys[3])
+    t = t[t["unit"] == "AR_THS_HA"]
+    val = pd.to_numeric(t["2018"].str.strip().str.split(" ").str[0].replace(":", None), errors="coerce")
+    t = t.assign(v=val)
+    code = {c["iso3"]: c["eurostat"] for c in EUROPE if c.get("eurostat")}
+    kha = abs(T.a * T.e) / 1e7
+    out = {}
+    for g, classes in CROPMAP_CLASSES.items():
+        tot = np.zeros(shape)
+        for c in classes:
+            with rasterio.open(ROOT / f"data/raw/eucropmap/crop_percent_on_land_{c}_2km.tif") as r:
+                a = r.read(1).astype("float64")
+                a[a == r.nodata] = 0
+            tot += np.clip(a, 0, None)
+        tot = np.clip(tot, 0, 1)
+        out[g] = {}
+        for k, iso in enumerate(names, start=1):
+            e = t[(t["geo"] == code.get(iso)) & t["crop"].isin(CROPMAP_EUROSTAT[g])]["v"].sum(min_count=1)
+            if pd.notna(e) and e > 0:
+                out[g][iso] = (float(tot[grid == k].sum() * kha), float(e))
+    return grid, names, out
+
+
 def cropmap_check(cm, n=4000):
     """Methodology "Fields": for n sampled image pixels, the shade of the summed class shares at
     the pixel's centre (nearest 2 km cell). -> {group: (exact share, worst step difference)}."""
@@ -548,7 +593,9 @@ def cropmap_check(cm, n=4000):
     R = 6378137.0
     rng = np.random.default_rng(20261018)
     out = {}
+    grid, names, _ = cropmap_areas()
     for g, info in cm["groups"].items():
+        blank = {names.index(i) + 1 for i in info.get("left_out", {})}
         tot = None
         for c in CROPMAP_CLASSES[g]:
             with rasterio.open(ROOT / f"data/raw/eucropmap/crop_percent_on_land_{c}_2km.tif") as r:
@@ -572,6 +619,8 @@ def cropmap_check(cm, n=4000):
             cc, rr = inv * (ex[k], ey[k])
             ci, ri = int(math.floor(cc)), int(math.floor(rr))
             v = tot[ri, ci] if 0 <= ri < tot.shape[0] and 0 <= ci < tot.shape[1] else np.nan
+            if 0 <= ri < grid.shape[0] and 0 <= ci < grid.shape[1] and grid[ri, ci] in blank:
+                v = np.nan  # a country left out of the image
             want = -1
             for i, lo in enumerate(steps):
                 if not np.isnan(v) and min(v, 1) >= lo:
@@ -700,9 +749,28 @@ def scenario_rows(res, D, trade, hidden):
     return out
 
 
-def season_rows(res, D):
-    """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
+def wheat_months():
+    """Methodology "Seasons", "Checked against the wheat harvest": iso3 -> month indexes 0-11."""
+    out = {}
+    for r in read_csv_comments(MAP / "wheat_harvest_iwc.csv"):
+        ms = set()
+        for span in r["months"].split():
+            a, b = (int(x) for x in span.split("-"))
+            m = a
+            while True:
+                ms.add(m - 1)
+                if m == b:
+                    break
+                m = m % 12 + 1
+        out[r["iso3"]] = ms
+    return out
+
+
+def season_rows(res, D, left_out=None):
+    """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}; rows failing the
+    wheat-harvest check go to `left_out` {iso: {group: [label]}}."""
     cal = season_calendars()
+    ref = wheat_months()
     name_code = {}
     for code, nm in D.item_names.items():
         name_code.setdefault(nm, code)
@@ -730,8 +798,16 @@ def season_rows(res, D):
                 share = 100 * prod(item) / gp
                 if share >= 5:
                     _, s_, g_, h_ = cal[(iso, label)]
+                    h = [round(x) for x in h_]
+                    win = ref.get(iso)
+                    checked = win is not None and (label == "Wheat" or (
+                        label in ("Barley", "Rye", "Rapeseed", "Peas") and win <= set(range(4, 9))))
+                    if checked and sum(h) > 0 and 100 * sum(h[k] for k in win) / sum(h) < 50:
+                        if left_out is not None:
+                            left_out.setdefault(iso, {}).setdefault(g, []).append(label)
+                        continue
                     rows.append({"label": label, "share": round(share), "sown": [round(x) for x in s_],
-                                 "growing": [round(x) for x in g_], "harvest": [round(x) for x in h_]})
+                                 "growing": [round(x) for x in g_], "harvest": h})
             if rows:
                 rows.sort(key=lambda x: -x["share"])
                 out.setdefault(iso, {})[g] = rows[:4]
@@ -2009,6 +2085,21 @@ def main():
 
     # ---- crop map images (methodology "Fields") ----
     cmj = json.load(open(OUT_DIR / "cropmap.json"))
+    _, _, areas = cropmap_areas()
+    for g, by in areas.items():
+        mine = {i: (m, e) for i, (m, e) in by.items() if not 0.5 <= m / e <= 2.0}
+        exp_lo = cmj["groups"][g].get("left_out", {})
+        counts["cropmap_left_out"] += 1
+        if sorted(mine) != sorted(exp_lo):
+            record("cropmap_left_out", {"file": "cropmap.json", "group": g, "field": "left_out"},
+                   sorted(exp_lo), sorted(mine))
+            continue
+        for i, (m, e) in mine.items():
+            x = exp_lo[i]
+            counts["cropmap_left_out"] += 3
+            if abs(x["map_kha"] - m) > 0.06 + 1e-4 * m or abs(x["eurostat_kha"] - e) > 0.06 or abs(x["ratio"] - m / e) > 0.006:
+                record("cropmap_left_out", {"file": "cropmap.json", "group": g, "field": f"left_out.{i}"},
+                       x, {"map_kha": round(m, 1), "eurostat_kha": round(e, 1), "ratio": round(m / e, 2)})
     for g, (exact, worst) in cropmap_check(cmj).items():
         counts["cropmap_pixels"] += 4000
         if exact < 0.99:
@@ -2040,8 +2131,15 @@ def main():
                     record("region_values", {**w, "field": code}, [kt, share, dens], [round(k2), round(s2, 1), round(d2)])
 
     # ---- seasons (methodology "Seasons") ----
-    sea = json.load(open(OUT_DIR / "seasons.json"))["countries"]
-    mine_s = season_rows(res, D)
+    sea_all = json.load(open(OUT_DIR / "seasons.json"))
+    sea = sea_all["countries"]
+    left = {}
+    mine_s = season_rows(res, D, left)
+    counts["season_left_out"] += 1
+    left = {i: {g: sorted(v) for g, v in gs.items()} for i, gs in left.items()}
+    if sea_all.get("left_out", {}) != left:
+        record("season_left_out", {"file": "seasons.json", "field": "left_out"},
+               sea_all.get("left_out"), left)
     for iso in sorted(set(sea) | set(mine_s)):
         for g in sorted(set(sea.get(iso, {})) | set(mine_s.get(iso, {}))):
             e, m_ = sea.get(iso, {}).get(g, []), mine_s.get(iso, {}).get(g, [])

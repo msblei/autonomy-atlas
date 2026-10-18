@@ -1,0 +1,70 @@
+# Wheat harvest months per country, from the International Wheat Council, World Wheat Statistics
+# ("Wheat harvesting calendar and statistical crop years, world"; as reproduced by the Montana Wheat
+# & Barley Committee, https://agrwbc.mt.gov/_docs/QualityProd-ProdMisc/worldharvestdates.pdf).
+# Used to check the GGCMI crop calendars (docs/methodology.md, "Seasons", "Checked against the
+# wheat harvest"). Groupings of the source mapped to today's countries: Belgium-Luxembourg,
+# Czechoslovakia (former), Yugoslavia (former), Former U.S.S.R. (June-September). months: first and
+# last month of the harvest (1-12, may wrap over the new year); Mexico has two (April-June and
+# September-November). One country the IWC table lacks, from another source named in iwc_name.
+iso3,months,iwc_name
+AUT,7-8,Austria
+BEL,7-8,Belgium-Luxembourg
+LUX,7-8,Belgium-Luxembourg
+DNK,7-8,Denmark
+FRA,6-8,France
+DEU,7-8,"Germany, Unified"
+GRC,5-8,Greece
+ITA,6-8,Italy
+NLD,7-8,Netherlands
+ESP,6-7,Spain
+SWE,8-9,Sweden
+GBR,7-8,United Kingdom
+IRL,8-9,"not in the IWC table: Teagasc, harvest reports (2021: harvest in August and September), https://teagasc.ie/news--events/daily/2021-harvest-estimated-at-232-million-tonnes/"
+BGR,6-8,Bulgaria
+CZE,7-8,Czechoslovakia (former)
+SVK,7-8,Czechoslovakia (former)
+HUN,6-7,Hungary
+POL,7-8,Poland
+ROU,6-7,Romania
+SRB,6-7,Yugoslavia (former)
+HRV,6-7,Yugoslavia (former)
+BIH,6-7,Yugoslavia (former)
+MNE,6-7,Yugoslavia (former)
+MKD,6-7,Yugoslavia (former)
+SVN,6-7,Yugoslavia (former)
+RUS,6-9,Former U.S.S.R.
+UKR,6-9,Former U.S.S.R.
+BLR,6-9,Former U.S.S.R.
+MDA,6-9,Former U.S.S.R.
+EST,6-9,Former U.S.S.R.
+LVA,6-9,Former U.S.S.R.
+LTU,6-9,Former U.S.S.R.
+KAZ,6-9,Former U.S.S.R.
+UZB,6-9,Former U.S.S.R.
+TKM,6-9,Former U.S.S.R.
+KGZ,6-9,Former U.S.S.R.
+TJK,6-9,Former U.S.S.R.
+AZE,6-9,Former U.S.S.R.
+ARM,6-9,Former U.S.S.R.
+GEO,6-9,Former U.S.S.R.
+DZA,5-7,Algeria
+EGY,2-5,"Egypt, Arab Rep. of"
+ETH,12-12,Ethiopia
+MAR,5-7,Morocco
+ZAF,11-12,South Africa
+TUN,6-7,Tunisia
+AFG,4-5,Afghanistan
+CHN,5-9,"China,People's Rep. of"
+IND,2-4,India
+IRN,4-5,Iran
+IRQ,5-8,Iraq
+PAK,3-5,Pakistan
+SYR,5-5,Syria
+TUR,6-7,Turkey
+AUS,10-1,Australia
+ARG,11-1,Argentina
+BRA,11-1,Brazil
+CAN,8-9,Canada
+CHL,12-1,Chile
+MEX,4-6 9-11,Mexico
+USA,5-9,United States

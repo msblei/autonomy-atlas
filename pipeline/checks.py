@@ -106,7 +106,7 @@ def parts_sensitivity(items: pd.DataFrame, keys: list[str]) -> pd.DataFrame:
 # ------------------------------------------------------------------------------------------------
 # Trade records against the food balance (docs/methodology.md, same section). Trade records count
 # product weight, the balance primary equivalent, so each food group has its own typical ratio
-# between them (dairy about a fifth: a tonne of cheese is about eight of milk). A country far
+# between them (dairy about a fifth). A country far
 # from it is worth a look; one whose records are far above it and above the balance itself
 # describes transit or misreporting, not its own trade, and is withheld.
 

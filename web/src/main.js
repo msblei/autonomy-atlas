@@ -1468,7 +1468,12 @@ function loadSeasons() {
 function seasonStrip(id) {
   if (!state.seasons) { loadSeasons(); return ""; }
   const rows = state.seasons.countries[id]?.[state.group];
-  if (!rows?.length) return "";
+  const out = state.seasons.left_out?.[id]?.[state.group] ?? [];
+  // crops whose calendar does not match the wheat harvest months (pipeline/seasons.py)
+  const leftOut = out.length ? `<p class="small">Not shown: ${namesOf(out.map((l) => l.toLowerCase()))}. The crop
+    calendar we use puts ${out.length > 1 ? "their" : "its"} harvest outside the months the International Wheat Council
+    gives for the wheat harvest${out.some((l) => l !== "Wheat") ? ", which these crops share" : ""}, so we do not trust it here.</p>` : "";
+  if (!rows?.length) return leftOut ? `<h3>When it is grown</h3>${leftOut}` : "";
   const t = state.seasons.meta.thresholds;
   const kind = (r, k) => (r.harvest[k] >= t.harvest ? "harvest" : r.sown[k] >= t.sowing ? "sowing"
     : r.growing[k] >= t.growing ? "growing" : "");
@@ -1487,7 +1492,8 @@ function seasonStrip(id) {
         </div>`).join("")}
     </div>
     <p class="small season-key"><i class="m sowing"></i>sown <i class="m growing"></i>growing
-      <i class="m harvest"></i>harvested · a typical year</p>`;
+      <i class="m harvest"></i>harvested · a typical year</p>
+    ${leftOut}`;
 }
 
 // ---- Where it is grown: regions in Europe (regions.json, methodology "Where it is grown") ----
@@ -1525,7 +1531,9 @@ function viewWhere() {
   const max = top[0].share;
   const name = (code) => state.regions.names[code] ?? code;
   const level = id !== EU && rows.length && rows[0].code.length === 3 ? `${nameOf(id)} reports by state, not by smaller region. ` : "";
-  const fieldsOk = !!state.cropmap?.groups[state.group];
+  // no "Fields" where the crop map leaves this country blank (pipeline/cropmap.py, area_check)
+  const blankHere = !!state.cropmap?.groups[state.group]?.left_out?.[id];
+  const fieldsOk = !!state.cropmap?.groups[state.group] && !blankHere;
   const fields = fieldsOk && state.fields;
   const toggle = fieldsOk ? `
     <div class="seg sub" role="group" aria-label="How the map shows it">
@@ -1548,7 +1556,27 @@ function viewWhere() {
         ? `The map shows the fields themselves: how much of the land in each 2 km square was under ${cropWords()} in ${state.cropmap.meta.year}, from the EU's satellite crop map (JRC EUCROPMAP)${state.group === "oilseeds" ? "; it has no sunflower class" : ""}.`
         : "The map shades each region by how much it grows per square kilometre, so large regions do not look important just for their size."}</li>
       ${r.coverage != null && r.coverage < 100 ? `<li>The regions add up to ${r.coverage}% of ${nameOf(id)}'s total; the rest is not given by region.</li>` : ""}
+      ${fields || blankHere ? fieldsLeftOut(id) : ""}
     </ul></details>`;
+}
+
+// Countries the crop map leaves blank for this food: its area there is under half or over twice
+// Eurostat's for the same year (pipeline/cropmap.py, area_check).
+function fieldsLeftOut(id) {
+  if (state.cropmap?.groups[state.group]?.left_out?.[id] && !fieldsOn()) {
+    const mine = state.cropmap.groups[state.group].left_out[id];
+    return `<li>No map of the fields: the EU's satellite crop map finds ${Math.round(mine.map_kha)} thousand hectares of
+      ${cropWords()} in ${nameOf(id)} in ${state.cropmap.meta.year}, the EU's crop statistics ${Math.round(mine.eurostat_kha)} thousand.</li>`;
+  }
+  const out = state.cropmap?.groups[state.group]?.left_out ?? {};
+  const ids = Object.keys(out);
+  if (!ids.length) return "";
+  const yr = state.cropmap.meta.year;
+  const mine = out[id];
+  const others = ids.filter((i) => i !== id).map(nameOf);
+  return `<li>${mine
+    ? `The map leaves ${nameOf(id)} blank: it finds ${Math.round(mine.map_kha)} thousand hectares of ${cropWords()} there in ${yr}, the EU's crop statistics ${Math.round(mine.eurostat_kha)} thousand.`
+    : ""}${others.length ? ` Left blank${mine ? " too" : ""} wherever the map's area is under half or over twice the crop statistics' (${yr}): ${namesOf(others)}.` : ""}</li>`;
 }
 
 // The crops behind each food's regional figures (methodology, "Where it is grown").
@@ -1591,7 +1619,8 @@ function fitRegions() {
 }
 
 function fieldsOn() {
-  return state.level === "where" && state.fields && !!state.cropmap?.groups[state.group];
+  return state.level === "where" && state.fields && !!state.cropmap?.groups[state.group]
+    && !state.cropmap.groups[state.group].left_out?.[state.iso3];
 }
 
 // The crop map: one image per food (cropmap.json), shown under the region outlines.
@@ -2516,7 +2545,12 @@ function viewTrade() {
           : "which count tonnes as shipped (a tonne of juice counts like a tonne of fruit)."}</li>`
         : `<li>Counted in tonnes as shipped, dairy as the milk it takes to make it: a tonne of juice counts the same as a tonne of fruit.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
       ${mirror && !value ? `<li>${nameOf(id)} did not report all of its trade, so where its own figures are missing or far too low we use what other countries say they sold to it or bought from it.</li>` : ""}
-      ${state.group === "all" ? "<li>Fish is not included: it is counted as whole fish, everything else by weight as shipped.</li>" : ""}
+      ${state.group === "all" ? (value
+        ? "<li>Fish is not included, so that euros and tonnes describe the same goods.</li>"
+        : "<li>Fish is not included: it is counted as whole fish, everything else by weight as shipped.</li>") : ""}
+      ${value ? `<li>Only the foods on this site: live animals, nuts, animal feed, spirits, cider and soft drinks,
+        margarine, soups, sauces and other food preparations, baby milk, casein and tobacco are left out, so the totals are well below the
+        “agri-food trade” figures the European Commission publishes.</li>` : ""}
     </ul></details>`;
 }
 

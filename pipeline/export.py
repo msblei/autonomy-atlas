@@ -615,18 +615,26 @@ def export_seasons() -> None:
     g = g[g["basis"] == "tonnes"]
     withheld = set(zip(g.loc[g["flag"].fillna("") != "", "iso3"], g.loc[g["flag"].fillna("") != "", "group"]))
     groups = {k: v["items"] for k, v in load_products()["groups"].items()}
-    rows = seasons.rows_for(pd.read_parquet(src), items, groups)
+    dropped: dict = {}
+    rows = seasons.rows_for(pd.read_parquet(src), items, groups, dropped)
     rows = {iso: {gr: r for gr, r in gs.items() if (iso, gr) not in withheld} for iso, gs in rows.items()}
     rows = {iso: gs for iso, gs in rows.items() if gs}
+    dropped = {iso: {gr: sorted(v) for gr, v in gs.items() if (iso, gr) not in withheld}
+               for iso, gs in dropped.items()}
+    dropped = {iso: gs for iso, gs in dropped.items() if gs}
     out = {
         "meta": {
-            "sources": ["ggcmi_calendar", "isimip_landuse", "ggcmi_wheat_areas", "isimip_countrymasks"],
+            "sources": ["ggcmi_calendar", "isimip_landuse", "ggcmi_wheat_areas", "isimip_countrymasks",
+                        "wheat_harvest_iwc"],
             "note": "a typical year (multi-year average calendars), not the years of the other figures",
             "thresholds": {"harvest": seasons.HARVEST_MIN, "sowing": seasons.SOWN_MIN,
                            "growing": seasons.GROWING_MIN, "min_share": seasons.MIN_SHARE,
-                           "max_rows": seasons.MAX_ROWS},
+                           "max_rows": seasons.MAX_ROWS, "check_share": seasons.CHECK_SHARE},
+            "check": "wheat_harvest_iwc",
         },
         "countries": rows,
+        # crops left out because their calendar fails the wheat-harvest check (seasons.fails_reference)
+        "left_out": dropped,
     }
     dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
     log.info("wrote %s (%.0f KB, %d countries)", dest, dest.stat().st_size / 1024, len(rows))

@@ -131,6 +131,12 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence": "CC BY 4.0",
         "licence_url": "https://creativecommons.org/licenses/by/4.0/",
     },
+    "wheat_harvest_iwc": {
+        "title": "Wheat harvesting calendar and statistical crop years, world (World Wheat Statistics)",
+        "publisher": "International Wheat Council, as reproduced by the Montana Wheat & Barley Committee",
+        "url": "https://agrwbc.mt.gov/_docs/QualityProd-ProdMisc/worldharvestdates.pdf",
+        "licence": "harvest months cited as facts, with attribution",
+    },
     "ggcmi_wheat_areas": {
         "title": "GGCMI Phase 2 winter and spring wheat areas (MIRCA2000-based)",
         "publisher": "AgMIP GGCMI (Franke et al. 2020)",

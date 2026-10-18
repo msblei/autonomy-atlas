@@ -35,8 +35,61 @@ COLORS = [(232, 239, 228), (188, 214, 184), (134, 180, 138), (79, 138, 97), (42,
 PIXEL_M = 2000.0  # Web Mercator metres per pixel (equator scale)
 
 
+# Checked against Eurostat (methodology, "Fields", "Checked against the statistics"): per country
+# and food, the map's area (share x land of every cell in the country) against Eurostat's crop area
+# for the map's year (apro_cpshr, AR_THS_HA). Outside AREA_BAND the country is left out of that
+# food's image: EUCROPMAP 2018 finds 7% of Romania's potato area, 6% of Spain's sugar beet.
+YEAR = 2018
+EUROSTAT_CROPS = {"cereals": ["C0000", "G3000"],  # the map's maize includes maize cut green
+                  "potatoes_roots": ["R1000"], "sugar": ["R2000"], "oilseeds": ["I1110", "I1130"],
+                  "pulses": ["P0000"]}
+AREA_BAND = (0.5, 2.0)
+COVERS = set(config.EU27) | {"GBR"}
+
+
 def inputs() -> list:
     return [RAW / FILE.format(c=c) for cs in GROUPS.values() for c in cs]
+
+
+def country_cells(transform, crs, shape) -> tuple[np.ndarray, dict[int, str]]:
+    """Each 2 km cell's country (index into the returned {index: iso3}; 0 = none), from the GISCO
+    countries file, for the countries the map covers (COVERS: EUCROPMAP 2018 maps the EU and the
+    United Kingdom)."""
+    from rasterio.features import rasterize
+    from rasterio.warp import transform_geom
+
+    src = config.RAW / "gisco" / f"CNTR_RG_{config.GISCO_NUTS_SCALE}_{config.GISCO_COUNTRIES_YEAR}_4326.geojson"
+    want = COVERS
+    shapes, names = [], {}
+    for f in json.loads(src.read_text(encoding="utf-8"))["features"]:
+        iso3 = f.get("properties", {}).get("ISO3_CODE")
+        if iso3 in want:
+            k = len(names) + 1
+            names[k] = iso3
+            shapes.append((transform_geom("EPSG:4326", crs, f["geometry"]), k))
+    return rasterize(shapes, out_shape=shape, transform=transform, fill=0, dtype="int32"), names
+
+
+def area_check(group: str, v: np.ndarray, transform, cells: np.ndarray, names: dict[int, str]) -> dict:
+    """iso3 -> {map_kha, eurostat_kha, ratio} for countries with Eurostat's area of the food."""
+    import pandas as pd
+
+    from .harmonise import load_countries
+
+    code = load_countries().dropna(subset=["eurostat"]).set_index("iso3")["eurostat"]
+    d = pd.read_parquet(config.INTERIM / "eurostat_apro_cpshr.parquet")
+    d = d[(d["strucpro"] == "AR_THS_HA") & (d["year"] == YEAR) & d["crops"].isin(EUROSTAT_CROPS[group])]
+    ref = d.groupby("geo")["value"].sum(min_count=1)
+    kha = abs(transform.a * transform.e) / 1e7  # a whole cell, in thousand hectares
+    by = np.bincount(cells.ravel(), weights=np.nan_to_num(v).ravel(), minlength=len(names) + 1) * kha
+    out = {}
+    for k, iso3 in names.items():
+        e = ref.get(code.get(iso3))
+        if e is None or pd.isna(e) or e <= 0:
+            continue
+        out[iso3] = {"map_kha": round(float(by[k]), 1), "eurostat_kha": round(float(e), 1),
+                     "ratio": round(float(by[k] / e), 2)}
+    return out
 
 
 def share(group: str):
@@ -112,8 +165,15 @@ def run() -> None:
         dest.unlink(missing_ok=True)
         return
     groups = {}
+    cells = names = None
     for group, classes in GROUPS.items():
         v, t, crs = share(group)
+        if cells is None:
+            cells, names = country_cells(t, crs, v.shape)
+        check = area_check(group, v, t, cells, names)
+        out_of = sorted(i for i, c in check.items() if not AREA_BAND[0] <= c["ratio"] <= AREA_BAND[1])
+        k_out = [k for k, i in names.items() if i in out_of]
+        v = np.where(np.isin(cells, k_out), np.nan, v)
         m, mt = to_mercator(v, t, crs)
         idx = shade(m)
         rows, cols = np.nonzero(idx >= 0)
@@ -123,11 +183,14 @@ def run() -> None:
         name = f"cropmap_{group}.png"
         write_png(idx, config.WEB_DATA / name)
         groups[group] = {"file": name, "coordinates": corners(ct, idx.shape[1], idx.shape[0]),
-                         "classes": classes, "size": [int(idx.shape[1]), int(idx.shape[0])]}
+                         "classes": classes, "size": [int(idx.shape[1]), int(idx.shape[0])],
+                         # countries whose map area is outside AREA_BAND of Eurostat's: not drawn
+                         "left_out": {i: check[i] for i in out_of}}
         log.info("wrote %s (%d x %d px, %.0f KB)", name, idx.shape[1], idx.shape[0],
                  (config.WEB_DATA / name).stat().st_size / 1024)
         (config.WEB_DATA / (name + ".aux.xml")).unlink(missing_ok=True)
-    out = {"meta": {"source": "jrc_eucropmap_2018", "year": 2018, "steps": STEPS,
+    out = {"meta": {"source": "jrc_eucropmap_2018", "year": YEAR, "steps": STEPS, "area_band": AREA_BAND,
+                    "check": "eurostat_apro_cpshr",
                     "colors": [f"#{r:02x}{g:02x}{b:02x}" for r, g, b in COLORS], "pixel_m": PIXEL_M},
            "groups": groups}
     dest.write_text(json.dumps(out, separators=(",", ":")), encoding="utf-8")

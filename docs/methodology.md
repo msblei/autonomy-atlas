@@ -702,9 +702,33 @@ country (the kind is botany, not season: India's "spring" wheat is sown in Novem
 is sown in it, otherwise "growing" when at least 50% is growing, otherwise empty. The page says it
 is a typical year, not the years of the other figures.
 
-**Export:** `seasons.json` `meta` (sources, thresholds) and `countries` `{iso3: {group: [{crop,
-item, share, sown: [12], growing: [12], harvest: [12]}]}}`, `share` = the crop's % of the group's
-production.
+**Checked against the wheat harvest.** A pre-release review (2026-10-18) found GGCMI's calendars
+for Europe to be month-level placeholders in many places, mostly where it falls back to MIRCA2000
+(its `data_source_used` = 1): peas "sown 1 May, ripe 31 October" in every cell from Spain to
+Ukraine (field peas there are harvested in July; Spain's in May–June), barley "ripe 24 May" in
+Ukraine and Romania, winter wheat "ripe 23 June" in Ireland, Sweden and Austria. So every crop
+row is checked against the wheat harvest months of the International Wheat Council (World Wheat
+Statistics, "Wheat harvesting calendar", `mappings/wheat_harvest_iwc.csv`; its Belgium-Luxembourg,
+Czechoslovakia, Yugoslavia and Former U.S.S.R. rows apply to today's countries; Ireland, missing
+there, from Teagasc's harvest reports: August–September):
+
+- **Wheat** must have at least 50% of its harvest (sum of the monthly harvest shares) in those
+  months.
+- **Barley, rye, rapeseed and peas** too, where those months lie within May–September: in a
+  northern summer they are harvested with wheat or just before it.
+- A row that fails is not shown (`left_out` in the export, and a line on the food page naming the
+  crops). Countries the table does not list are not checked; maize, rice, millet, sorghum,
+  potatoes, sugar beet, beans, soybeans, sunflower and groundnuts are not checked (their seasons
+  are not tied to wheat's; spot checks for the European core found them right within a month).
+
+2021–2023: 43 countries lose at least one row; in the EU, peas in 19 members (still shown in
+Finland, which the table does not list, and Greece, whose wheat harvest runs May–August), rapeseed
+in 15 (Germany among them: "ripe 24 June", where the harvest is in July), barley in 8, wheat in 7
+(Austria, Belgium, Czechia, Ireland, Luxembourg, Slovakia, Sweden), rye in Poland.
+
+**Export:** `seasons.json` `meta` (sources, thresholds, `check`), `countries` `{iso3: {group:
+[{crop, item, share, sown: [12], growing: [12], harvest: [12]}]}}`, `share` = the crop's % of the
+group's production, and `left_out` `{iso3: {group: [label]}}`.
 
 ## When it comes from abroad: fruit and vegetables month by month (EU countries)
 
@@ -793,10 +817,22 @@ read: aggregating it here would mean decoding about 150 billion pixels for the s
   the same time (one measure per view).
 - **Checked:** `atlas validate` checks that the image's corners match `cropmap.json` and its
   colours are the five shades; `verify/recompute.py` re-reads the class rasters, sums the classes
-  at 4,000 sampled image pixels per food (nearest cell) and requires the same shade for at least
-  99% of them (2026-10-18: 99.45–99.95%). The rest are pixels whose centre falls on a cell
+  at 4,000 sampled image pixels per food (nearest cell; transparent in a country left out by the
+  check below, which it repeats) and requires the same shade for at least 99% of them (2026-10-18: 99.45–99.95%). The rest are pixels whose centre falls on a cell
   border, where the reprojection and the check can pick neighbouring cells with very different
   shares.
+
+- **Checked against the statistics** (`cropmap.area_check`): per country the map covers (EU27 and
+  the United Kingdom) and food, the map's area, Σ share × cell area over the cells inside the
+  country (GISCO countries, the file of the site's borders), against Eurostat's crop area for 2018
+  (`apro_cpshr`, `AR_THS_HA`; cereals C0000 + G3000, because the map's maize includes maize cut
+  green; potatoes R1000; sugar beet R2000; oilseeds I1110 + I1130; pulses P0000). Under half or
+  over twice it, the country is left out of that food's image (transparent) and named in the
+  page's notes with both areas (`cropmap.json` `groups.<food>.left_out: {iso3: {map_kha,
+  eurostat_kha, ratio}}`). The satellite map misses small plots and confuses some crops: it finds
+  7% of Romania's potato area and 8% of Spain's, 6% of Spain's sugar beet, six times the
+  Netherlands' pulses; cereals agree within a factor 1.7 everywhere but Cyprus. 2018: left out
+  for potatoes in 15 countries, pulses 13, oilseeds 7, sugar beet 5, cereals 1.
 
 ## Feed: how much of the meat and eggs rests on imported feed
 
