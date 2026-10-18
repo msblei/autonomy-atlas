@@ -851,8 +851,11 @@ function tooltip(iso3) {
       <span class="v"><i style="background:${season(v).color}"></i>${what} ${robustBand(v)} on any reading of
       FAO's figures, which do not hold together</span>`;
   }
+  const menu = state.group === "all" ? menuFor(id) : null;
+  const strict = menu != null && lasts(menu) !== lasts(v)
+    ? `<span class="strict">Eating exactly as today: ${lasts(menu)}</span>` : "";
   return `<strong>${nameOf(id)}</strong>
-    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>`;
+    <span class="v"><i style="background:${season(v).color}"></i>${what} ${lasts(v)}</span>${strict}`;
 }
 
 // ------------------------------------------------------------------------------------------------
@@ -1165,7 +1168,7 @@ function cardRows(id, group = state.group) {
     food: { ...row("Produces", "", overview), always: true },
     imports: row(`Buys${out}`, "+", go("trade", "imports")),
     exports: row(`Sells${out}`, "−", go("trade", "exports")),
-    used: row("Uses at home", "=", go("used")),
+    used: row("Uses", "=", go("used")),
   };
   // A withheld balance: FAO's own figures contradict themselves, and trade records next to them
   // would disagree with them too, so none is shown.
@@ -1181,7 +1184,7 @@ function cardRows(id, group = state.group) {
     const P = bal.produced, M = bal.imports, X = bal.exports, D = bal.used;
     const top = Math.max(P + M, D) || 1;
     const pct = (x) => (Math.max(0, x) / top) * 100;
-    const kcal = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal a day`;
+    const kcal = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal/person/day`;
     const why = "Calories per person a day, food by food: what is produced, bought and sold of each "
       + "food's calories. Pork, chicken and eggs from imported feed count as bought.";
     Object.assign(rows.food, { value: kcal(P), bar: [0, pct(P)], title: why });
@@ -1419,7 +1422,7 @@ function viewNoData() {
   const nat = state.data?.meta?.national?.[state.iso3];
   if (nat && state.group === "all") {
     const s = state.data.meta.sources[nat.source];
-    return `<p class="q">Food produced in ${nameOf(state.iso3)} alone would give enough calories …</p>
+    return `<p class="q">Food produced in ${nameOf(state.iso3)} alone would give enough calories</p>
     <p class="answer">${forHowLong(nat.value)}.</p>
     ${strip(nat.value)}
     <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}. This is its own statistic:
@@ -1457,7 +1460,7 @@ function viewCountry() {
         contradict themselves, and the total changes a lot depending on how they are read.</p></details>`
     : v == null
     ? `<p class="lead-none">Not enough data from FAO.</p>`
-    : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough calories …</p>
+    : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough calories</p>
       <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
       ${strip(v)}`;
   return `
@@ -1509,8 +1512,8 @@ function compareAll(id) {
       <strong>${lasts(me, { short: true })}</strong> (${Math.round(me)}%): longer than in
       <strong>${shorter}</strong> of ${rows.length} countries.</p>
     <div class="cols">
-      <div><p class="small">Runs out soonest</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
-      <div><p class="small">Lasts longest</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
+      <div><p class="small">Runs out soonest, eating as today</p>${rankList(rows.slice(-5).reverse(), (v) => lasts(v, { short: true }))}</div>
+      <div><p class="small">Lasts longest, eating as today</p>${rankList(rows.slice(0, 5), (v) => lasts(v, { short: true }))}</div>
     </div>`;
 }
 
@@ -1544,7 +1547,7 @@ function viewFood() {
          it here, and leave ${who} out of every comparison for ${food()}.</p></details>`
     : v == null
     ? `<p class="lead-none">No data from FAO.</p>`
-    : `<p class="q">${cap(food())} produced ${id === EU ? "in the EU" : `in ${who}`} alone${v < 0.5 ? ":" : " would last …"}</p>
+    : `<p class="q">${cap(food())} produced ${id === EU ? "in the EU" : `in ${who}`} alone${v < 0.5 ? ":" : " would last"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `
