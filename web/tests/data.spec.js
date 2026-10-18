@@ -283,7 +283,7 @@ test("what if: scenarios from the button on the map, a badge while one is on", a
   await expect(view(page)).not.toContainText("would be missing"); // no scenario text until one is on
   await page.locator("#whatif [data-open]").click();
   await page.locator('#whatif [data-pick="black_sea"]').click();
-  await expect(page.locator("#whatif .badge")).toContainText("The Black Sea closes");
+  await expect(page.locator("#whatif .badge")).toContainText("The Black Sea countries stop selling grain");
   await expect(page.locator("#legend")).toContainText("would be missing");
   await expect(view(page)).toContainText(`${Math.round(v)}% of the cereals it uses would be missing`);
   await page.locator("#whatif [data-end]").click(); // and off again
@@ -387,6 +387,11 @@ test("every page links the legal notice, the privacy policy and an error report"
   await expect(view(page).locator("h2")).toHaveText("Privacy policy");
   await expect(view(page)).toContainText("built with the help of an AI system");
   await expect(page.locator("#frame")).toBeHidden();
+  await expect(view(page)).not.toContainText("As of");
+  await open(page, "DEU/meat");
+  await open(page, "legal");
+  await view(page).locator("[data-back]").click();
+  await expect(page).toHaveURL(/#DEU\/meat$/);
 });
 
 test("what if one country stopped selling: from its sales page, figures as exported", async ({ page }) => {

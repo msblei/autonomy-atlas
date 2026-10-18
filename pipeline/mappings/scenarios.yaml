@@ -6,10 +6,14 @@
 # Besides these, every country is a scenario of its own ("What if Brazil stopped selling?", from
 # its sales page): scenario.export writes one small file per seller.
 scenarios:
+  ru_ua:
+    label: Russia and Ukraine stop selling
+    food: all
+    sellers: [RUS, UKR]
   black_sea:
-    label: The Black Sea closes
+    label: The Black Sea countries stop selling grain
     food: cereals
-    # the countries whose grain leaves mainly through Black Sea ports (Türkiye's other coasts stay open)
+    # whose grain leaves mainly through Black Sea ports; they stop selling by every route (Türkiye left out)
     sellers: [RUS, UKR, ROU, BGR, GEO]
   cocoa:
     label: Côte d'Ivoire and Ghana stop selling cocoa
@@ -23,7 +27,3 @@ scenarios:
     label: South America stops selling soy
     food: oilseeds
     sellers: [ARG, BOL, BRA, CHL, COL, ECU, GUY, PRY, PER, SUR, URY, VEN]
-  fortress_europe:
-    label: The world stops selling to Europe
-    food: all
-    sellers: outside_europe

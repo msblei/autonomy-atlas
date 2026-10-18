@@ -970,12 +970,13 @@ self-sufficiency is left for the animals that live on it.
 
 What a country would lack if a group of countries stopped selling food, and nothing took their
 place (`pipeline/scenario.py`, `web/public/data/scenario.json`). The groups are in
-`mappings/scenarios.yaml`, five, each with the food the map switches to: the Black Sea closes
-(Russia, Ukraine, Romania, Bulgaria, Georgia stop selling: their grain leaves mainly by Black Sea
-ports; a country-level approximation, as their other routes stop too), Côte d'Ivoire and Ghana
-(cocoa), Indonesia and Malaysia (palm oil), South America (soy), and the world selling to Europe
-(rule `outside_europe`: every trade partner not in `countries.yaml`; rule `eu27` is also
-available). Each stops selling every food; the food named is the one the map shows first. Besides these, **every country is
+`mappings/scenarios.yaml`, five, each with the food the map switches to: Russia and Ukraine (all
+food), the Black Sea countries (Russia, Ukraine, Romania, Bulgaria, Georgia, whose grain leaves
+mainly by Black Sea ports; they stop selling by every route, so Mongolia's Russian wheat by rail
+counts too: a scenario about the sellers, not the sea), Côte d'Ivoire and Ghana (cocoa), Indonesia
+and Malaysia (palm oil) and South America (soy). Rules `eu27` and `outside_europe` (every trade
+partner not in `countries.yaml`) are available for further ones. Each stops selling every food;
+the food named is the one the map shows first. Besides these, **every country is
 a scenario of its own** ("What if Brazil stopped selling?", from its sales page). Below, "Russia
 and Ukraine" stands for any group; a country in the group gets no figure.
 

@@ -83,7 +83,7 @@ const FLAG_TEXT = {
 // Short names for the food buttons; the full label is in their tooltip and on every page.
 const SHORT = {
   all: "All food", potatoes_roots: "Potatoes", sugar: "Sugar", oilseeds: "Oilseeds",
-  vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, tea", wine_beer: "Wine, beer",
+  vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, cocoa, tea", wine_beer: "Wine, beer",
 };
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
 // Where readers report errors (footer, "How do we know?").
@@ -468,8 +468,11 @@ function link(view) {
   return hashFor({ iso3: state.iso3, group: state.group, level: state.level, flow: state.flow, ...view });
 }
 
+// Where the back button of the site's own pages (about, legal, privacy) returns to.
+let returnTo = "#";
 function route() {
   const prev = `${state.iso3}/${state.group}/${state.level}/${state.flow}`;
+  if (state.level && !PAGES.includes(state.level)) returnTo = hashFor(state);
   const next = parseHash();
   // Without a country the food is not in the hash; keep the one picked for the map.
   if (!next.iso3 && next.level === "intro") next.group = state.group;
@@ -1486,6 +1489,9 @@ function wire(el) {
       render(); fitTrade();
     };
   }
+  for (const b of el.querySelectorAll("[data-back]")) {
+    b.onclick = (e) => { e.preventDefault(); location.hash = returnTo; };
+  }
   for (const b of el.querySelectorAll("[data-seller]")) {
     b.onclick = () => {
       const c = b.dataset.seller;
@@ -2201,6 +2207,7 @@ function viewSources() {
 
 function viewAbout() {
   return `
+    ${backLink()}
     <h2>How do we know?</h2>
     ${aboutFao()}
     <h3>The sum</h3>
@@ -2230,11 +2237,16 @@ function aboutSite() {
 
 // The operator, as on mariusbleif.com/legal-notice (Swiss address; contact for this site).
 const OPERATOR = `Marius Bleif<br>c/o JL Consulting Group GmbH<br>Zürcherstrasse 84<br>8852 Altendorf<br>Switzerland`;
-// Date of the current wording of the two pages below; change it with the text.
-const LEGAL_DATE = "18 October 2026";
+
+// Back to where the reader came from (or the start page), for the site's own pages.
+function backLink() {
+  return `<a class="back pageback" href="#" data-back aria-label="Back">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><path d="m15 5-7 7 7 7" /></svg></a>`;
+}
 
 function viewLegal() {
   return `
+    ${backLink()}
     <h2>Legal notice</h2>
     <h3>Operator and contact</h3>
     <p>${OPERATOR}</p>
@@ -2262,14 +2274,14 @@ function viewLegal() {
       also credit those sources. The borders are © EuroGeographics, for non-commercial use. For any other
       reuse, please ask first.</p>
     <h3>Privacy</h3>
-    <p>How personal data are handled is described in the <a href="#privacy">privacy policy</a>.</p>
-    <p class="small">As of ${LEGAL_DATE}.</p>`;
+    <p>How personal data are handled is described in the <a href="#privacy">privacy policy</a>.</p>`;
 }
 
 // Kept true to what the site does: static files from one host, no cookies, no storage, no
 // third-party requests (fonts and map glyphs are self-hosted), the browser language read locally.
 function viewPrivacy() {
   return `
+    ${backLink()}
     <h2>Privacy policy</h2>
     <h3>1. Who is responsible</h3>
     <p>${OPERATOR}</p>
@@ -2306,8 +2318,7 @@ function viewPrivacy() {
       Protection and Information Commissioner (FDPIC) in Bern or, where the GDPR applies, to the supervisory
       authority where you live.</p>
     <h3>9. Changes</h3>
-    <p>This policy may be updated; the version published here applies.</p>
-    <p class="small">As of ${LEGAL_DATE}.</p>`;
+    <p>This policy may be updated; the version published here applies.</p>`;
 }
 
 // Every data source with its publisher and licence (ssr.json meta.sources = pipeline config.SOURCES),

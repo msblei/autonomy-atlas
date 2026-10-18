@@ -545,3 +545,4 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #whatif { left: 6px; right: 6px; top: 122px; align-items: flex-end; }
   #whatif .open, #whatif .badge .name, #whatif .badge .x { font-size: 13px; padding: 6px 11px; }
 }
+#view .pageback { margin: 0 0 10px; }
