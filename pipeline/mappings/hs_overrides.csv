@@ -1,0 +1,180 @@
+# Hand decisions for HS6 codes the automatic crosswalk cannot settle (pipeline/crosswalk.py):
+# codes whose CPC 2.1 class has no FAO trade item (frozen meat, fish, chocolate, bread), whose
+# FAO items fall in different groups, or whose items carry different `to_primary` factors.
+# `hs` is an HS 2017 code or a prefix of one (the longest matching prefix wins); `group` empty =
+# left out, like trade_items.csv; `to_primary` empty = 1, "eumofa" = EUMOFA's live-weight factor
+# per CN8 code and year (fish only), "cn8" = factor per CN8 code in cn8_items.csv. `note` says why; "as X" = the FAO item whose group and factor
+# are used (trade_items.csv).
+hs,group,to_primary,note
+# --- left out: not in any products.yaml group --------------------------------------------------
+0101,,,live animals
+0102,,,live animals
+0103,,,live animals
+0104,,,live animals
+0105,,,live animals
+0106,,,live animals
+0301,,,live ornamental fish (food fish below)
+050400,,,guts and bladders (casings)
+0501,,,animal products not for food
+0508,,,coral and shells
+0511,,,animal products not for food
+0601,,,live plants and bulbs
+0602,,,live plants
+0603,,,cut flowers
+0604,,,foliage
+0410,,,turtles' eggs and birds' nests (small; no FBS item)
+080290,,,other nuts (nuts are outside the groups)
+0814,,,citrus peel
+090190,,,coffee husks and substitutes containing coffee
+0904,,,spices (no spice group)
+0905,,,spices
+0906,,,spices
+0907,,,spices
+0908,,,spices
+0909,,,spices
+0910,,,spices
+110811,,,wheat starch (FAO counts only cassava and potato starch in the roots group)
+110812,,,maize starch
+110819,,,other starches
+110820,,,inulin
+1109,,,wheat gluten
+1209,,,seeds for sowing
+121221,,,seaweeds (no FBS item in the fish group)
+121229,,,seaweeds
+121299,,,fruit stones and other vegetable products
+1301,,,gums and resins
+130231,,,agar-agar
+1401,,,plaiting materials
+1404,,,vegetable products n.e.s.
+150290,,,fats of cattle, sheep and goats (no FBS item in the groups)
+1504,,,fish oils (no FBS item in the fish group)
+151530,,,castor oil (not food)
+1516,,,hydrogenated fats (animal and vegetable mixed)
+1520,,,glycerol
+170211,,,lactose
+170219,,,lactose
+190110,,,infant food (cereal, milk and other mixed)
+2102,,,yeasts
+2104,,,soups and broths
+210130,,,roasted chicory and other coffee substitutes
+210420,,,homogenised composite food
+2201,,,mineral water
+2207,,,ethyl alcohol
+2209,,,vinegar
+2301,,,fishmeal (feed)
+2401,,,tobacco
+# --- frozen meat: CPC frozen classes have no FAO item; as the fresh cuts ------------------------
+0202,meat,,frozen bovine meat; as fresh
+020321,meat,,frozen pig carcases; as fresh
+020322,meat,,frozen pig hams; as fresh
+020329,meat,,frozen pig meat; as fresh
+020430,meat,,frozen lamb carcases; as fresh
+020441,meat,,frozen sheep carcases; as fresh
+020442,meat,,frozen sheep cuts with bone; as fresh
+020443,meat,,frozen sheep meat boneless; as fresh
+020450,meat,,goat meat
+020712,meat,,frozen chickens; as fresh
+020725,meat,,frozen turkeys; as fresh
+020742,meat,,frozen ducks; as fresh
+020752,meat,,frozen geese; as fresh
+160210,meat,,homogenised meat preparations
+# --- other groups ----------------------------------------------------------------------------
+040790,eggs,,preserved or cooked eggs
+070690,vegetables,,beetroot, radishes and similar
+071021,vegetables,,frozen peas
+071022,vegetables,,frozen beans
+0811,fruit,,frozen fruit
+0812,fruit,,provisionally preserved fruit
+090210,stimulants,,green tea in small packings
+090230,stimulants,,black tea in small packings
+1103,cereals,,groats and meal of cereals
+110610,pulses,,flour of pulses
+110620,potatoes_roots,4.0,flour of cassava and other roots; as cassava dried
+110630,fruit,,flour of fruit
+110813,,,potato starch (FAO's trade items have none)
+110814,potatoes_roots,5.0,cassava starch; as starch of cassava (FAO TCF)
+120799,oilseeds,,other oilseeds; as Oilcrops, Other
+151219,vegetable_oils,,refined sunflower oil
+151321,vegetable_oils,,palm kernel oil
+151329,vegetable_oils,,palm kernel oil
+151419,vegetable_oils,,refined rapeseed oil
+151499,vegetable_oils,,refined mustard oil
+151511,vegetable_oils,,linseed oil (Oilcrops Oil, Other)
+151519,vegetable_oils,,linseed oil
+151521,vegetable_oils,,maize oil (Maize Germ Oil)
+151529,vegetable_oils,,maize oil
+151550,vegetable_oils,,sesame oil
+151590,vegetable_oils,,other vegetable oils
+170112,sugar,,raw beet sugar; as raw cane sugar
+170230,sugar,,glucose (Sweeteners, Other)
+170240,sugar,,glucose
+170250,sugar,,fructose
+170260,sugar,,fructose
+170290,sugar,,other sugars and syrups
+170410,sugar,,chewing gum; as sugar confectionery
+170490,sugar,,sugar confectionery
+180500,stimulants,1.25,cocoa powder; as cocoa powder and cake (FAO TCF)
+1806,stimulants,0.27,chocolate; as chocolate products nes (FAO TCF)
+190220,cereals,,stuffed pasta
+190230,cereals,,other pasta
+190240,cereals,,couscous
+190300,potatoes_roots,5.0,tapioca; as tapioca of cassava (FAO TCF)
+190490,cereals,,other prepared cereals
+1905,cereals,,bread, pastry and biscuits; as bread and pastry
+200190,vegetables,,vegetables and fruit in vinegar
+200210,vegetables,1.25,whole tomatoes; as tomatoes peeled (FAO TCF)
+200290,vegetables,3.85,other tomatoes preserved (mostly paste); as paste of tomatoes (FAO TCF)
+200410,potatoes_roots,1.43,frozen prepared potatoes; as frozen potatoes
+200490,vegetables,,other frozen prepared vegetables
+200510,vegetables,,homogenised vegetables
+200520,vegetables,,prepared potatoes (crisps); FAO files them with vegetables preserved, not potatoes
+200540,vegetables,,prepared peas
+200551,vegetables,,prepared beans
+200559,vegetables,,prepared beans
+200560,vegetables,,prepared asparagus
+200570,oilseeds,,prepared olives; as olives preserved
+200580,vegetables,,prepared sweetcorn
+200591,vegetables,,prepared bamboo shoots
+200599,vegetables,,other prepared vegetables
+200600,fruit,,fruit preserved by sugar
+200710,fruit,,homogenised jams
+200791,fruit,,citrus jams
+200799,fruit,,other jams
+200870,fruit,,prepared peaches
+200989,fruit,,other fruit juices
+200990,fruit,,mixed juices
+210111,stimulants,3.03,coffee extracts (FAO TCF)
+210112,stimulants,3.03,preparations of coffee extracts; as coffee extracts
+220410,wine_beer,,sparkling wine
+# --- dairy: one factor per code (EU JRC factors, trade_items.csv) ------------------------------
+040110,dairy,0.85,milk up to 1% fat; as skim milk
+040120,dairy,1,milk 1-6% fat; as raw milk
+040140,dairy,3.21,milk and cream 6-10% fat; as cream
+040150,dairy,3.21,cream over 10% fat; as cream
+040210,dairy,7.57,skimmed milk powder
+040221,dairy,7.56,whole milk powder
+040229,dairy,7.56,whole milk powder, sweetened
+040291,dairy,2.0,evaporated milk
+040299,dairy,2.5,condensed milk
+040310,dairy,0.98,yoghurt
+040390,dairy,1.07,buttermilk, kefir and other fermented milk
+040410,dairy,cn8,whey: powder or liquid by CN8 code (cn8_items.csv)
+040490,dairy,1.1,other milk products
+071410,potatoes_roots,,cassava fresh or dried; as cassava fresh
+071490,potatoes_roots,,other roots; as fresh
+# --- fish: live weight from EUMOFA's factor per CN8 code and year -----------------------------
+030191,fish,eumofa,live trout
+030192,fish,eumofa,live eels
+030193,fish,eumofa,live carp
+030194,fish,eumofa,live bluefin tuna
+030195,fish,eumofa,live southern bluefin tuna
+030199,fish,eumofa,other live fish
+0302,fish,eumofa,fresh fish
+0303,fish,eumofa,frozen fish
+0304,fish,eumofa,fillets
+0305,fish,eumofa,dried, salted, smoked fish
+0306,fish,eumofa,crustaceans
+0307,fish,eumofa,molluscs
+0308,fish,eumofa,other aquatic invertebrates
+1604,fish,eumofa,prepared fish
+1605,fish,eumofa,prepared crustaceans and molluscs

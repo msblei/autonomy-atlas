@@ -84,6 +84,34 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence": "US government work, public domain",
         "licence_url": "https://www.usa.gov/government-copyright",
     },
+    "eurostat_comext": {
+        "title": "EU trade since 1988 by HS2-4-6 and CN8 (DS-045409)",
+        "publisher": "Eurostat, Comext",
+        "url": "https://ec.europa.eu/eurostat/comext/newxtweb/",
+        "file_url": "https://ec.europa.eu/eurostat/api/comext/dissemination/sdmx/2.1/data/DS-045409",
+        "licence": "CC BY 4.0 (Eurostat copyright notice)",
+        "licence_url": "https://ec.europa.eu/eurostat/about-us/policies/copyright",
+    },
+    "eumofa_cf": {
+        "title": "Conversion factors by CN-8 code (Metadata 2, Annex 7)",
+        "publisher": "European Commission, EUMOFA (European Market Observatory for Fisheries and "
+                     "Aquaculture Products)",
+        "url": "https://fishery-aquaculture-market-observatory.ec.europa.eu/en/data/metadata",
+        "file_url": "https://fishery-aquaculture-market-observatory.ec.europa.eu/system/files/2026-05/"
+                    "DM_Annex%207%20-%20CF%20by%20CN-8%20from%202011%20to%202026.xlsx",
+        "licence": "European Commission reuse notice (free reuse with attribution)",
+        "licence_url": "https://commission.europa.eu/legal-notice_en",
+    },
+    "unsd_cpc_hs": {
+        "title": "CPC Ver. 2.1 to HS 2017 correspondence; HS 2022 to HS 2017 conversion",
+        "publisher": "United Nations Statistics Division",
+        "url": "https://unstats.un.org/unsd/classifications/Econ",
+        "file_url": "https://unstats.un.org/unsd/classifications/Econ/tables/CPC/CPCv21_HS2017/CPC21-HS2017.csv",
+        "file_url_hs2022": "https://unstats.un.org/unsd/classifications/Econ/tables/"
+                           "HS2022toHS2017ConversionAndCorrelationTables.xlsx",
+        "licence": "United Nations terms of use (free reuse with attribution)",
+        "licence_url": "https://www.un.org/en/about-us/terms-of-use",
+    },
     "gisco_countries": {
         "title": "Countries 2024, 1:20 million",
         "publisher": "Eurostat GISCO",
@@ -105,8 +133,14 @@ EUROSTAT_DATASETS: dict[str, str] = {
     "meat": "apro_mt_pann",  # slaughtering in slaughterhouses, annual
     "milk": "apro_mk_pobta",  # milk collection and dairy products
 }
-# Comext (international trade in goods, CN8): phase 2.
+# Comext (international trade in goods, HS6/CN8): EU members' own trade (pipeline/comext.py).
 COMEXT_API = "https://ec.europa.eu/eurostat/api/comext/dissemination/"
+COMEXT_DATA = COMEXT_API + "sdmx/2.1/data/DS-045409/"
+# Larger extractions are queued: poll status, then fetch the data (both by the returned id).
+COMEXT_ASYNC = COMEXT_API + "1.0/async/"
+# Greece is GR in Comext (not Eurostat's usual EL).
+COMEXT_FIRST_YEAR = 2021  # food other than fish: the FBS window and later (a comparison only)
+COMEXT_FISH_FIRST_YEAR = 2010  # fish: every trend year, for the EU bloc's fish balance
 
 # --- Trade (phase 2) -----------------------------------------------------------------------------
 # BACI has no stable download URL; fetch manually from the CEPII page and drop the CSVs in

@@ -40,6 +40,11 @@ def raw_inputs() -> dict[str, Path]:
         "jrc_bal": jrc.CSV,
         "gisco_countries": config.RAW / "gisco" / "CNTR_RG_20M_2024_4326.geojson",
         "usda_psd": config.RAW / "usda" / "psd_alldata_csv.zip",
+        "comext": config.RAW / "comext" / "DS-045409_food.csv.gz",
+        "comext_query": config.RAW / "comext" / "query.json",
+        "eumofa_cf": config.RAW / "eumofa" / "conversion_factors_cn8.xlsx",
+        "unsd_cpc_hs": config.RAW / "unsd" / "CPC21-HS2017.csv",
+        "unsd_hs2022": config.RAW / "unsd" / "HS2022toHS2017ConversionAndCorrelationTables.xlsx",
     }
 
 

@@ -1,0 +1,35 @@
+# HS6 codes split at CN8 level because their products differ too much in primary equivalent
+# (pipeline/comext.py; hs_overrides.csv marks the HS6 code with to_primary "cn8"). Eurostat CN8
+# codes 2021-2026; factors as trade_items.csv (dairy: EU JRC factors).
+# Whey 0404 10: in powder, granules or other solid forms (02-38) = dry whey 7.48; otherwise
+# (48-99: liquid, "whether or not concentrated") = fresh whey 0.45 (FAO's condensed whey, 3.0,
+# has no CN8 code of its own; most of it by weight is liquid).
+cn8,group,to_primary,note
+04041002,dairy,7.48,whey powder
+04041004,dairy,7.48,whey powder
+04041006,dairy,7.48,whey powder
+04041011,dairy,7.48,whey powder
+04041012,dairy,7.48,whey powder
+04041014,dairy,7.48,whey powder
+04041016,dairy,7.48,whey powder
+04041019,dairy,7.48,whey powder
+04041026,dairy,7.48,whey powder
+04041028,dairy,7.48,whey powder
+04041032,dairy,7.48,whey powder
+04041034,dairy,7.48,whey powder
+04041036,dairy,7.48,whey powder
+04041038,dairy,7.48,whey powder
+04041048,dairy,0.45,liquid whey
+04041052,dairy,0.45,liquid whey
+04041054,dairy,0.45,liquid whey
+04041056,dairy,0.45,liquid whey
+04041058,dairy,0.45,liquid whey
+04041062,dairy,0.45,liquid whey
+04041072,dairy,0.45,liquid whey
+04041074,dairy,0.45,liquid whey
+04041076,dairy,0.45,liquid whey
+04041078,dairy,0.45,liquid whey
+04041082,dairy,0.45,liquid whey
+04041084,dairy,0.45,liquid whey
+04041091,dairy,0.45,liquid whey
+04041099,dairy,0.45,liquid whey

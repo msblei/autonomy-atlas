@@ -129,6 +129,122 @@ def usda(*, force: bool = False) -> list[Path]:
     return [fetch(url, config.RAW / "usda" / url.rsplit("/", 1)[1], force=force)]
 
 
+def unsd(*, force: bool = False) -> list[Path]:
+    """UN Statistics Division: CPC 2.1 <-> HS 2017 correspondence and the HS 2022 -> HS 2017
+    conversion, the base of mappings/hs_items.csv (`atlas crosswalk`)."""
+    src = config.SOURCES["unsd_cpc_hs"]
+    d = config.RAW / "unsd"
+    return [fetch(u, d / u.rsplit("/", 1)[1], force=force)
+            for u in (src["file_url"], src["file_url_hs2022"])]
+
+
+def eumofa(*, force: bool = False) -> list[Path]:
+    """EUMOFA live-weight conversion factors per CN8 code and year (fish, pipeline/comext.py)."""
+    url = config.SOURCES["eumofa_cf"]["file_url"]
+    return [fetch(url, config.RAW / "eumofa" / "conversion_factors_cn8.xlsx", force=force)]
+
+
+COMEXT_FILE = "DS-045409_food.csv.gz"
+COMEXT_QUERY = "query.json"
+COMEXT_CHUNK = 150  # product codes per request: keeps the URL short and each extraction small
+
+
+def comext_codes() -> tuple[list[str], list[str]]:
+    """Product codes to request: HS6 codes in a group (both HS versions), except fish, which is
+    requested as EUMOFA's CN8 codes (every year EUMOFA lists) so its factor per code applies."""
+    from . import comext, crosswalk
+
+    hs = crosswalk.load()
+    hs6 = sorted(set(hs.loc[(hs["group"] != "fish") & (hs["to_primary"] != "cn8"), "hs"]))
+    return hs6 + sorted(comext.load_cn8_items()), comext.fish_cn8_codes()
+
+
+def _comext_get(url: str, timeout: int = 600) -> bytes:
+    """One extraction: answered at once (gzip CSV) or queued (XML with an id to poll)."""
+    import gzip
+    import re
+    import time
+
+    r = requests.get(url, timeout=timeout)
+    r.raise_for_status()
+    body = r.content
+    if body[:2] == b"\x1f\x8b":
+        return gzip.decompress(body)
+    m = re.search(rb"<(?:\w+:)?id>([0-9a-f-]{36})<", body)
+    if not m:
+        raise RuntimeError(f"Comext: unexpected answer {body[:300]!r}")
+    key = m.group(1).decode()
+    for _ in range(360):  # up to an hour
+        st = requests.get(config.COMEXT_ASYNC + f"status/{key}", timeout=60).content
+        if b"AVAILABLE" in st:
+            data = requests.get(config.COMEXT_ASYNC + f"data/{key}", timeout=timeout).content
+            return gzip.decompress(data) if data[:2] == b"\x1f\x8b" else data
+        if b"EXPIRED" in st or b"FAILED" in st or b"<faultcode>" in st:
+            raise RuntimeError(f"Comext extraction {key}: {st[:300]!r}")
+        time.sleep(10)
+    raise TimeoutError(f"Comext extraction {key} not ready after an hour")
+
+
+def comext(*, force: bool = False) -> list[Path]:
+    """Eurostat Comext DS-045409: every EU member's food trade with every partner, yearly from
+    COMEXT_FIRST_YEAR, quantity (100 kg) and value (EUR), imports (flow 1) and exports (2). HS6 for
+    food in the groups, CN8 for fish. Merged into one gzip CSV; query.json records what was asked
+    (about 300 requests, a few minutes)."""
+    import gzip
+    import json
+    from concurrent.futures import ThreadPoolExecutor
+    from datetime import UTC, datetime
+
+    out = unsd(force=force) + eumofa(force=force)
+    dest = config.RAW / "comext" / COMEXT_FILE
+    if dest.exists() and not force:
+        log.info("exists, skipping: %s", dest.name)
+        return out + [dest]
+    hs6, cn8 = comext_codes()
+    reporters = sorted(comext_reporters())
+    jobs = [(rep, codes[i:i + COMEXT_CHUNK], first) for rep in reporters
+            for codes, first in ((hs6, config.COMEXT_FIRST_YEAR), (cn8, config.COMEXT_FISH_FIRST_YEAR))
+            for i in range(0, len(codes), COMEXT_CHUNK)]
+
+    def one(job):
+        rep, codes, first = job
+        url = (config.COMEXT_DATA + f"A.{rep}..{'+'.join(codes)}.1+2.QUANTITY_IN_100KG+VALUE_IN_EUROS"
+               f"?startPeriod={first}&format=SDMX-CSV&compressed=true")
+        return _comext_get(url).decode("utf-8").splitlines()
+
+    dest.parent.mkdir(parents=True, exist_ok=True)
+    tmp = dest.with_suffix(".part")
+    header, n = None, 0
+    with gzip.open(tmp, "wt", encoding="utf-8") as f, ThreadPoolExecutor(4) as pool:
+        for lines in tqdm(pool.map(one, jobs), total=len(jobs), desc="comext", leave=False):
+            if not lines:
+                continue
+            if header is None:
+                header = lines[0]
+                f.write(header + "\n")
+            elif lines[0] != header:
+                raise RuntimeError(f"Comext: header changed: {lines[0]}")
+            f.write("\n".join(lines[1:]) + ("\n" if len(lines) > 1 else ""))
+            n += len(lines) - 1
+    tmp.replace(dest)
+    (dest.parent / COMEXT_QUERY).write_text(json.dumps({
+        "dataset": "DS-045409", "fetched": datetime.now(UTC).isoformat(timespec="seconds"),
+        "first_year": config.COMEXT_FIRST_YEAR, "fish_first_year": config.COMEXT_FISH_FIRST_YEAR,
+        "reporters": reporters,
+        "hs6": hs6, "cn8": cn8, "rows": n}, indent=1) + "\n", encoding="utf-8")
+    log.info("downloaded %s (%d rows, %d requests)", dest, n, len(jobs))
+    return out + [dest]
+
+
+def comext_reporters() -> set[str]:
+    """Comext reporter codes of the EU members (Greece is GR there, EL elsewhere at Eurostat)."""
+    from .harmonise import load_countries
+
+    c = load_countries()
+    codes = set(c.loc[c["iso3"].isin(config.EU27), "eurostat"])
+    return {"GR" if c == "EL" else c for c in codes}
+
+
 def crop_calendar() -> None:
     """FAO Crop Calendar API (phase 3). Endpoints are not documented here on purpose —
     inspect the API's OpenAPI/Swagger page first, then implement."""
@@ -146,13 +262,16 @@ ALL = {
     "baci": baci,
     "jrc": jrc,
     "usda": usda,
+    "unsd": unsd,
+    "eumofa": eumofa,
+    "comext": comext,
     "crop_calendar": crop_calendar,
 }
 
 
 def run(sources: list[str] | None = None, *, force: bool = False) -> None:
     config.ensure_dirs()
-    sources = sources or ["faostat", "eurostat", "boundaries", "usda"]
+    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext"]
     for name in sources:
         fn = ALL[name]
         log.info("== %s", name)
