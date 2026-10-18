@@ -581,6 +581,80 @@ def cropmap_check(cm, n=4000):
     return out
 
 
+def feed_rows(res, D):
+    """Methodology "Feed": {iso: (imported %, top [[item, %]], meat SSR, eggs SSR, items %)}."""
+    items = {int(r["item_code"]): (r["item"], float(r["protein_pct"]) / 100, int(r["parent"]) if r["parent"] else None)
+             for r in read_csv_comments(MAP / "feed_items.csv")}
+    codes = set(items) | {v[2] for v in items.values() if v[2]}
+    z = zipfile.ZipFile(ROOT / "data/raw/faostat/SUA_Crops_Livestock_E_All_Data_(Normalized).zip")
+    with z.open("SUA_Crops_Livestock_E_All_Data_(Normalized).csv") as fh:
+        t = pcsv.read_csv(fh, read_options=pcsv.ReadOptions(encoding="latin-1"), convert_options=pcsv.ConvertOptions(
+            include_columns=["Area Code (M49)", "Item Code", "Element", "Year", "Unit", "Value"],
+            column_types={"Area Code (M49)": pa.string(), "Item Code": pa.int64(), "Year": pa.int64(),
+                          "Value": pa.float64()})).to_pandas()
+    WIN = D.WIN
+    t = t[t["Year"].isin(WIN) & t["Item Code"].isin(codes) & (t["Unit"] == "t")
+          & t["Element"].isin(["Production", "Import quantity", "Feed"])]
+    t["iso"] = t["Area Code (M49)"].str.lstrip("'").str.zfill(3).map(ALL_ISO)
+    t = t[t["iso"].notna() & t["iso"].isin({c for c in WORLD.values()} | {e["iso3"] for e in EUROPE})]
+    el = {"Production": "P", "Import quantity": "M", "Feed": "F"}
+    t["el"] = t["Element"].map(el)
+    # EU: members' imports from outside the EU, per item and year, from the trade matrix
+    tm = D.tm[D.tm["r"].isin(EU) & (D.tm["flow"] == "imports") & D.tm["p"].notna() & D.tm["item"].isin(codes)
+              & D.tm["year"].isin(WIN)]
+    ext = tm[~tm["p"].isin(EU)].groupby(["item", "year"])["t"].sum()
+    alls = tm.groupby(["item", "year"])["t"].sum()
+    share = (ext.reindex(alls.index).fillna(0) / alls).where(alls > 0).to_dict()
+    eu = t[t["iso"].isin(EU)].copy()
+    mm = eu["el"] == "M"
+    eu.loc[mm, "Value"] = [v * (share.get((i, y)) if share.get((i, y)) is not None and not isnan(share.get((i, y))) else 1.0)
+                           for v, i, y in zip(eu.loc[mm, "Value"], eu.loc[mm, "Item Code"], eu.loc[mm, "Year"])]
+    eu["iso"] = "EU27"
+    t = pd.concat([t, eu], ignore_index=True)
+    w = t.groupby(["iso", "Item Code", "el"])["Value"].sum().div(len(WIN)).unstack("el").reindex(
+        columns=["P", "M", "F"]).fillna(0.0)
+    out = {}
+    for iso, sub in w.groupby(level="iso"):
+        sub = sub.droplevel("iso")
+
+        def own(code, sub=sub):
+            if code not in sub.index:
+                return 1.0
+            p_, m_ = sub.at[code, "P"], sub.at[code, "M"]
+            return 1.0 if p_ + m_ <= 0 else min(1.0, max(0.0, p_ / (p_ + m_)))
+        fed = [c for c in sub.index if sub.at[c, "F"] > 0 and c in items]
+        tot_t = sub.loc[sub["F"] > 0, "F"].sum()
+        if not fed:
+            continue
+        prot = {c: sub.at[c, "F"] * items[c][1] for c in fed}
+        imp = {c: prot[c] * (1 - own(c) * (own(items[c][2]) if items[c][2] else 1.0)) for c in fed}
+        if sum(prot.values()) <= 0:
+            continue
+        f = sum(imp.values()) / sum(prot.values())
+        ti = sum(imp.values())
+        top = [[items[c][0], round(100 * v / ti)] for c, v in sorted(imp.items(), key=lambda kv: -kv[1])[:3]
+               if ti > 0 and v / ti >= 0.05]
+        r = res.get(iso, {})
+        gr = r.get("groups", {})
+        bal = r.get("item_bal") or {}
+        code_of = {nm: c for c, nm in D.item_names.items()}
+
+        def p_item(nm):
+            c = code_of.get(nm)
+            return nz(bal[c]["P"]) if c in bal else 0.0
+
+        def ssr(g, num):
+            x = gr.get(g)
+            if not x or x["reason"] or not x["comp"]["D"] > 0:
+                return math.nan
+            return 100 * num / x["comp"]["D"]
+        meat = ssr("meat", nz(gr["meat"]["comp"]["P"]) - f * (p_item("Pigmeat") + p_item("Poultry Meat"))) \
+            if "meat" in gr else math.nan
+        eggs = ssr("eggs", (1 - f) * nz(gr["eggs"]["comp"]["P"])) if "eggs" in gr else math.nan
+        out[iso] = (100 * f, top, meat, eggs, 100 * sum(sub.at[c, "F"] for c in fed) / tot_t if tot_t > 0 else math.nan)
+    return out
+
+
 def season_rows(res, D):
     """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
     cal = season_calendars()
@@ -1707,6 +1781,26 @@ def main():
                 if e is None or abs(e - mine) > 1:
                     record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
                                          "field": "concentration"}, e, mine)
+
+    # ---- feed (methodology "Feed") ----
+    mine_f = feed_rows(res, D)
+    for iso in sorted(set(mine_f) | {i for i, c in ssr["countries"].items() if c.get("feed")}):
+        e = ssr["countries"].get(iso, {}).get("feed")
+        m_ = mine_f.get(iso)
+        w = {"file": "ssr.json", "country": iso, "field": "feed"}
+        counts["feed"] += 4
+        if e is None or m_ is None:
+            if iso in ssr["countries"]:
+                record("feed", {**w, "field": "feed presence"}, e is not None, m_ is not None)
+            continue
+        def off(a, b):
+            return (a is None) != (b is None or isnan(b)) or (a is not None and abs(a - b) > 0.05 + 1e-9)
+        for k, mv in (("imported_pct", m_[0]), ("meat_ssr", m_[2]), ("eggs_ssr", m_[3]), ("items_pct", m_[4])):
+            if off(e.get(k), mv):
+                record("feed", {**w, "field": f"feed.{k}"}, e.get(k), None if isnan(mv) else round(mv, 1))
+        counts["feed_top"] += 1
+        if [x[0] for x in e["top"]] != [x[0] for x in m_[1]] or any(abs(a[1] - b[1]) > 1 for a, b in zip(e["top"], m_[1])):
+            record("feed_top", {**w, "field": "feed.top"}, e["top"], m_[1])
 
     # ---- import months (methodology "When it comes from abroad") ----
     im = json.load(open(OUT_DIR / "import_months.json"))["countries"]

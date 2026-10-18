@@ -28,6 +28,7 @@ Inputs, read directly:
 - `data/raw/comext/DS-045409_monthly_imports.csv.gz` for `import_months.json`
 - `data/raw/eucropmap/crop_percent_on_land_*_2km.tif` (read with rasterio) for the crop map
   images, checked at 4,000 sampled pixels per food
+- `data/raw/faostat/SUA_Crops_Livestock_E_All_Data_(Normalized).zip` (feed, read out of the zip)
 - `data/raw/eurostat/apro_cpshr.tsv.gz` and `data/raw/gisco/NUTS_RG_20M_{2024,2021}_4326.geojson`
   for `regions.json`
 - `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv,comext_partners.csv}`

@@ -1341,6 +1341,7 @@ function viewFood() {
     ${g.plain ? `<p class="small">${g.plain}</p>` : ""}
     ${euLine(id)}
     ${w ? "" : secondOpinion(id)}
+    ${w ? "" : feedNote(id)}
     ${w ? "" : trend(id)}
     ${w ? "" : seasonStrip(id)}
     ${w ? "" : importMonths(id)}
@@ -1603,6 +1604,35 @@ function leaders(top) {
   const months = (id) => runs.filter((r) => r.id === id).reduce((a, r) => a + ((r.end - r.start + 12) % 12) + 1, 0);
   return [...by.entries()].sort((a, b) => months(b[0]) - months(a[0]))
     .map(([id, spans]) => `${nameOf(id)} ${spans.join(", ")}`).join(" · ");
+}
+
+// Feed bought abroad (ssr.json feed, methodology "Feed"): pigs and poultry live on concentrate
+// feed, so meat and eggs are also shown counting them only for the feed grown at home.
+const FEED_NAMES = { "Cake of soya beans": "soybean meal", "Cake of rapeseed": "rapeseed meal",
+  "Cake of sunflower seed": "sunflower meal", "Cake of palm kernel": "palm kernel meal",
+  "Maize (corn)": "maize", "Soya beans": "soybeans", "Bran of wheat": "wheat bran",
+  "Cake of cottonseed": "cottonseed meal", "Cake of groundnuts": "groundnut meal",
+  "Broad beans and horse beans, dry": "field beans" };
+const feedName = (item) => FEED_NAMES[item] ?? item.toLowerCase();
+
+function feedNote(id) {
+  const f = country(id)?.feed;
+  if (!f || f.imported_pct == null || !["meat", "eggs", "dairy"].includes(state.group)) return "";
+  const who = id === EU ? "the EU" : nameOf(id);
+  const share = `<strong>${Math.round(f.imported_pct)}%</strong> of the protein in ${id === EU ? "the EU's" : `${who}'s`} animal feed
+    is bought ${id === EU ? "outside the EU" : "abroad"}${f.top.length ? `, mostly ${namesOf(f.top.map(([n]) => feedName(n)))}` : ""}.`;
+  if (state.group === "dairy") {
+    return `<h3>Feed from abroad</h3><p class="small">${share} Milk is not counted again for it: cows live mostly on grass
+      and hay, which no statistic counts as bought or sold.</p>`;
+  }
+  const v = state.group === "meat" ? f.meat_ssr : f.eggs_ssr;
+  if (v == null) return "";
+  return `
+    <h3>Feed from abroad</h3>
+    <p class="small">${share}</p>
+    <p>Counting ${state.group === "meat" ? "pigs and chickens" : "hens"} only for the feed grown ${id === EU ? "in the EU" : "at home"},
+      ${id === EU ? "the EU's" : "its"} own ${food()} would last <strong>${forHowLong(v)}</strong>.</p>
+    ${state.group === "meat" ? `<p class="small">Cattle and sheep are not counted again: they live mostly on grass, which no statistic counts as bought or sold.</p>` : ""}`;
 }
 
 function namesOf(list) {
@@ -2061,6 +2091,15 @@ function viewTable() {
 }
 
 // Concentration of trade partners (trade.json concentration, methodology "Trade partners").
+// Feed (ssr.json feed, methodology "Feed").
+function feedRows(id) {
+  const f = country(id)?.feed;
+  if (!f || !["meat", "eggs", "dairy"].includes(state.group)) return "";
+  const adj = state.group === "meat" ? f.meat_ssr ?? null : state.group === "eggs" ? f.eggs_ssr ?? null : null;
+  return `<tr><td>Imported share of feed protein</td><td>${fmt(f.imported_pct)}%</td></tr>
+    ${adj != null ? `<tr><td>SSR counting pigs and poultry only for home-grown feed</td><td>${fmt(adj)}%</td></tr>` : ""}`;
+}
+
 function hhiRows(id) {
   if (!state.trade) { loadTrade(); return ""; }
   const h = state.trade.concentration?.[id]?.[state.group] ?? {};
@@ -2117,6 +2156,7 @@ function expertDetail(id) {
       <tr><td>losses / residuals</td><td>${kt(comp.losses)} / ${kt(comp.residuals)}</td></tr>
       <tr><td>Population</td><td>${pop(c)}</td></tr>
       ${hhiRows(id)}
+      ${feedRows(id)}
     </table>
     ${g.withheld ? `<p class="note">${whyWithheld(id)}</p>` : ""}
     ${g.uses_withheld ? `<p class="note">Uses (food, feed, …) not shown: FAO's residuals exceed a quarter of domestic supply.</p>` : ""}

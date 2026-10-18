@@ -36,6 +36,7 @@ def raw_inputs() -> dict[str, Path]:
         "fao_fbs": f / config.FAOSTAT_FILES["fbs"],
         "fao_tm": f / config.FAOSTAT_FILES["trade_matrix"],
         "fao_catalogue": f / config.FAOSTAT_CATALOGUE,
+        "fao_sua": f / config.FAOSTAT_FILES["sua"],
         "jrc_bal_zip": jrc.ZIP,
         "jrc_bal": jrc.CSV,
         "gisco_countries": config.RAW / "gisco" / "CNTR_RG_20M_2024_4326.geojson",

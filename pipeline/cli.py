@@ -19,6 +19,7 @@ from . import (
     crosswalk,
     download,
     export,
+    feed,
     harmonise,
     manifest,
     regions,
@@ -88,6 +89,7 @@ def main(argv: list[str] | None = None) -> int:
         seasons.run()
         regions.run()
         comext.run_months(trade.fbs_window())
+        feed.run()
         usda.run()
     elif args.cmd == "export":
         export.run()
@@ -106,6 +108,7 @@ def main(argv: list[str] | None = None) -> int:
         seasons.run()
         regions.run()
         comext.run_months(trade.fbs_window())
+        feed.run()
         usda.run()
         export.run()
         return _validate()

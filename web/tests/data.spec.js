@@ -251,3 +251,14 @@ test("fields: the crop map image replaces the regions' shading, with its own leg
   await view(page).locator('[data-fields="0"]').click();
   await expect(page.locator("#legend")).toContainText("tonnes per km²");
 });
+
+test("feed from abroad: the imported share and the feed-adjusted meat as exported", async ({ page }) => {
+  const f = C.DEU.feed;
+  await open(page, "DEU/meat");
+  const box = view(page);
+  await expect(box).toContainText(`${Math.round(f.imported_pct)}% of the protein in Germany's animal feed`);
+  await expect(box).toContainText(`its own meat would last ${forHowLong(f.meat_ssr)}`);
+  await open(page, "DEU/dairy"); // milk is not adjusted, only explained
+  await expect(box).toContainText("cows live mostly on grass");
+  await expect(box).not.toContainText("would last for about");
+});

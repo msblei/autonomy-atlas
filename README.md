@@ -61,7 +61,8 @@ data/       raw / interim / processed (gitignored)
 
 | Source | Used for | Licence |
 |---|---|---|
-| [FAOSTAT](https://www.fao.org/faostat/en/#data) Food Balance Sheets, Production, Trade Matrix | supply, SSR/IDR, bilateral trade | CC BY 4.0 |
+| [FAOSTAT](https://www.fao.org/faostat/en/#data) Food Balance Sheets, Supply Utilization Accounts, Production, Trade Matrix | supply, SSR/IDR, animal feed, bilateral trade | CC BY 4.0 |
+| [Feedipedia](https://www.feedipedia.org) (INRAE, CIRAD, AFZ, FAO) | protein content of feed | cited values |
 | [Eurostat](https://ec.europa.eu/eurostat) Comext, `apro_cpshr` | EU members' fish trade and the EU's fish balance; a check on FAO's trade figures; where crops grow, by region | CC BY 4.0 |
 | [EUMOFA](https://fishery-aquaculture-market-observatory.ec.europa.eu) conversion factors | fish trade in live weight | EC reuse notice (attribution) |
 | [UN Statistics Division](https://unstats.un.org/unsd/classifications/Econ) CPC–HS correspondence | trade codes to food groups | UN terms of use (attribution) |

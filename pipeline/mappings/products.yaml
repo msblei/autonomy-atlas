@@ -108,7 +108,7 @@ groups:
 
   meat:
     label: Meat
-    plain: Counts as produced here even when the animals ate imported feed such as soy.
+    plain: Counts every animal raised here, also those fed on imported feed (see "Feed from abroad").
     items:
       - Bovine Meat
       - Pigmeat
@@ -119,7 +119,7 @@ groups:
 
   dairy:
     label: Dairy
-    plain: Counts as produced here even when the cows ate imported feed such as soy.
+    plain: Counts all milk from cows kept here, also those given imported feed (see "Feed from abroad").
     items:
       - Milk - Excluding Butter
       - Butter, Ghee
@@ -127,7 +127,7 @@ groups:
 
   eggs:
     label: Eggs
-    plain: Counts as produced here even when the hens ate imported feed such as soy.
+    plain: Counts all eggs laid here, also by hens fed on imported feed (see "Feed from abroad").
     items:
       - Eggs
 

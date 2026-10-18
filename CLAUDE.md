@@ -99,14 +99,18 @@ make serve       # cd web && npm run dev
    Eurostat `apro_cpshr` (NUTS2, Germany NUTS1) as a list and a map of t per km² ("Where in … do
    they grow?", `#ISO/group/where`, `pipeline/regions.py`), and "Fields", JRC's 2 km crop
    shares from EUCROPMAP 2018 as one map image per food (`pipeline/cropmap.py`).
-4. **Phase 4:** feed-adjusted SSR for livestock products (imported soy meal), calorie-weighted
-   composite index, scenario toggles ("lose Ukraine/Russia supply").
+4. **Phase 4 (in part):** feed-adjusted SSR done: imported share of feed protein (cakes count
+   as imported when their beans were), meat and eggs counting pigs and poultry only for home-grown
+   feed ("Feed from abroad" on the food page; cattle, sheep and milk not adjusted: grass).
+   Calorie-weighted composite: the "all food" kcal coverage already is one. Still to do:
+   scenario toggles ("lose Ukraine/Russia supply").
 
 ## Data sources (phase 1 + 2)
 
 | Need | Source | Access | Notes |
 |---|---|---|---|
 | Supply/utilisation, SSR/IDR | FAOSTAT FBS (2010–) | `https://bulks-faostat.fao.org/production/FoodBalanceSheets_E_All_Data_(Normalized).zip` | CC BY 4.0. Elements: Production, Import quantity, Export quantity, Domestic supply quantity, Stock Variation, Feed, Food supply (kcal/capita/day) |
+| Feed (all commodities, cakes included) | FAOSTAT SCL "Supply Utilization Accounts (2010-)" | `.../SUA_Crops_Livestock_E_All_Data_(Normalized).zip` (87 MB zip, 1.7 GB CSV; with `--source faostat`) | CC BY 4.0. Feed use, production and imports of every commodity, oilseed cakes and brans included (FBS leaves them out): `pipeline/feed.py`; crude protein per feed item in `mappings/feed_items.csv` (Feedipedia) |
 | Production | FAOSTAT QCL | `.../Production_Crops_Livestock_E_All_Data_(Normalized).zip` | national, 1961– |
 | Bilateral trade (FAO items) | FAOSTAT Detailed Trade Matrix | `.../Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip` | CC BY 4.0. 420 MB zip, 8.5 GB CSV: stream it, never unzip. Trade items (CPC), not FBS items: `mappings/trade_items.csv` maps them to groups. No fish |
 | Bilateral trade (HS6/CN8, EU members) | Eurostat Comext DS-045409 | SDMX API `https://ec.europa.eu/eurostat/api/comext/dissemination/sdmx/2.1/data/DS-045409/` (`atlas download --source comext`, ~270 queued requests merged into one file) | CC BY 4.0 (Eurostat). EU reporters only. Fish partners and the EU bloc's fish shares (FAO has no fish trade); other foods only compared with the FAO matrix (`pipeline/comext.py`). HS6 → groups via `mappings/hs_items.csv` (`atlas crosswalk`) |

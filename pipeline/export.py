@@ -275,7 +275,15 @@ def export_ssr() -> None:
         entries.append((EU_BLOC, dict(EU_ENTRY)))
 
     item_tables: dict = {}  # expert-only detail, written to items.json and loaded on demand
+    # Feed: imported share of feed protein, feed-adjusted meat and eggs (methodology, "Feed").
+    fp = config.PROCESSED / "feed.parquet"
+    feed = pd.read_parquet(fp).set_index("iso3") if fp.exists() else pd.DataFrame()
     for iso3, entry in entries:
+        if iso3 in feed.index:
+            r = feed.loc[iso3]
+            entry["feed"] = {"imported_pct": _round(r["imported_pct"]), "top": json.loads(r["top"]),
+                             "meat_ssr": _round(r["meat_ssr"]), "eggs_ssr": _round(r["eggs_ssr"]),
+                             "items_pct": _round(r["items_pct"])}
         entry.update({"view": "eu_bloc" if iso3 == EU_BLOC else "national",
                       "europe": bool(iso3 == EU_BLOC or countries.loc[iso3, "europe"]),
                       "indicators": {}, "trend": series.get(iso3, {})})

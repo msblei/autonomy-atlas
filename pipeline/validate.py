@@ -424,6 +424,24 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
     return out
 
 
+def check_feed(ssr: dict) -> list[Finding]:
+    """Feed adjustment (methodology, "Feed"): the imported share is a share, and counting only
+    home-grown feed can lower meat and eggs but never raise them; no figure for a withheld food."""
+    out = []
+    for iso3, c in ssr["countries"].items():
+        f = c.get("feed")
+        if not f:
+            continue
+        if f["imported_pct"] is None or not 0 <= f["imported_pct"] <= 100:
+            out.append(Finding("feed_share", BLOCK, f"imported {f['imported_pct']}%", iso3))
+        for g, k in (("meat", "meat_ssr"), ("eggs", "eggs_ssr")):
+            ind = c.get("indicators", {}).get(g, {})
+            pub = (ind.get("tonnes") or {}).get("ssr")
+            if f.get(k) is not None and (ind.get("withheld") or pub is None or f[k] > pub + 0.05):
+                out.append(Finding("feed_adjusted", BLOCK, f"{k} {f.get(k)} vs published {pub}", iso3, g))
+    return out
+
+
 def check_cropmap(cm: dict) -> list[Finding]:
     """Crop map images (methodology, "Fields"): each image exists, has the size in cropmap.json,
     corners inside Europe, and only the five shades (or transparent)."""
@@ -614,6 +632,8 @@ def run(*, write: bool = True) -> list[Finding]:
         findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))
     else:
         findings += check_published(ssr, its, trade)
+    if ssr is not None:
+        findings += check_feed(ssr)
     cm = config.WEB_DATA / "cropmap.json"
     if cm.exists():
         findings += check_cropmap(json.loads(cm.read_text(encoding="utf-8")))

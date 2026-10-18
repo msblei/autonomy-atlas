@@ -20,6 +20,8 @@ FAOSTAT_FILES: dict[str, str] = {
     "fbs": "FoodBalanceSheets_E_All_Data_(Normalized).zip",
     "production": "Production_Crops_Livestock_E_All_Data_(Normalized).zip",
     "trade_matrix": "Trade_DetailedTradeMatrix_E_All_Data_(Normalized).zip",
+    # Supply Utilization Accounts (SCL): every commodity incl. oilseed cakes, for pipeline/feed.py
+    "sua": "SUA_Crops_Livestock_E_All_Data_(Normalized).zip",
 }
 
 # FBS element names used by compute.py (exact strings as they appear in the Normalized CSV).

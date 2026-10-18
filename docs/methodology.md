@@ -244,7 +244,8 @@ version is reported as `*_ssr`:
 
     ssr_w = Σ_i w_i · SSR_i / Σ_i w_i
 
-Livestock products count as domestic regardless of feed origin (feed adjustment is phase 4).
+Livestock products count as domestic regardless of feed origin; section "Feed" shows meat and
+eggs counting pigs and poultry only for home-grown feed, next to the figures here.
 
 **Which one is the headline.** The UI leads with the uncapped protein figure (`protein_ssr`):
 "does the country produce as much protein as its people eat?", letting a wheat or meat surplus
@@ -707,6 +708,41 @@ read: aggregating it here would mean decoding about 150 billion pixels for the s
   border, where the reprojection and the check can pick neighbouring cells with very different
   shares.
 
+## Feed: how much of the meat and eggs rests on imported feed
+
+Meat and egg self-sufficiency counts every animal raised at home as home-grown, also when it ate
+imported soy. This section (`pipeline/feed.py`) says how much of the feed is imported and what
+self-sufficiency is left for the animals that live on it.
+
+- **Source:** FAOSTAT Supply Utilization Accounts (SCL, "Food Balances: Supply Utilization
+  Accounts (2010-)", `SUA_Crops_Livestock_E_All_Data_(Normalized).zip`, CC BY 4.0): production,
+  imports, exports and **feed** for every commodity, oilseed cakes and brans included (the food
+  balances leave them out). FBS window years, yearly means.
+- **Feed basket:** the items fed in the country (element Feed), weighted by **crude protein**
+  (`mappings/feed_items.csv`: % as fed, typical values from Feedipedia, the feed tables of INRAE,
+  CIRAD, AFZ and FAO; the items that make 98.7% of the world's feed by weight). Protein, not
+  energy: the known blind spot is imported soy protein, which an energy weighting hides again
+  behind grain. Items not in the table are left out (their share of the feed tonnage is logged).
+- **Home-grown share of a feed item** `s = P / (P + M)`: what the country has, as in section
+  "Where imports were grown", an even mix of its own production and its imports (exports leave
+  in the same mix). A by-product (cakes, brans, germ, gluten feed; the `parent` column) is only
+  home-grown if its crop was: `s = P / (P + M) × s_parent` (Germany crushes imported soybeans: its
+  soy cake is not home-grown even when crushed at home). `P + M = 0`: `s = 1` (nothing fed).
+- **The EU as one:** members' sums of P, M and feed, with M = members' imports from outside the
+  EU: per item and year the share of members' reported imports from non-members in FAO's trade
+  matrix (`trade.extract`), applied to the members' summed imports; an item without trade-matrix
+  rows keeps all imports.
+- **Imported share of feed protein** `f = Σ feed_i · protein_i · (1 − s_i) / Σ feed_i · protein_i`,
+  with the largest imported items (share of the imported protein) for the page.
+- **Feed-adjusted self-sufficiency** (tonnes basis): pigs and poultry live on concentrate feed,
+  so their meat counts as home-grown only in the home-grown share of the feed:
+  `meat: (P_meat − f · (P_pigmeat + P_poultry)) / D_meat`, `eggs: (1 − f) · P_eggs / D_eggs`, with
+  the group figures as published. Cattle, sheep, goats and milk are not adjusted: they live
+  largely on grass and hay, which no statistic counts as traded, so a concentrate-only share would
+  overstate their dependence. Withheld groups get no adjusted figure.
+- **Export:** `ssr.json` country `feed`: `{imported_pct, top: [[item, % of imported protein] × ≤3],
+  meat_ssr, eggs_ssr, items_pct}` (`items_pct` = share of the feed tonnage the table covers).
+
 ## Scenario "without trade" (considered, not built)
 
 With all trade stopped a country keeps its production, so "available without trade" per person is
@@ -797,8 +833,8 @@ Tick these off before publishing any indicator.
       Use BACI (reconciled) or FAO TM; record which was used in `source`.
 - [ ] **Aggregation hides structure.** "Fruit" mixes apples (high SSR in the north) with bananas and
       citrus (zero). Always allow drill-down to items.
-- [ ] **Feed vs food.** Meat/dairy SSR > 100% can coexist with ~15% soy self-sufficiency. Phase 4
-      adds a feed-adjusted SSR: subtract the imported-feed share of livestock output.
+- [x] **Feed vs food.** Meat/dairy SSR > 100% can coexist with ~15% soy self-sufficiency. Done:
+      section "Feed" (pigs, poultry and eggs; cattle, sheep and milk explained, not adjusted).
 - [ ] **Basis.** Tonnes overweight cereals and milk; value overweights wine, cheese, coffee; kcal
       overweights cereals, oils, sugar.
 - [ ] **Processed vs primary.** FBS is already in primary equivalents. HS trade is not — flour, oil

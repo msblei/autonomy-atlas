@@ -1,0 +1,85 @@
+# Feed items for the feed adjustment (pipeline/feed.py; methodology, "Feed"): FAOSTAT SUA item code,
+# crude protein in % as fed, and for by-products the item they are made from (`parent`: home-grown
+# only if that crop was). Protein: typical values from Feedipedia (INRAE, CIRAD, AFZ and FAO,
+# https://www.feedipedia.org), rounded; fresh roots, vegetables and milk as fed (mostly water).
+# The items cover 98.7% of the world's feed by weight in 2021-2023 (SUA element Feed); oils and
+# tallow carry no protein and are left out.
+item_code,item,protein_pct,parent
+56,Maize (corn),8.0,
+238,Cake of soya beans,45.5,236
+15,Wheat,11.5,
+44,Barley,10.5,
+156,Sugar cane,1.2,
+17,Bran of wheat,15.0,15
+903,"Whey, fresh",0.8,
+35,Bran of rice,12.5,27
+272,Cake of rapeseed,33.5,270
+122,Sweet potatoes,1.5,
+27,Rice,7.5,
+236,Soya beans,35.0,
+116,Potatoes,2.0,
+954,Skim milk of buffalo,3.4,
+463,"Other vegetables, fresh n.e.c.",1.5,
+888,Skim milk of cows,3.4,
+128,"Cassava, dry",2.5,
+269,Cake of sunflower seed,29.0,267
+83,Sorghum,10.0,
+165,Molasses,4.0,
+32,"Rice, broken",7.5,27
+125,"Cassava, fresh",1.2,
+59,Bran of maize,10.5,56
+332,Cake of cottonseed,37.0,329
+882,Raw milk of cattle,3.3,
+97,Triticale,11.0,
+75,Oats,10.5,
+259,Cake of palm kernel,15.0,256
+846,Gluten feed and meal,20.0,56
+157,Sugar beet,1.2,
+329,Cotton seed,22.0,
+567,Watermelons,0.6,
+19,Germ of wheat,25.0,15
+245,Cake of groundnuts,45.0,242
+137,Yams,1.5,
+37,Cake of rice bran,14.0,27
+270,Rape or colza seed,20.0,
+71,Rye,9.0,
+187,"Peas, dry",21.0,
+149,Edible roots and tubers with high starch or inulin,1.5,
+79,Millet,11.0,
+951,Raw milk of buffalo,4.0,
+358,Cabbages,1.3,
+57,Germ of maize,11.0,56
+267,Sunflower seed,16.0,
+176,"Beans, dry",21.0,
+85,Bran of sorghum,9.0,83
+61,Cake of maize,20.0,56
+900,"Whey, dry",12.0,
+397,Cucumbers and gherkins,0.6,
+426,Carrots and turnips,0.9,
+191,"Chick peas, dry",19.0,
+181,"Broad beans and horse beans, dry",25.0,
+341,"Cake, oilseeds nes",30.0,
+47,Bran of barley,12.0,44
+81,Bran of millet,10.0,79
+343,Flours and meals of oil seeds or oleaginous fruits,30.0,
+195,"Cow peas, dry",22.0,
+890,"Whey, condensed",4.0,
+253,Cake of copra,20.0,249
+103,Mixed grain,10.0,
+211,Other pulses n.e.c.,21.0,
+584,Mango pulp,0.5,
+568,Cantaloupes and other melons,0.8,
+112,Bran of cereals n.e.c.,12.0,
+893,"Buttermilk, curdled and acidified milk",3.3,
+63,Maize gluten,60.0,56
+335,Cake of linseed,30.0,333
+210,Lupins,32.0,
+113,Cereal preparations,10.0,
+249,"Coconuts, in shell",3.5,
+77,Bran of oats,13.0,75
+394,"Pumpkins, squash and gourds",1.0,
+291,Cake of sesame seed,40.0,289
+898,Skim milk and whey powder,34.0,
+136,Taro,1.5,
+108,Cereals n.e.c.,10.0,
+897,Whole milk powder,25.0,

@@ -306,6 +306,7 @@ def fbs_window() -> tuple[int, int]:
 
 
 YEARLY = "trade_yearly.parquet"
+FEED_GROUP = "_feed"  # feed items read with the food, not part of any food group
 SHARES = "eu_extra_shares.parquet"
 
 
@@ -328,7 +329,14 @@ def extract() -> None:
         return
     fbs_years = pd.read_parquet(config.INTERIM / "fbs.parquet", columns=["year"])["year"]
     years = (int(fbs_years.min()), int(fbs_years.max()))
-    both = yearly(to_iso3(read_matrix(years, load_item_groups(), load_item_factors())))
+    from . import feed
+
+    groups = load_item_groups()
+    # Feed items (cakes, brans, grain) ride along in the same pass, for the EU's feed adjustment.
+    extra = {c: FEED_GROUP for c in feed.load_items() if c not in groups}
+    raw = to_iso3(read_matrix(years, {**groups, **extra}, load_item_factors()))
+    feed.eu_extra_shares(raw).to_parquet(config.INTERIM / feed.EU_EXTRA, index=False)
+    both = yearly(raw[raw["group"] != FEED_GROUP])
     both.to_parquet(config.INTERIM / YEARLY, index=False)
     shares = extra_eu_shares(both)
     # Fish is not in the trade matrix: its extra-EU shares come from Comext (live weight).
