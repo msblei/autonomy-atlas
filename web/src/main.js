@@ -1905,6 +1905,7 @@ function viewTrade() {
       </a></li>`).join("")}
       ${rest >= 1 ? `<li class="rest"><span class="name">Other countries</span><span></span><span class="pct">${Math.round(rest)}%</span></li>` : ""}
     </ol>
+    ${partial(t, fbsTotal)}
     ${fromEu != null && fromEu >= 1 ? `<p class="small">${grown ? "Grown in" : imports ? "From" : "To"} other EU countries: <strong>${Math.round(fromEu)}%</strong></p>` : ""}
     ${hubs.length && imports ? `<p class="aside">Much of what comes from ${namesList(hubs.map((r) => r.id))} only passes
       through the port of ${hubs.map((r) => PORTS[r.id]).join(" or ")}.
@@ -1924,6 +1925,15 @@ function viewTrade() {
 }
 
 // "2.4 million tonnes" / "350 thousand tonnes" for the balance card and the cards' hints.
+// When the trade records hold less than half of what the balance counts (sugar inside chocolate,
+// milk inside food preparations are filed under other goods), the split covers only that part.
+function partial(t, balanceKt) {
+  if (balanceKt == null || !(balanceKt > 0) || t[0] / 1000 >= 0.5 * balanceKt) return "";
+  return `<p class="small">FAO's trade records hold ${tonnes(t[0] / 1000)} of the ${tonnes(balanceKt)} its food
+    balance counts, which also includes ${food()} inside processed goods filed under other products.
+    The split by country is of the records.</p>`;
+}
+
 function cap(s) {
   return s.charAt(0).toUpperCase() + s.slice(1);
 }

@@ -117,3 +117,14 @@ test("unusual years are drawn apart in the year-by-year chart", async ({ page })
     for (const y of ys) await expect(view(page)).toContainText(String(y));
   }
 });
+
+test("trade pages say when the records hold under half of the balance", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  // The United Kingdom's sugar exports: the balance also counts sugar inside processed goods.
+  const t = trade.countries.GBR.sugar.exports, b = C.GBR.indicators.sugar.components_kt.exports;
+  expect(t[0] / 1000).toBeLessThan(0.5 * b);
+  await open(page, "GBR/sugar/sells");
+  await expect(view(page)).toContainText("The split by country is of the records");
+  await open(page, "DEU/fruit/trade"); // records cover the balance: no such line
+  await expect(view(page)).not.toContainText("The split by country is of the records");
+});
