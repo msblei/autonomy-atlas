@@ -380,6 +380,18 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
                 if f in trade["countries"].get(iso3, {}).get(group, {}):
                     out.append(Finding("trade_withheld_leak", BLOCK, f"{f} withheld but published",
                                        iso3, group))
+        # Concentration: within 0..10,000 and at least what the listed partners alone give.
+        for iso3, gs in trade.get("concentration", {}).items():
+            for group, fl in gs.items():
+                for flow, h in fl.items():
+                    entry = trade["countries"].get(iso3, {}).get(group, {}).get(flow)
+                    # every published figure is rounded to whole tonnes: take the smallest shares the
+                    # rounding allows, so this is a strict lower bound even for tiny flows
+                    listed = (sum((100 * max(t - 0.5, 0) / (entry[0] + 0.5)) ** 2 for _, t in entry[1])
+                              if entry and entry[0] else None)
+                    if entry is None or not 0 <= h <= 10_000 or (listed is not None and h < listed - 0.5):
+                        out.append(Finding("trade_hhi", BLOCK, f"{flow} HHI {h} (listed partners {listed})",
+                                           iso3, group))
         for iso3, gs in trade["countries"].items():
             for group, flows in gs.items():
                 for flow, (total, parts) in flows.items():

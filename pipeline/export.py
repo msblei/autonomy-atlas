@@ -435,6 +435,15 @@ def _trade_entry(sub: pd.DataFrame) -> list:
     return [round(total), [[p, round(t)] for p, t in s.items()]]
 
 
+def _hhi(sub: pd.DataFrame) -> int | None:
+    """Sum of squared partner shares in percent, over all partners: 10,000 = one partner."""
+    by = sub.groupby("partner")["tonnes"].sum()
+    total = by.sum()
+    if not total > 0:
+        return None
+    return round(float(((by / total * 100) ** 2).sum()))
+
+
 def export_trade() -> None:
     src = config.PROCESSED / "trade_partners.parquet"
     if not src.exists():
@@ -453,10 +462,15 @@ def export_trade() -> None:
     # "All food": every group added up, in tonnes as traded.
     t = pd.concat([t, t.assign(group="all")], ignore_index=True)
     countries: dict = {}
+    concentration: dict = {}
     for (iso3, group, flow), sub in t.groupby(["iso3", "group", "flow"]):
         if (iso3, group, flow) in hidden:
             continue
         countries.setdefault(iso3, {}).setdefault(group, {})[flow] = _trade_entry(sub)
+        if flow in ("imports", "exports"):
+            h = _hhi(sub)
+            if h is not None:
+                concentration.setdefault(iso3, {}).setdefault(group, {})[flow] = h
     mirrored = sorted(t.loc[t["source"].isin(["mirror", "mixed"]), "iso3"].unique())
     out = {
         "meta": {
@@ -476,6 +490,8 @@ def export_trade() -> None:
         },
         "names": dict(zip(*load_trade_only()[["iso3", "name"]].T.values, strict=True)),
         "countries": countries,
+        # Herfindahl-Hirschman index of partner shares (methodology, "Trade partners").
+        "concentration": concentration,
     }
     dest = config.WEB_DATA / "trade.json"
     dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")

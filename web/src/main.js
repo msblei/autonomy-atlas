@@ -1730,6 +1730,17 @@ function viewTable() {
     ${c.notes ? `<p class="note">Note: ${c.notes}</p>` : ""}`;
 }
 
+// Concentration of trade partners (trade.json concentration, methodology "Trade partners").
+function hhiRows(id) {
+  if (!state.trade) { loadTrade(); return ""; }
+  const h = state.trade.concentration?.[id]?.[state.group] ?? {};
+  const cell = (v) => (v == null ? "–" : Math.round(v).toLocaleString("en-GB"));
+  return `<tr><td>Import / export concentration (HHI)</td><td>${cell(h.imports)} / ${cell(h.exports)}</td></tr>`;
+}
+
+const HHI_NOTE = `HHI = sum of squared partner shares in %, over all partners: 10,000 = a single partner,
+  under about 1,500 = spread over many.`;
+
 function expertDetail(id) {
   const c = country(id);
   if (state.group === "all") {
@@ -1742,9 +1753,10 @@ function expertDetail(id) {
         <tr><td>Protein supply</td><td>${a.protein?.g_per_day ?? "–"} g/cap/day</td></tr>
         <tr><td>Food supply</td><td>${a.kcal?.per_day ?? "–"} kcal/cap/day</td></tr>
         <tr><td>Population</td><td>${pop(c)}</td></tr>
+        ${hhiRows(id)}
       </table>
       <p class="note">Coverage = Σ wᵢ·min(SSRᵢ, 100) / Σ wᵢ over FBS commodities, w = protein or kcal
-        per capita. SSR = same without the cap.</p>`;
+        per capita. SSR = same without the cap. ${HHI_NOTE}</p>`;
   }
   const g = c.indicators[state.group] ?? {};
   const t = g.tonnes ?? {};
@@ -1769,6 +1781,7 @@ function expertDetail(id) {
       <tr><td>processing / other uses</td><td>${kt(comp.processing)} / ${kt(comp.other_uses)}</td></tr>
       <tr><td>losses / residuals</td><td>${kt(comp.losses)} / ${kt(comp.residuals)}</td></tr>
       <tr><td>Population</td><td>${pop(c)}</td></tr>
+      ${hhiRows(id)}
     </table>
     ${g.withheld ? `<p class="note">${whyWithheld(id)}</p>` : ""}
     ${g.uses_withheld ? `<p class="note">Uses (food, feed, …) not shown: FAO's residuals exceed a quarter of domestic supply.</p>` : ""}
@@ -1777,7 +1790,7 @@ function expertDetail(id) {
     ${items.length ? `<h3>Largest items</h3><table>${items
       .map((i) => `<tr><td>${i.item}</td><td>${fmt(i.ssr)}</td></tr>`)
       .join("")}</table>` : ""}
-    <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply.
+    <p class="note">SSR = production / domestic supply. IDR = imports / domestic supply. ${HHI_NOTE}
       ${id === EU ? "EU bloc: production summed over members; imports and exports are trade with non-members only (members' FBS trade × extra-EU share from the trade matrix); supply = P + M − X − ΔS." : "National view: imports from other EU countries count as imports."}</p>
     ${t.flag || k.flag ? `<p class="note">${FLAG_TEXT[t.flag ?? k.flag] ?? `Flag: ${t.flag ?? k.flag}`}</p>` : ""}`;
 }

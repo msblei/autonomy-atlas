@@ -341,6 +341,11 @@ other than groundnuts are left out). FAO's trade data has no fish.
   countries; for imports, the share from (or grown in) Russia and Ukraine, the supply most at risk
   since 2022. Both add up the listed partners (at least 0.5% each), so they are slightly low
   bounds, and are shown from 1%.
+- **Concentration (HHI):** per country × group × flow (imports, exports; "all food" too), the
+  Herfindahl–Hirschman index of the partner shares in percent, over **all** partners (not only the
+  listed ones), in the partner lists' basis: HHI = Σ (100 × tᵢ / Σt)², rounded to a whole number;
+  10,000 = one partner, under about 1,500 = spread out. `trade.json` `concentration`
+  `{iso3: {group: {imports, exports}}}`; withheld flows have none. Shown on "All the numbers".
 - **Re-export hubs:** the Netherlands and Belgium show up as large suppliers of food they only
   transship (Rotterdam, Antwerp). The UI notes this when they are among the top five; no
   adjustment is applied.

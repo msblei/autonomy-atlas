@@ -1212,6 +1212,22 @@ def main():
             record("trade_withheld", {"file": "trade.json", "country": k[0], "group": k[1], "flow": k[2],
                                       "field": "meta.withheld"}, e, r_)
 
+    # ---- concentration (methodology, "Trade partners": HHI over all partners) ----
+    exp_h = tr.get("concentration", {})
+    for iso, gs in trade.items():
+        for g, fl in gs.items():
+            for flow in ("imports", "exports"):
+                parts = fl.get(flow)
+                tot = sum(parts.values()) if parts else 0
+                if not tot > 0 or (iso, g, flow) in hidden or iso not in tr["countries"]:
+                    continue
+                mine = round(sum((100 * v / tot) ** 2 for v in parts.values()))
+                e = exp_h.get(iso, {}).get(g, {}).get(flow)
+                counts["trade_hhi"] += 1
+                if e is None or abs(e - mine) > 1:
+                    record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
+                                         "field": "concentration"}, e, mine)
+
     for iso, groups in tr["countries"].items():
         for g, flows in groups.items():
             for flow, (total, parts) in flows.items():

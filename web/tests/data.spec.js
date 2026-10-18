@@ -137,3 +137,11 @@ test("purchases from Russia and Ukraine are summed from the listed partners", as
   await open(page, "TUR/cereals/trade");
   await expect(view(page)).toContainText(`From Russia and Ukraine: ${share}%`);
 });
+
+test("all the numbers shows the published import and export concentration", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  const h = trade.concentration.TUR.cereals;
+  await open(page, "TUR/cereals/table");
+  const fmt = (v) => (v == null ? "–" : v.toLocaleString("en-GB"));
+  await expect(view(page)).toContainText(`${fmt(h.imports)} / ${fmt(h.exports)}`);
+});
