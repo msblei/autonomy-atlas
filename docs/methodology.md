@@ -615,6 +615,44 @@ is a typical year, not the years of the other figures.
 item, share, sown: [12], growing: [12], harvest: [12]}]}}`, `share` = the crop's % of the group's
 production.
 
+## When it comes from abroad: fruit and vegetables month by month (EU countries)
+
+No open, machine-readable harvest calendar exists for European fruit and vegetables: FAO's Crop
+Calendar API covers 58 countries, none in Europe (checked 2026-10-18), and the gridded calendars
+of section "Seasons" cover field crops only. What is measured month by month is trade: Eurostat
+Comext has monthly imports for every EU member. The page shows those, and says so; it does not
+infer harvests from them.
+
+- **Source:** Comext DS-045409, monthly (`freq M`), imports (flow 1), quantity, every partner,
+  EU members as reporters, from January 2021 (`atlas download --source comext`, file
+  `DS-045409_monthly_imports.csv.gz`, 54 requests). Products: the HS6 codes of
+  `hs_items.csv` in fruit, vegetables and potatoes and roots (`pipeline/comext.py`,
+  `monthly_imports`), with their factors, as by weight; the HS version of each year.
+- **Per fresh product, not per food group.** Summed over a whole group the months even out
+  (Germany's vegetables: 7–10% in every month), because frozen, preserved and fresh goods and
+  products with opposite seasons cancel. The seasons are in single fresh products, by HS
+  heading: potatoes (0701); tomatoes (0702), onions and garlic (0703), cabbages and cauliflower
+  (0704), lettuce (0705), carrots and other roots (0706), cucumbers (0707), fresh peas and beans
+  (0708), peppers, courgettes and other fresh vegetables (0709); bananas (0803), dates, figs,
+  avocados and mangoes (0804), citrus (0805), grapes (0806), melons (0807), apples and pears
+  (0808), apricots, cherries, peaches and plums (0809), berries, kiwis and other fresh fruit
+  (0810). Only the HS6 codes of each heading that belong to the food group count (olives in 0709
+  are oilseeds).
+- **Per member, product and calendar month:** imports in the FBS basis (factors of
+  `hs_items.csv`), summed over the FBS window years (January = the window's three Januaries), as a
+  share of the product's window total (%, one decimal). All partners count in the shares, named or
+  not; self-trade is dropped. The EU bloc: members' imports from non-members (unnamed partners
+  outside the EU except QR, QV, QY, as in section "Comext").
+- **Which products:** per country and food group, the fresh products with the most imports over
+  the window, each at least 5% of the group's fresh-product imports, at most four, largest first.
+- **Leading supplier per month:** the partner country with the largest share of that month's
+  imports of the product, with that share (%, whole).
+- **Shown** on the food page of EU members and the EU for fruit, vegetables and potatoes and
+  roots: per product twelve cells shaded by the month's share, the leading supplier on hover,
+  and in words the suppliers that lead the year (each leading supplier with its months).
+- **Export:** `import_months.json` `{meta, names: {heading: name}, countries: {iso3: {group:
+  [{hs4, share: [12], top: [[iso3, %] | null × 12]}]}}}`.
+
 ## Where it is grown: regions in Europe
 
 Regional crop production from Eurostat `apro_cpshr` ("Crop production in EU standard humidity by

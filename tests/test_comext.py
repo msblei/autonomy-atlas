@@ -146,3 +146,8 @@ def test_baci_factor_falls_back_to_eumofa_median_then_nearest_year(tmp_path, mon
     assert f[("030441", 2023)] == pytest.approx(2.0)  # nearest year with a factor
     assert f[("030289", 2021)] == pytest.approx(1.0)  # nothing at all
     assert f[("100199", 2022)] == pytest.approx(1.0)
+
+
+def test_fresh_headings_name_each_product_once():
+    assert len(comext.FRESH) == len(set(comext.FRESH.values()))
+    assert all(len(h) == 4 and h[:2] in ("07", "08") for h in comext.FRESH)

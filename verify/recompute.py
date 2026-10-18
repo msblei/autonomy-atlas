@@ -475,6 +475,61 @@ def region_rows(WIN):
     return out, breaks
 
 
+FRESH_HEADINGS = ("0701", "0702", "0703", "0704", "0705", "0706", "0707", "0708", "0709",
+                  "0803", "0804", "0805", "0806", "0807", "0808", "0809", "0810")
+
+
+def import_months(WIN):
+    """Methodology "When it comes from abroad": {iso: {group: [(hs4, share[12], top[12])]}}."""
+    hs = {(int(r["version"]), r["hs"]): r for r in read_csv_comments(MAP / "hs_items.csv")
+          if r["group"] in ("fruit", "vegetables", "potatoes_roots")}
+    d = pd.read_csv(ROOT / "data/raw/comext/DS-045409_monthly_imports.csv.gz", dtype=str,
+                    keep_default_na=False, compression="gzip")
+    d = d[(d["partner"].str.len() == 2) & (d["OBS_VALUE"] != "") & d["product"].str[:4].isin(FRESH_HEADINGS)]
+    acc = defaultdict(lambda: defaultdict(float))  # (iso, group, hs4, month) -> partner -> t
+    for rep_, par, prod, per, val in zip(d["reporter"], d["partner"], d["product"], d["TIME_PERIOD"], d["OBS_VALUE"]):
+        y, mo = int(per[:4]), int(per[5:7])
+        if y not in WIN:
+            continue
+        r = hs.get((2017 if y <= 2021 else 2022, prod))
+        if r is None:
+            continue
+        c, p = COMEXT_ISO[rep_], COMEXT_ISO.get(par, par)
+        if c == p:
+            continue
+        t = float(val) / 10 * (float(r["to_primary"]) if r["to_primary"] else 1.0)
+        acc[(c, r["group"], prod[:4], mo)][p] += t
+        if p not in EU and p not in INTRA_UNNAMED:
+            acc[("EU27", r["group"], prod[:4], mo)][p] += t
+    named_iso = set(COMEXT_ISO.values())
+    tot = defaultdict(float)
+    for (c, g, h, mo), x in acc.items():
+        tot[(c, g, h)] += sum(x.values())
+    out = {}
+    for c, g in {(k[0], k[1]) for k in tot}:
+        heads = sorted(((v, h) for (cc, gg, h), v in tot.items() if cc == c and gg == g), reverse=True)
+        gtot = sum(v for v, _ in heads)
+        rows = []
+        for v, h in heads:
+            if gtot <= 0 or 100 * v / gtot < 5 or len(rows) == 4:
+                continue
+            share, top = [], []
+            for mo in range(1, 13):
+                x = acc.get((c, g, h, mo), {})
+                mt = sum(x.values())
+                share.append(100 * mt / v)
+                named = {p: t for p, t in x.items() if p in named_iso}
+                if mt > 0 and named:
+                    p = max(named, key=named.get)
+                    top.append([p, 100 * named[p] / mt])
+                else:
+                    top.append(None)
+            rows.append((h, share, top))
+        if rows:
+            out.setdefault(c, {})[g] = rows
+    return out
+
+
 def season_rows(res, D):
     """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
     cal = season_calendars()
@@ -1403,7 +1458,7 @@ def main():
     SHAS["comext_gz"] = sha256(COMEXT_GZ)
     SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
     SHAS["baci_zip"] = sha256(BACI_ZIP)
-    for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json"):
+    for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
     D = load_all()
@@ -1601,6 +1656,26 @@ def main():
                     record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
                                          "field": "concentration"}, e, mine)
 
+    # ---- import months (methodology "When it comes from abroad") ----
+    im = json.load(open(OUT_DIR / "import_months.json"))["countries"]
+    mine_m = import_months(D.WIN)
+    for iso in sorted(set(im) | set(mine_m)):
+        for g in sorted(set(im.get(iso, {})) | set(mine_m.get(iso, {}))):
+            e, m_ = im.get(iso, {}).get(g, []), mine_m.get(iso, {}).get(g, [])
+            w = {"file": "import_months.json", "country": iso, "group": g}
+            counts["import_months_rows"] += 1
+            if [x["hs4"] for x in e] != [x[0] for x in m_]:
+                record("import_months_rows", {**w, "field": "products"}, [x["hs4"] for x in e], [x[0] for x in m_])
+                continue
+            for a_, (h, share, top) in zip(e, m_):
+                counts["import_months"] += 12
+                if any(abs(x - y) > 0.05 + 1e-9 for x, y in zip(a_["share"], share)):
+                    record("import_months", {**w, "field": f"{h}.share"}, a_["share"], [round(x, 1) for x in share])
+                for k, (x, y) in enumerate(zip(a_["top"], top)):
+                    counts["import_months_top"] += 1
+                    if (x is None) != (y is None) or (x and (x[0] != y[0] or abs(x[1] - y[1]) > 0.5 + 1e-9)):
+                        record("import_months_top", {**w, "field": f"{h}.top.{k + 1}"}, x, y and [y[0], round(y[1])])
+
     # ---- regions (methodology "Where it is grown") ----
     reg = json.load(open(OUT_DIR / "regions.json"))
     mine_r, mine_b = region_rows(D.WIN)
@@ -1767,7 +1842,8 @@ def main():
     report = {
         "ok": total == 0,
         "n_mismatches": total,
-        "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json")},
+        "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json", "regions.json",
+                                                              "import_months.json")},
         "runtime_s": round(time.time() - T0, 1),
         "window": f"{D.WIN[0]}-{D.WIN[-1]}",
         "primary_reading": PRIMARY,

@@ -83,7 +83,7 @@ The other tools each cover one or two of the layers:
 
 | Dataset | URL / access | Coverage | Resolution | Notes |
 |---|---|---|---|---|
-| FAO Crop Calendar | https://cropcalendar.apps.fao.org ; REST API https://api-cropcalendar.apps.fao.org | 100+ crops, many countries, by agro-ecological zone | Country/AEZ | Free; best machine-readable source for fruit and vegetables |
+| FAO Crop Calendar | https://cropcalendar.apps.fao.org ; REST API https://api-cropcalendar.apps.fao.org | 100+ crops, 58 countries (checked 2026-10-18: none in Europe), by agro-ecological zone | Country/AEZ | Free; extension advice per zone, no area weights, no licence stated; not usable for Europe |
 | FAO GIEWS Crop Calendar | https://data.apps.fao.org/catalog/dataset/giews-crop-calendar (CSV via BigQuery API) | Main staples, global | National | Free |
 | USDA FAS IPAD crop calendars | https://ipad.fas.usda.gov/rssiws/al/crop_calendar/europe.aspx | EU, UK, Balkans, Ukraine, Moldova, Belarus | National/regional graphics | Images, not data; need manual digitisation |
 | JRC-MARS European Crop Calendar | Agri4Cast data portal (listed by the EEA) | EU28; winter wheat, grain maize, rice; 3 phenological phases | National | Old (2016); limited crops |

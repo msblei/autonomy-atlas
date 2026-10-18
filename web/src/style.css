@@ -449,3 +449,11 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 .season-key { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .season-key i.m { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-left: 6px; }
 .season-key i.m:first-child { margin-left: 0; }
+
+/* Purchases from abroad by month: the busier the month, the darker. */
+.season.imports .m.s0 { background: #e9eef3; }
+.season.imports .m.s1 { background: #c3d3e2; }
+.season.imports .m.s2 { background: #8fb0cc; }
+.season.imports .m.s3 { background: #5683ab; }
+.season.imports .m.s4 { background: var(--blue); }
+.season .who { grid-column: 1 / -1; margin: -1px 0 6px; color: var(--ink-soft); }

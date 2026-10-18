@@ -572,3 +572,6 @@ def run() -> None:
     export_trade()
     export_seasons()
     regions.export()
+    from . import comext
+
+    comext.export_months()

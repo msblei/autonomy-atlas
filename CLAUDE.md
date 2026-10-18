@@ -92,11 +92,14 @@ make serve       # cd web && npm run dev
    done but for the arcs' deck.gl ArcLayer (MapLibre lines do the job so far).
 3. **Phase 3 (in part):** seasons as a 12-month strip per country × crop: done for cereals,
    potatoes, sugar beet, pulses and oilseeds (GGCMI calendar weighted by ISIMIP crop areas, "When
-   it is grown" on the food page); fruit and vegetables still to come (FAO Crop Calendar API).
+   it is grown" on the food page). Fruit and vegetables: no open European harvest calendar exists
+   (FAO's Crop Calendar API has 58 countries, none in Europe), so EU countries show when fresh
+   produce comes from abroad instead: monthly Comext imports per fresh product with the leading
+   supplier ("When it comes from abroad").
    "What is grown where": regional production from Eurostat `apro_cpshr` (NUTS2, Germany NUTS1)
    for cereals, potatoes, sugar beet, pulses and oilseeds, as a list and a map of t per km²
-   ("Where in … do they grow?", `#ISO/group/where`, `pipeline/regions.py`). Still to do: fruit
-   and vegetable seasons; JRC EUCROPMAP rasters (10 m crop types) for detail within regions.
+   ("Where in … do they grow?", `#ISO/group/where`, `pipeline/regions.py`). Still to do: JRC
+   EUCROPMAP rasters (10 m crop types) for detail within regions.
 4. **Phase 4:** feed-adjusted SSR for livestock products (imported soy meal), calorie-weighted
    composite index, scenario toggles ("lose Ukraine/Russia supply").
 
@@ -117,7 +120,8 @@ make serve       # cd web && npm run dev
 | Trade → primary equivalent | FAO *Technical Conversion Factors for Agricultural Commodities* (TCF) | `https://www.fao.org/fileadmin/templates/ess/documents/methodology/tcf.pdf` | FAO publication (cite FAO). Extraction rates, medians across countries, become `to_primary` in `mappings/trade_items.csv` (roots, tomato products, coffee, cocoa); dairy uses the JRC's milk-equivalent factors |
 | Seasons (calendar) | GGCMI Phase 3 crop calendar v1.01 (Jägermeyr et al. 2021) | Zenodo record 5062513 (`atlas download --source seasons`) | CC BY 4.0. Planting/maturity day per 0.5° cell, crop, rainfed/irrigated; static. Used for cereals, potatoes, sugar beet, pulses, oilseeds (`pipeline/seasons.py`); cassava and sugar cane left out (no single season) |
 | Seasons (where crops grow) | ISIMIP3a 15-crop land use (histsoc 1901–2021) and fractional country masks; GGCMI Phase 2 winter/spring wheat areas (Zenodo 3773827) | `files.isimip.org` (379 MB + 1 MB), Zenodo | CC BY 4.0. Weights for the calendar grid. MapSPAM 2020 would be finer but needs a guestbook form (name, e-mail) and IFPRI's terms: not scripted |
-| Seasons (fruit, vegetables; not used yet) | FAO Crop Calendar API | `https://api-cropcalendar.apps.fao.org/` | inspect its OpenAPI docs before coding |
+| Fruit and vegetables by month (EU) | Eurostat Comext DS-045409, monthly imports | as Comext; `DS-045409_monthly_imports.csv.gz` (54 requests, with `--source comext`) | CC BY 4.0. Imports, not harvests; per fresh product (HS heading) |
+| Seasons of fruit and vegetables (checked, not used) | FAO Crop Calendar API | `https://api-cropcalendar.apps.fao.org/` (spec: `/swagger.json`) | 58 countries, none in Europe; advice per agro-ecological zone without area weights; no licence stated |
 | Boundaries | Eurostat GISCO NUTS 2024; Natural Earth 50m countries | see `config.py` | GISCO non-commercial |
 
 Verify every bulk filename against `https://bulks-faostat.fao.org/production/datasets_E.xml`

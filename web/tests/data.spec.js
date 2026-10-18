@@ -194,7 +194,7 @@ test("crop calendars: the strip shows the exported months in a typical year", as
   const rows = sea.countries.DEU.cereals;
   const t = sea.meta.thresholds;
   await open(page, "DEU/cereals");
-  const strip = view(page).locator(".season");
+  const strip = view(page).locator(".season:not(.imports)");
   await expect(strip.locator(".srow:not(.months)")).toHaveCount(rows.length);
   for (const [i, r] of rows.entries()) {
     const row = strip.locator(".srow:not(.months)").nth(i);
@@ -206,8 +206,8 @@ test("crop calendars: the strip shows the exported months in a typical year", as
     }
   }
   await expect(view(page)).toContainText("a typical year");
-  await open(page, "DEU/fruit"); // no calendar for fruit
-  await expect(view(page).locator(".season")).toHaveCount(0);
+  await open(page, "DEU/fruit"); // no crop calendar for fruit (its months are purchases, below)
+  await expect(view(page).locator(".season:not(.imports)")).toHaveCount(0);
 });
 
 test("where it is grown: regions and shares as exported, reached from the food page", async ({ page }) => {
@@ -222,4 +222,20 @@ test("where it is grown: regions and shares as exported, reached from the food p
   await expect(page.locator("#foot")).toContainText("Eurostat crop statistics by region");
   await page.locator("#up").click(); // back goes to the food page
   await expect.poll(() => page.evaluate(() => location.hash)).toBe("#DEU/cereals");
+});
+
+test("when it comes from abroad: products, shaded months and leading suppliers as exported", async ({ page }) => {
+  const imo = JSON.parse(readFileSync(new URL("../public/data/import_months.json", import.meta.url), "utf8"));
+  const rows = imo.countries.DEU.vegetables;
+  await open(page, "DEU/vegetables");
+  const box = view(page).locator(".season.imports");
+  await expect(box.locator(".srow:not(.months)")).toHaveCount(rows.length);
+  const first = box.locator(".srow:not(.months)").first();
+  await expect(first.locator(".crop")).toHaveText(imo.names[rows[0].hs4]);
+  const k = rows[0].share.indexOf(Math.max(...rows[0].share));
+  await expect(first.locator(".m").nth(k)).toHaveClass(/s4/); // the busiest month is darkest
+  const lead = rows[0].top[0][0];
+  await expect(box.locator(".who").first()).toContainText(lead === "ESP" ? "Spain" : lead);
+  await open(page, "USA/vegetables"); // outside the EU: no monthly trade figures
+  await expect(view(page).locator(".season.imports")).toHaveCount(0);
 });

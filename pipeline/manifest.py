@@ -42,6 +42,7 @@ def raw_inputs() -> dict[str, Path]:
         "usda_psd": config.RAW / "usda" / "psd_alldata_csv.zip",
         "comext": config.RAW / "comext" / "DS-045409_food.csv.gz",
         "comext_query": config.RAW / "comext" / "query.json",
+        "comext_monthly": config.RAW / "comext" / "DS-045409_monthly_imports.csv.gz",
         "eumofa_cf": config.RAW / "eumofa" / "conversion_factors_cn8.xlsx",
         "cepii_baci": config.RAW / "baci" / "BACI_HS17_V202601.zip",
         "unsd_cpc_hs": config.RAW / "unsd" / "CPC21-HS2017.csv",

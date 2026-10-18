@@ -197,7 +197,7 @@ def comext(*, force: bool = False) -> list[Path]:
     dest = config.RAW / "comext" / COMEXT_FILE
     if dest.exists() and not force:
         log.info("exists, skipping: %s", dest.name)
-        return out + [dest]
+        return out + [dest] + comext_monthly(force=force)
     hs6, cn8 = comext_codes()
     reporters = sorted(comext_reporters())
     jobs = [(rep, codes[i:i + COMEXT_CHUNK], first) for rep in reporters
@@ -231,7 +231,53 @@ def comext(*, force: bool = False) -> list[Path]:
         "reporters": reporters,
         "hs6": hs6, "cn8": cn8, "rows": n}, indent=1) + "\n", encoding="utf-8")
     log.info("downloaded %s (%d rows, %d requests)", dest, n, len(jobs))
-    return out + [dest]
+    return out + [dest] + comext_monthly(force=force)
+
+
+COMEXT_MONTHLY_FILE = "DS-045409_monthly_imports.csv.gz"
+COMEXT_MONTHLY_GROUPS = ("fruit", "vegetables", "potatoes_roots")
+
+
+def comext_monthly(*, force: bool = False) -> list[Path]:
+    """Members' monthly imports of fruit, vegetables and potatoes (quantity, every partner, HS6,
+    from COMEXT_FIRST_YEAR): when they come from abroad (methodology, "When it comes from
+    abroad"). One merged gzip CSV, like `comext`."""
+    import gzip
+    from concurrent.futures import ThreadPoolExecutor
+
+    from . import crosswalk
+
+    dest = config.RAW / "comext" / COMEXT_MONTHLY_FILE
+    if dest.exists() and not force:
+        log.info("exists, skipping: %s", dest.name)
+        return [dest]
+    hs = crosswalk.load()
+    codes = sorted(set(hs.loc[hs["group"].isin(COMEXT_MONTHLY_GROUPS), "hs"]))
+    jobs = [(rep, codes[i:i + COMEXT_CHUNK]) for rep in sorted(comext_reporters())
+            for i in range(0, len(codes), COMEXT_CHUNK)]
+
+    def one(job):
+        rep, chunk = job
+        url = (config.COMEXT_DATA + f"M.{rep}..{'+'.join(chunk)}.1.QUANTITY_IN_100KG"
+               f"?startPeriod={config.COMEXT_FIRST_YEAR}-01&format=SDMX-CSV&compressed=true")
+        return _comext_get(url).decode("utf-8").splitlines()
+
+    tmp = dest.with_suffix(".part")
+    header, n = None, 0
+    with gzip.open(tmp, "wt", encoding="utf-8") as f, ThreadPoolExecutor(4) as pool:
+        for lines in tqdm(pool.map(one, jobs), total=len(jobs), desc="comext monthly", leave=False):
+            if not lines:
+                continue
+            if header is None:
+                header = lines[0]
+                f.write(header + "\n")
+            elif lines[0] != header:
+                raise RuntimeError(f"Comext: header changed: {lines[0]}")
+            f.write("\n".join(lines[1:]) + ("\n" if len(lines) > 1 else ""))
+            n += len(lines) - 1
+    tmp.replace(dest)
+    log.info("downloaded %s (%d rows, %d requests)", dest, n, len(jobs))
+    return [dest]
 
 
 def comext_reporters() -> set[str]:

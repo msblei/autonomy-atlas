@@ -263,3 +263,99 @@ def run_compare(years: tuple[int, int]) -> None:
     j = compare_with_fao(pd.read_parquet(src), pd.read_parquet(fao), years)
     j.assign(years=f"{years[0]}-{years[1]}").to_parquet(dest, index=False)
     log.info("wrote %s (%d member-group-flows; median Comext/FAO %.2f)", dest, len(j), j["ratio"].median())
+
+
+# --- When it comes from abroad (methodology, "When it comes from abroad") -------------------------
+MONTHLY = config.RAW / "comext" / "DS-045409_monthly_imports.csv.gz"
+MONTHS_OUT = "import_months.parquet"
+MONTHLY_GROUPS = ("fruit", "vegetables", "potatoes_roots")
+
+
+# Fresh products by HS heading (methodology, "When it comes from abroad"): their seasons do not
+# even out the way a whole food group's do.
+FRESH = {
+    "0701": "Potatoes", "0702": "Tomatoes", "0703": "Onions, garlic", "0704": "Cabbages",
+    "0705": "Lettuce", "0706": "Carrots, roots", "0707": "Cucumbers", "0708": "Peas and beans",
+    "0709": "Peppers and more", "0803": "Bananas", "0804": "Avocados, mangoes", "0805": "Citrus fruit",
+    "0806": "Grapes", "0807": "Melons", "0808": "Apples, pears", "0809": "Stone fruit",
+    "0810": "Berries, kiwis",
+}
+MONTHS_MIN_SHARE = 5.0
+MONTHS_MAX_ROWS = 4
+
+
+def monthly_imports(years: tuple[int, int]) -> pd.DataFrame:
+    """iso3 (members and EU27), group, hs4, month (1-12), share (% of the product's window
+    imports), top (leading partner country that month), top_share (% of that month), rank."""
+    with gzip.open(MONTHLY, "rt", encoding="utf-8") as f:
+        d = pd.read_csv(f, dtype=str, keep_default_na=False,
+                        usecols=["reporter", "partner", "product", "TIME_PERIOD", "OBS_VALUE"])
+    d = d[(d["partner"].str.len() == 2) & (d["OBS_VALUE"] != "") & d["product"].str[:4].isin(FRESH)]
+    d["year"] = d["TIME_PERIOD"].str[:4].astype(int)
+    d["month"] = d["TIME_PERIOD"].str[5:7].astype(int)
+    d = d[d["year"].between(*years)]
+    d["version"] = d["year"].map(hs_version)
+    hs = crosswalk.load()
+    hs = hs[hs["group"].isin(MONTHLY_GROUPS)][["version", "hs", "group", "to_primary"]]
+    d = d.merge(hs.rename(columns={"hs": "product"}), on=["version", "product"], how="inner")
+    d["hs4"] = d["product"].str[:4]
+    d["t"] = pd.to_numeric(d["OBS_VALUE"]) / 10 * pd.to_numeric(d["to_primary"].replace("", "1"))
+    partners = load_partners()
+    d["iso3"] = d["reporter"].map(partners)
+    d["named"] = d["partner"].isin(partners)
+    d["partner"] = d["partner"].map(partners).fillna(d["partner"])
+    d = d[d["partner"] != d["iso3"]]
+    keys = ["group", "hs4", "month", "partner", "named"]
+    members = d.groupby(["iso3", *keys], as_index=False)["t"].sum()
+    outside = ~(d["partner"].isin(config.EU27) | d["partner"].isin(INTRA_UNNAMED))
+    bloc = d[outside].groupby(keys, as_index=False)["t"].sum().assign(iso3="EU27")
+    m = pd.concat([members, bloc], ignore_index=True)
+    rows = []
+    for (iso3, group), gsub in m.groupby(["iso3", "group"]):
+        gtot = gsub["t"].sum()
+        tot = gsub.groupby("hs4")["t"].sum().sort_values(ascending=False)
+        keep = [h for h, v in tot.items() if gtot > 0 and 100 * v / gtot >= MONTHS_MIN_SHARE][:MONTHS_MAX_ROWS]
+        for rank, hs4 in enumerate(keep):
+            sub = gsub[gsub["hs4"] == hs4]
+            total = sub["t"].sum()
+            for month in range(1, 13):
+                mo = sub[sub["month"] == month]
+                mt = mo["t"].sum()
+                named = mo[mo["named"]].groupby("partner")["t"].sum()
+                top, ts = (named.idxmax(), 100 * named.max() / mt) if mt > 0 and len(named) else (None, None)
+                rows.append({"iso3": iso3, "group": group, "hs4": hs4, "rank": rank, "month": month,
+                             "share": 100 * mt / total, "top": top, "top_share": ts})
+    return pd.DataFrame(rows)
+
+
+def run_months(years: tuple[int, int]) -> None:
+    dest = config.PROCESSED / MONTHS_OUT
+    if not MONTHLY.exists():
+        log.warning("no monthly Comext imports; run `atlas download --source comext`")
+        dest.unlink(missing_ok=True)
+        return
+    m = monthly_imports(years)
+    m.assign(years=f"{years[0]}-{years[1]}").to_parquet(dest, index=False)
+    log.info("wrote %s (%d countries)", dest, m["iso3"].nunique())
+
+
+def export_months() -> None:
+    import json
+
+    src, dest = config.PROCESSED / MONTHS_OUT, config.WEB_DATA / "import_months.json"
+    if not src.exists():
+        dest.unlink(missing_ok=True)
+        return
+    m = pd.read_parquet(src).sort_values(["iso3", "group", "rank", "month"])
+    countries: dict = {}
+    for (iso3, group, _, hs4), sub in m.groupby(["iso3", "group", "rank", "hs4"], sort=True):
+        countries.setdefault(iso3, {}).setdefault(group, []).append({
+            "hs4": hs4,
+            "share": [round(float(x), 1) for x in sub["share"]],
+            "top": [[t, round(float(v))] if t else None for t, v in zip(sub["top"], sub["top_share"], strict=True)],
+        })
+    out = {"meta": {"source": "eurostat_comext", "years": m["years"].iloc[0],
+                    "note": "imports by month, not harvests; EU27 = imports from outside the EU"},
+           "names": FRESH, "countries": countries}
+    dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)

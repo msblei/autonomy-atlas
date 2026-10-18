@@ -25,6 +25,7 @@ Inputs, read directly:
 - `data/raw/baci/BACI_HS17_V202601.zip` (CEPII BACI; fish HS6 codes of the window years only)
 - `data/raw/ggcmi/*.nc4` and `data/raw/isimip/*.nc` (crop calendars, wheat areas, crop land use,
   country masks; read with h5py) for `seasons.json`
+- `data/raw/comext/DS-045409_monthly_imports.csv.gz` for `import_months.json`
 - `data/raw/eurostat/apro_cpshr.tsv.gz` and `data/raw/gisco/NUTS_RG_20M_{2024,2021}_4326.geojson`
   for `regions.json`
 - `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv,comext_partners.csv}`

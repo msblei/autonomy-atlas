@@ -87,6 +87,7 @@ def main(argv: list[str] | None = None) -> int:
         baci.run_compare(trade.fbs_window())
         seasons.run()
         regions.run()
+        comext.run_months(trade.fbs_window())
         usda.run()
     elif args.cmd == "export":
         export.run()
@@ -104,6 +105,7 @@ def main(argv: list[str] | None = None) -> int:
         baci.run_compare(trade.fbs_window())
         seasons.run()
         regions.run()
+        comext.run_months(trade.fbs_window())
         usda.run()
         export.run()
         return _validate()

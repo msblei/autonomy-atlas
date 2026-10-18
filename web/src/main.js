@@ -1323,6 +1323,7 @@ function viewFood() {
     ${w ? "" : secondOpinion(id)}
     ${w ? "" : trend(id)}
     ${w ? "" : seasonStrip(id)}
+    ${w ? "" : importMonths(id)}
     ${w ? "" : whereLink(id)}
     ${compareFood(id)}`;
 }
@@ -1466,6 +1467,68 @@ function regionTooltip(code) {
   if (!r) return null;
   const [, kt, share] = r;
   return `<strong>${state.regions.names[code] ?? code}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)} a year`;
+}
+
+// When fruit, vegetables and potatoes come from abroad, month by month (import_months.json,
+// methodology "When it comes from abroad"): EU countries only, imports, not harvests.
+let monthsLoading = null;
+function loadMonths() {
+  monthsLoading ??= loadJSON("data/import_months.json")
+    .then((d) => { state.months = d; if (state.iso3) render(); })
+    .catch((e) => console.error(e));
+}
+
+function importMonths(id) {
+  if (!["fruit", "vegetables", "potatoes_roots"].includes(state.group)) return "";
+  if (!state.months) { loadMonths(); return ""; }
+  const rows = state.months.countries[id]?.[state.group];
+  if (!rows?.length) return "";
+  const name = (h) => state.months.names[h] ?? h;
+  const tip = (r, k) => {
+    const t = r.top[k];
+    return `${name(r.hs4)}, ${MONTHS[k]}: ${r.share[k] < 1 ? "under 1" : Math.round(r.share[k])}% of a year's purchases${t ? `, most from ${nameOf(t[0])} (${t[1]}%)` : ""}`;
+  };
+  // A cell's shade: its month's share against the busiest month (five steps).
+  const shade = (r, k) => {
+    const max = Math.max(...r.share);
+    return max ? Math.min(4, Math.floor((r.share[k] / max) * 5)) : 0;
+  };
+  return `
+    <h3>When it comes from abroad</h3>
+    <div class="season imports" role="table" aria-label="Purchases from abroad by month">
+      <div class="srow months" role="row"><span role="columnheader"></span>${MONTHS.map((m) => `<span role="columnheader" title="${m}">${m[0]}</span>`).join("")}</div>
+      ${rows.map((r) => `
+        <div class="srow" role="row">
+          <span class="crop" role="rowheader" title="${name(r.hs4)}">${name(r.hs4)}</span>${MONTHS.map((_, k) => `<span class="m s${shade(r, k)}" role="cell" title="${tip(r, k)}"></span>`).join("")}
+        </div>
+        <p class="small who">${leaders(r.top)}</p>`).join("")}
+    </div>
+    <p class="small">Darker = more of a year's purchases from abroad arrive that month (${state.months.meta.years.replace("-", "–")},
+      the EU's own trade records). It shows when ${id === EU ? "the EU buys from outside" : "it is bought abroad"}, not when it is harvested.</p>`;
+}
+
+// "Spain Oct–Apr · Netherlands May–Sep": each leading supplier with its months, as runs.
+function leaders(top) {
+  const short = (k) => MONTHS[k].slice(0, 3);
+  const runs = [];
+  for (let k = 0; k < 12; k++) {
+    const id = top[k]?.[0] ?? null;
+    if (runs.length && runs[runs.length - 1].id === id) runs[runs.length - 1].end = k;
+    else runs.push({ id, start: k, end: k });
+  }
+  // December and January belong together when one supplier leads both.
+  if (runs.length > 1 && runs[0].id === runs[runs.length - 1].id) {
+    const last = runs.pop();
+    runs[0] = { id: last.id, start: last.start, end: runs[0].end };
+  }
+  const by = new Map();
+  for (const r of runs.filter((x) => x.id)) {
+    const span = r.start === r.end ? short(r.start) : `${short(r.start)}–${short(r.end)}`;
+    by.set(r.id, [...(by.get(r.id) ?? []), span]);
+  }
+  const months = (id) => runs.filter((r) => r.id === id).reduce((a, r) => a + ((r.end - r.start + 12) % 12) + 1, 0);
+  return [...by.entries()].sort((a, b) => months(b[0]) - months(a[0]))
+    .map(([id, spans]) => `${nameOf(id)} ${spans.join(", ")}`).join(" · ");
 }
 
 function namesOf(list) {

@@ -36,7 +36,8 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # A warning the site already deals with (handled), or that a review found right (confirmed): listed
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
-PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "countries.geojson"]
+PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "regions.json", "import_months.json",
+             "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
 KT_TOL = 0.5  # kt, for identities between exported components
@@ -423,6 +424,25 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
     return out
 
 
+def check_import_months(imo: dict) -> list[Finding]:
+    """Purchases by month (methodology, "When it comes from abroad"): EU members and the EU only,
+    twelve months adding up to 100% (rounding), at most four products, a leading supplier that is
+    a share of its month."""
+    out = []
+    for iso3, gs in imo.get("countries", {}).items():
+        if iso3 not in config.EU27 and iso3 != EU_BLOC:
+            out.append(Finding("months_scope", BLOCK, "monthly imports outside the EU", iso3))
+        for group, rows in gs.items():
+            if not 0 < len(rows) <= 4:
+                out.append(Finding("months_rows", BLOCK, f"{len(rows)} products", iso3, group))
+            for r in rows:
+                if len(r["share"]) != 12 or abs(sum(r["share"]) - 100) > 0.6:
+                    out.append(Finding("months_sum", BLOCK, f"{r['hs4']}: {sum(r['share']):.1f}%", iso3, group))
+                if any(t is not None and not 0 < t[1] <= 100 for t in r["top"]):
+                    out.append(Finding("months_top", BLOCK, f"{r['hs4']}: leading share out of range", iso3, group))
+    return out
+
+
 def check_regions(reg: dict, geo: dict) -> list[Finding]:
     """Regional figures (methodology, "Where it is grown"): shares add up to 100% (rounding),
     coverage at least 90%, every region has an outline, more than one region per country."""
@@ -570,6 +590,9 @@ def run(*, write: bool = True) -> list[Finding]:
         findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))
     else:
         findings += check_published(ssr, its, trade)
+    imo = config.WEB_DATA / "import_months.json"
+    if imo.exists():
+        findings += check_import_months(json.loads(imo.read_text(encoding="utf-8")))
     reg = config.WEB_DATA / "regions.json"
     if reg.exists():
         findings += check_regions(json.loads(reg.read_text(encoding="utf-8")),
