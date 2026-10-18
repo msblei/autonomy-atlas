@@ -38,7 +38,9 @@ Updating the data (what changes when, the manual JRC step, versions, review list
   would need production values).
 - **Stack:** Python 3.11+ pipeline (pandas, pyarrow, DuckDB) producing Parquet in `data/processed/`
   and small JSON/GeoJSON for the web in `web/public/data/`. Frontend is Vite + vanilla JS +
-  MapLibre GL JS. deck.gl ArcLayer for trade flows (phase 2). No framework until it earns its place.
+  MapLibre GL JS. Trade flows are curved MapLibre lines (`arc()` in main.js, faint at the
+  origin, strong at the destination); deck.gl's ArcLayer was dropped: its arcs rise in 3D and look
+  straight on a flat map, for a few hundred KB more code. No framework until it earns its place.
 - **Licensing:** default stack is open-licensed (FAOSTAT CC BY 4.0, Eurostat/Comext, BACI Etalab
   2.0, Natural Earth public domain; typeface Atkinson Hyperlegible Next, SIL OFL, self-hosted, map
   label glyphs in `web/public/fonts` built by `npm run glyphs`). GISCO NUTS boundaries are non-commercial only — fine for now,
@@ -91,8 +93,8 @@ make serve       # cd web && npm run dev
    fish partners and the EU bloc's fish balance, and a comparison with the FAO matrix on the audit
    page, and a value basis in euros for EU trade (what members pay and earn, per partner).
    CEPII BACI gives fish partners for every other country and a check of the FAO matrix for
-   all countries (mirror-flow countries such as Russia marked) on the audit page. Phase 2 is
-   done but for the arcs' deck.gl ArcLayer (MapLibre lines do the job so far).
+   all countries (mirror-flow countries such as Russia marked) on the audit page. Partner flows
+   are drawn as curved MapLibre lines (deck.gl's ArcLayer dropped, see Stack).
 3. **Phase 3 (done, 2026-10):** seasons as a 12-month strip per country × crop for cereals,
    potatoes, sugar beet, pulses and oilseeds (GGCMI calendar weighted by ISIMIP crop areas, "When
    it is grown" on the food page). Fruit and vegetables: no open European harvest calendar exists
