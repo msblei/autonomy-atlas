@@ -128,3 +128,12 @@ test("trade pages say when the records hold under half of the balance", async ({
   await open(page, "DEU/fruit/trade"); // records cover the balance: no such line
   await expect(view(page)).not.toContainText("The split by country is of the records");
 });
+
+test("purchases from Russia and Ukraine are summed from the listed partners", async ({ page }) => {
+  const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
+  const [total, parts] = trade.countries.TUR.cereals.imports;
+  const share = Math.round(parts.filter(([p]) => p === "RUS" || p === "UKR").reduce((a, [, t]) => a + t, 0) / total * 100);
+  expect(share).toBeGreaterThan(1);
+  await open(page, "TUR/cereals/trade");
+  await expect(view(page)).toContainText(`From Russia and Ukraine: ${share}%`);
+});

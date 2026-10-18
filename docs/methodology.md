@@ -337,6 +337,10 @@ other than groundnuts are left out). FAO's trade data has no fish.
   groups and historical areas would be dropped, but none appear in the 2021–2023 rows.
 - **EU bloc:** members' trade with non-members only. This is the M_extra the eu_bloc view needs;
   EU-bloc IDR still waits for a primary-equivalent conversion.
+- **Shares shown with the list:** for EU members, the share from (or to, or grown in) other EU
+  countries; for imports, the share from (or grown in) Russia and Ukraine, the supply most at risk
+  since 2022. Both add up the listed partners (at least 0.5% each), so they are slightly low
+  bounds, and are shown from 1%.
 - **Re-export hubs:** the Netherlands and Belgium show up as large suppliers of food they only
   transship (Rotterdam, Antwerp). The UI notes this when they are among the top five; no
   adjustment is applied.

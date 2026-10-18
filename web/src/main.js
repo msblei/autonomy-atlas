@@ -1892,6 +1892,9 @@ function viewTrade() {
   const max = top[0].share;
   const members = state.data.meta.eu_members;
   const fromEu = isMember(id) ? rows.filter((r) => members.includes(r.id)).reduce((a, r) => a + r.share, 0) : null;
+  // The supply most at risk since 2022 (CLAUDE.md, phase 2): purchases from Russia and Ukraine.
+  const war = ["RUS", "UKR"];
+  const fromWar = imports && !war.includes(id) ? rows.filter((r) => war.includes(r.id)).reduce((a, r) => a + r.share, 0) : null;
   const hubs = grown ? [] : top.slice(0, 5).filter((r) => ["NLD", "BEL"].includes(r.id) && r.id !== id);
   const mirror = state.trade.meta.mirror.includes(id);
   return `
@@ -1907,6 +1910,7 @@ function viewTrade() {
     </ol>
     ${partial(t, fbsTotal)}
     ${fromEu != null && fromEu >= 1 ? `<p class="small">${grown ? "Grown in" : imports ? "From" : "To"} other EU countries: <strong>${Math.round(fromEu)}%</strong></p>` : ""}
+    ${fromWar != null && fromWar >= 1 ? `<p class="small">${grown ? "Grown in" : "From"} Russia and Ukraine: <strong>${Math.round(fromWar)}%</strong></p>` : ""}
     ${hubs.length && imports ? `<p class="aside">Much of what comes from ${namesList(hubs.map((r) => r.id))} only passes
       through the port of ${hubs.map((r) => PORTS[r.id]).join(" or ")}.
       <button type="button" class="linkish" data-grown="1">Where was it grown? ›</button></p>` : ""}
