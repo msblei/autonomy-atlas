@@ -69,7 +69,8 @@ data/       raw / interim / processed (gitignored)
 | [DG AGRI–JRC EU agricultural balance sheets](https://agridata.ec.europa.eu) | EU dairy, tomatoes, olive oil, wine; dairy milk-equivalent factors | EC reuse notice (attribution) |
 | [USDA FAS PSD](https://apps.fas.usda.gov/psdonline) | second opinion on FAO's figures | US government work, public domain |
 | [FAO Technical Conversion Factors](https://www.fao.org/fileadmin/templates/ess/documents/methodology/tcf.pdf) | processed trade back to raw product | FAO publication (cite FAO) |
-| [FAO Crop Calendar](https://cropcalendar.apps.fao.org) | seasons (planned) | free API |
+| [GGCMI Phase 3 crop calendar](https://zenodo.org/records/5062513) (Jägermeyr et al. 2021), [ISIMIP3a](https://data.isimip.org) land use and country masks | when crops are sown and harvested | CC BY 4.0 |
+| [FAO Crop Calendar](https://cropcalendar.apps.fao.org) | seasons of fruit and vegetables (planned) | free API |
 | [Eurostat GISCO](https://ec.europa.eu/eurostat/web/gisco) NUTS | boundaries | non-commercial, © EuroGeographics |
 | [Natural Earth](https://www.naturalearthdata.com) | country boundaries | public domain |
 | [Atkinson Hyperlegible Next](https://www.brailleinstitute.org/freefont/) (Braille Institute) | typeface, also on the map | SIL Open Font License |

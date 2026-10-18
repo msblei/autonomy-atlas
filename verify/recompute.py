@@ -310,6 +310,122 @@ def load_comext_fish():
 
 
 FISH_MIX = {}
+
+
+# --------------------------------------------------------------------------------------------
+# Methodology, "Seasons": crop calendars per country, from the raw grids
+# --------------------------------------------------------------------------------------------
+SEASON_CROPS = {  # GGCMI code: (land-use variable or "wheat", FBS item, group, label)
+    "wwh": ("wheat", "Wheat and products", "cereals", "Wheat"),
+    "swh": ("wheat", "Wheat and products", "cereals", "Wheat"),
+    "mai": ("maize", "Maize and products", "cereals", "Maize"),
+    "ri1": ("rice", "Rice and products", "cereals", "Rice"),
+    "bar": ("temperate_cereals", "Barley and products", "cereals", "Barley"),
+    "rye": ("temperate_cereals", "Rye and products", "cereals", "Rye"),
+    "mil": ("tropical_cereals", "Millet and products", "cereals", "Millet"),
+    "sor": ("tropical_cereals", "Sorghum and products", "cereals", "Sorghum"),
+    "pot": ("temperate_roots", "Potatoes and products", "potatoes_roots", "Potatoes"),
+    "sgb": ("temperate_roots", "Sugar beet", "sugar", "Sugar beet"),
+    "pea": ("pulses", "Peas", "pulses", "Peas"),
+    "bea": ("pulses", "Beans", "pulses", "Beans"),
+    "soy": ("oil_crops_soybean", "Soyabeans", "oilseeds", "Soybeans"),
+    "sun": ("oil_crops_sunflower", "Sunflower seed", "oilseeds", "Sunflower"),
+    "rap": ("oil_crops_rapeseed", "Rape and Mustardseed", "oilseeds", "Rapeseed"),
+    "nut": ("oil_crops_groundnut", "Groundnuts", "oilseeds", "Groundnuts"),
+}
+
+
+def season_calendars():
+    """{(iso3, crop label): (weight, sown[12], growing[12], harvest[12]) in %}; wheat = both kinds."""
+    import h5py
+
+    def grid(path, var, sl=None):
+        with h5py.File(path) as f:
+            a = np.array(f[var][sl] if sl is not None else f[var][...], dtype="float64")
+        a[a > 1e19] = np.nan
+        return a
+
+    raw = ROOT / "data/raw"
+    with h5py.File(raw / "isimip/countrymasks-fractional_30arcmin.nc") as f:
+        names = [k[2:] for k in f if k.startswith("m_") and k != "m_world"]
+        M = np.stack([np.nan_to_num(np.array(f["m_" + k][...], dtype="float64")) for k in names])
+        lat = np.array(f["lat"][...])
+    M[M > 1e19] = 0
+    M = np.concatenate([M, M[[i for i, k in enumerate(names) if k in EU]].sum(axis=0)[None]])
+    names = names + ["EU27"]
+    area = np.cos(np.deg2rad(lat))[:, None] * np.ones((1, 720))
+    starts = [1, 32, 60, 91, 121, 152, 182, 213, 244, 274, 305, 335]
+
+    def month(d):
+        out = np.full(d.shape, -1)
+        for k, s0 in enumerate(starts):
+            out[(d >= s0) & ~np.isnan(d)] = k
+        return out
+
+    acc = {}
+    for crop, (wvar, _, _, label) in SEASON_CROPS.items():
+        for ws, long in (("rf", "rainfed"), ("ir", "irrigated")):
+            cal = raw / f"ggcmi/{crop}_{ws}_ggcmi_crop_calendar_phase3_v1.01.nc4"
+            p, h = month(grid(cal, "planting_day")), month(grid(cal, "maturity_day"))
+            if wvar == "wheat":
+                w = np.nan_to_num(grid(raw / "ggcmi/winter_and_spring_wheat_areas_v1_180627.nc4", f"{crop}_{ws}_area"))
+            else:
+                lu = raw / "isimip/landuse-15crops_histsoc_annual_1901_2021.nc"
+                w = np.nan_to_num(grid(lu, f"{wvar}_{long}", np.s_[-3:, :, :])).mean(axis=0) * area
+            w = np.where((p >= 0) & (h >= 0), w, 0.0)
+            for k in range(12):
+                inside = np.where(h >= p, (k >= p) & (k <= h), (k >= p) | (k <= h))
+                for name, grid_ in (("s", (p == k) * w), ("h", (h == k) * w), ("g", inside * w)):
+                    v = M.reshape(len(names), -1) @ grid_.ravel()
+                    for i, iso in enumerate(names):
+                        acc.setdefault((iso, label), {}).setdefault(name, np.zeros(12))[k] += v[i]
+            tot = M.reshape(len(names), -1) @ w.ravel()
+            for i, iso in enumerate(names):
+                a = acc.setdefault((iso, label), {})
+                a["w"] = a.get("w", 0.0) + tot[i]
+    out = {}
+    for key, a in acc.items():
+        if a.get("w", 0) > 0:
+            out[key] = (a["w"], *(100 * a[n] / a["w"] for n in ("s", "g", "h")))
+    return out
+
+
+def season_rows(res, D):
+    """Methodology "Seasons", "What a food page shows": {iso: {group: [rows]}}."""
+    cal = season_calendars()
+    name_code = {}
+    for code, nm in D.item_names.items():
+        name_code.setdefault(nm, code)
+    out = {}
+    for iso, r in res.items():
+        bal = r.get("item_bal") or {}
+        groups = r.get("groups") or {}
+
+        def prod(item):
+            c = name_code.get(item)
+            return nz(bal[c]["P"]) if c in bal else 0.0
+
+        for g in ("cereals", "potatoes_roots", "sugar", "pulses", "oilseeds"):
+            if g not in groups or groups[g]["reason"]:
+                continue
+            members = ["Sugar beet", "Sugar cane"] if g == "sugar" else PRODUCTS[g]["items"]
+            gp = sum(prod(i) for i in members)
+            if gp <= 0:
+                continue
+            seen, rows = set(), []
+            for crop, (_, item, grp, label) in SEASON_CROPS.items():
+                if grp != g or label in seen or (iso, label) not in cal:
+                    continue
+                seen.add(label)
+                share = 100 * prod(item) / gp
+                if share >= 5:
+                    _, s_, g_, h_ = cal[(iso, label)]
+                    rows.append({"label": label, "share": round(share), "sown": [round(x) for x in s_],
+                                 "growing": [round(x) for x in g_], "harvest": [round(x) for x in h_]})
+            if rows:
+                rows.sort(key=lambda x: -x["share"])
+                out.setdefault(iso, {})[g] = rows[:4]
+    return out
 BACI_ZIP = ROOT / "data/raw/baci/BACI_HS17_V202601.zip"
 
 
@@ -1202,7 +1318,7 @@ def main():
     SHAS["comext_gz"] = sha256(COMEXT_GZ)
     SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
     SHAS["baci_zip"] = sha256(BACI_ZIP)
-    for k in ("ssr.json", "items.json", "trade.json"):
+    for k in ("ssr.json", "items.json", "trade.json", "seasons.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")
     D = load_all()
@@ -1400,6 +1516,25 @@ def main():
                     record("trade_hhi", {"file": "trade.json", "country": iso, "group": g, "flow": flow,
                                          "field": "concentration"}, e, mine)
 
+    # ---- seasons (methodology "Seasons") ----
+    sea = json.load(open(OUT_DIR / "seasons.json"))["countries"]
+    mine_s = season_rows(res, D)
+    for iso in sorted(set(sea) | set(mine_s)):
+        for g in sorted(set(sea.get(iso, {})) | set(mine_s.get(iso, {}))):
+            e, m_ = sea.get(iso, {}).get(g, []), mine_s.get(iso, {}).get(g, [])
+            w = {"file": "seasons.json", "country": iso, "group": g}
+            counts["season_rows"] += 1
+            if [x["label"] for x in e] != [x["label"] for x in m_] or \
+                    any(abs(a["share"] - b["share"]) > 1 for a, b in zip(e, m_)):
+                record("season_rows", {**w, "field": "crops"}, [(x["label"], x["share"]) for x in e],
+                       [(x["label"], x["share"]) for x in m_])
+                continue
+            for a, b in zip(e, m_):
+                for f in ("sown", "growing", "harvest"):
+                    counts["season_months"] += 12
+                    if any(abs(x - y) > 1 for x, y in zip(a[f], b[f])):
+                        record("season_months", {**w, "field": f"{a['label']}.{f}"}, a[f], b[f])
+
     # ---- value basis (methodology "Value basis"): totals, listed partners, HHI, in thousand EUR ----
     val = comext_value(D.WIN)
     exp_v = (tr.get("value") or {}).get("countries", {})
@@ -1523,7 +1658,7 @@ def main():
     report = {
         "ok": total == 0,
         "n_mismatches": total,
-        "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json")},
+        "published_sha256": {k: SHAS["export:" + k] for k in ("ssr.json", "items.json", "trade.json", "seasons.json")},
         "runtime_s": round(time.time() - T0, 1),
         "window": f"{D.WIN[0]}-{D.WIN[-1]}",
         "primary_reading": PRIMARY,

@@ -12,6 +12,7 @@ dependencies = [
     "requests>=2.32",
     "pyyaml>=6",
     "tqdm>=4.66",
+    "h5py>=3.10",
 ]
 
 [project.optional-dependencies]

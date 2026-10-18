@@ -88,7 +88,10 @@ The other tools each cover one or two of the layers:
 | USDA FAS IPAD crop calendars | https://ipad.fas.usda.gov/rssiws/al/crop_calendar/europe.aspx | EU, UK, Balkans, Ukraine, Moldova, Belarus | National/regional graphics | Images, not data; need manual digitisation |
 | JRC-MARS European Crop Calendar | Agri4Cast data portal (listed by the EEA) | EU28; winter wheat, grain maize, rice; 3 phenological phases | National | Old (2016); limited crops |
 | JRC ASAP crop calendars | https://data.jrc.ec.europa.eu/dataset/jrc-10112-10003 | Global; sowing/growth/harvest by dekad | GAUL0/GAUL1 | Matched to satellite phenology |
-| GGCMI Phase 3 crop calendar | https://zenodo.org/records/5062513 | Global, 18 crops, rainfed vs irrigated | 0.5° grid | CC BY 4.0; static multi-year averages, one season per crop |
+| GGCMI Phase 3 crop calendar | https://zenodo.org/records/5062513 | Global, 18 crops, rainfed vs irrigated | 0.5° grid | CC BY 4.0; static multi-year averages, one season per crop. **Used** (`pipeline/seasons.py`) for cereals, potatoes, sugar beet, pulses, oilseeds; its single date is a convention for cassava and sugar cane, which are left out |
+| ISIMIP3a land use, 15 crops (histsoc) and fractional country masks | https://data.isimip.org | Global, 1901–2021, rainfed and irrigated | 0.5° grid | CC BY 4.0, open download; **used** to weight the calendar by where each crop grows (mean 2019–2021) |
+| GGCMI Phase 2 winter and spring wheat areas | https://zenodo.org/records/3773827 | Global (MIRCA2000-based) | 0.5° grid | CC BY 4.0; **used** for wheat, which the land-use file pools with barley and rye |
+| MapSPAM 2020 (IFPRI) | https://doi.org/10.7910/DVN/SWPENT | Global harvested area, 46 crops | 5 arc-min | CC BY 4.0, but download behind a guestbook (name, e-mail) and IFPRI terms of use; not scripted here |
 | Sacks et al. 2010 (SAGE) | Univ. Wisconsin SAGE | Global, 19 crops | 5 arc-min | Older observations |
 | MIRCA2000 / MIRCA-OS | Nature Scientific Data (https://www.nature.com/articles/s41597-024-04313-w) | Monthly irrigated/rainfed areas | Gridded | Useful for "what is in the ground this month" |
 | GEOGLAM Crop Monitor | cropmonitor.org | Major producers | National/subnational | Monthly crop conditions for AMIS crops |

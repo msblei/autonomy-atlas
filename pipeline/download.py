@@ -240,6 +240,23 @@ def comext_reporters() -> set[str]:
     return {"GR" if c == "EL" else c for c in codes}
 
 
+def seasons(*, force: bool = False) -> list[Path]:
+    """Crop calendars (GGCMI Phase 3, 32 small files), the winter/spring wheat areas, ISIMIP3a
+    15-crop land use (379 MB) and country masks: pipeline/seasons.py. All CC BY 4.0."""
+    from . import seasons as s
+
+    src = config.SOURCES
+    out = []
+    for crop in s.CROPS:
+        for ws in s.WS:
+            name = s.CALENDAR.format(crop=crop, ws=ws)
+            out.append(fetch(src["ggcmi_calendar"]["file_url"].format(name=name), s.GGCMI / name, force=force))
+    out.append(fetch(src["ggcmi_wheat_areas"]["file_url"], s.WHEAT_AREAS, force=force))
+    out.append(fetch(src["isimip_countrymasks"]["file_url"], s.MASKS, force=force))
+    out.append(fetch(src["isimip_landuse"]["file_url"], s.LANDUSE, force=force, timeout=600))
+    return out
+
+
 def crop_calendar() -> None:
     """FAO Crop Calendar API (phase 3). Endpoints are not documented here on purpose —
     inspect the API's OpenAPI/Swagger page first, then implement."""
@@ -260,13 +277,14 @@ ALL = {
     "unsd": unsd,
     "eumofa": eumofa,
     "comext": comext,
+    "seasons": seasons,
     "crop_calendar": crop_calendar,
 }
 
 
 def run(sources: list[str] | None = None, *, force: bool = False) -> None:
     config.ensure_dirs()
-    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext", "baci"]
+    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext", "baci", "seasons"]
     for name in sources:
         fn = ALL[name]
         log.info("== %s", name)

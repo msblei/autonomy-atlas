@@ -531,8 +531,43 @@ def export_trade() -> None:
     log.info("wrote %s (%.0f KB)", dest, dest.stat().st_size / 1024)
 
 
+def export_seasons() -> None:
+    """seasons.json (methodology, "Seasons"): the crop strips each food page shows."""
+    from . import seasons
+    from .harmonise import load_products
+
+    src = config.PROCESSED / seasons.OUT
+    dest = config.WEB_DATA / "seasons.json"
+    if not src.exists():
+        dest.unlink(missing_ok=True)
+        return
+    items = pd.read_parquet(config.PROCESSED / "ssr_items.parquet")
+    if "basis" in items:
+        items = items[items["basis"] == "tonnes"]
+    g = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
+    g = g[g["basis"] == "tonnes"]
+    withheld = set(zip(g.loc[g["flag"].fillna("") != "", "iso3"], g.loc[g["flag"].fillna("") != "", "group"]))
+    groups = {k: v["items"] for k, v in load_products()["groups"].items()}
+    rows = seasons.rows_for(pd.read_parquet(src), items, groups)
+    rows = {iso: {gr: r for gr, r in gs.items() if (iso, gr) not in withheld} for iso, gs in rows.items()}
+    rows = {iso: gs for iso, gs in rows.items() if gs}
+    out = {
+        "meta": {
+            "sources": ["ggcmi_calendar", "isimip_landuse", "ggcmi_wheat_areas", "isimip_countrymasks"],
+            "note": "a typical year (multi-year average calendars), not the years of the other figures",
+            "thresholds": {"harvest": seasons.HARVEST_MIN, "sowing": seasons.SOWN_MIN,
+                           "growing": seasons.GROWING_MIN, "min_share": seasons.MIN_SHARE,
+                           "max_rows": seasons.MAX_ROWS},
+        },
+        "countries": rows,
+    }
+    dest.write_text(json.dumps(out, ensure_ascii=False, separators=(",", ":")), encoding="utf-8")
+    log.info("wrote %s (%.0f KB, %d countries)", dest, dest.stat().st_size / 1024, len(rows))
+
+
 def run() -> None:
     config.ensure_dirs()
     export_countries_geojson()
     export_ssr()
     export_trade()
+    export_seasons()

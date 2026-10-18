@@ -13,6 +13,9 @@
   --edge-strong: #cfc7b8;
   --produced: #2f6f4e; /* produced at home, in charts */
   --blue: #2f5f86; /* bought abroad, in charts */
+  --sow: #c9b98f; /* crop calendar: sown */
+  --grow: #9cc3a6; /* growing */
+  --harvest: #c8902e; /* harvested */
   --sans: "Atkinson Hyperlegible Next Variable", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
   --panel-w: 392px;
   --rail-w: 158px;
@@ -432,3 +435,16 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
 @media (max-width: 760px) and (max-height: 700px) {
   #panel { max-height: 57%; }
 }
+
+/* Crop calendar: one row of twelve months per crop. */
+.season { display: grid; gap: 3px; margin: 6px 0 4px; }
+.season .srow { display: grid; grid-template-columns: 7.5em repeat(12, 1fr); gap: 2px; align-items: center; }
+.season .months span { font-size: 0.75rem; color: var(--ink-faint); text-align: center; }
+.season .crop { font-size: 0.9rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.season .m { height: 18px; border-radius: 3px; background: var(--sunken); }
+.m.sowing { background: var(--sow); }
+.m.growing { background: var(--grow); }
+.m.harvest { background: var(--harvest); }
+.season-key { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.season-key i.m { display: inline-block; width: 12px; height: 12px; border-radius: 2px; margin-left: 6px; }
+.season-key i.m:first-child { margin-left: 0; }

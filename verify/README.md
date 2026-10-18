@@ -23,6 +23,8 @@ Inputs, read directly:
 - `data/raw/comext/DS-045409_food.csv.gz` (Eurostat Comext; only its fish CN8 rows are used) and
   `data/raw/eumofa/conversion_factors_cn8.xlsx` (EUMOFA live-weight factors)
 - `data/raw/baci/BACI_HS17_V202601.zip` (CEPII BACI; fish HS6 codes of the window years only)
+- `data/raw/ggcmi/*.nc4` and `data/raw/isimip/*.nc` (crop calendars, wheat areas, crop land use,
+  country masks; read with h5py) for `seasons.json`
 - `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv,comext_partners.csv}`
 
 Outputs:

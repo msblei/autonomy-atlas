@@ -563,6 +563,58 @@ and 58%. Such years stay in the series but are listed per country and group in `
 the line, not used for its scale or labels) and names them. The same rule raises the
 `trend_spike` warning.
 
+## Seasons: when crops are sown and harvested
+
+A typical year per country and crop (`pipeline/seasons.py`, `web/public/data/seasons.json`).
+
+**Sources** (all CC BY 4.0, `atlas download --source seasons`):
+
+- *Calendar:* GGCMI Phase 3 crop calendar v1.01 (Jägermeyr et al. 2021, Nature Food 2: 873–885;
+  Zenodo record 5062513): planting day and maturity day (day of year) per 0.5° cell, crop, rainfed
+  and irrigated; static multi-year averages from observations (MIRCA2000, SAGE, national
+  calendars), gap-filled outside cropland. One season per crop and cell; winter and spring wheat
+  and two rice seasons apart.
+- *Where each crop grows (weights):* ISIMIP3a "histsoc" 15-crop land use
+  (`landuse-15crops_histsoc_annual_1901_2021.nc`), the fraction of each cell under the crop,
+  rainfed and irrigated, mean of 2019–2021. Wheat uses GGCMI Phase 2's winter and spring wheat
+  areas (Zenodo record 3773827, `winter_and_spring_wheat_areas_v1_180627.nc4`, hectares from
+  MIRCA2000), because the land-use file has only "temperate cereals".
+- *Countries:* ISIMIP3a fractional country masks at 30 arcmin (share of each cell in each
+  country).
+
+**Crops** (GGCMI code → weight in the land-use file → FBS item → group): winter and spring wheat
+(`wwh`, `swh` → their GGCMI Phase 2 areas → Wheat and products → cereals); maize (`mai` → maize);
+rice, main season only (`ri1` → rice); barley and rye (`bar`, `rye` → temperate cereals); millet
+and sorghum (`mil`, `sor` → tropical cereals); potatoes (`pot` → temperate roots → Potatoes and
+products); sugar beet (`sgb` → temperate roots → Sugar beet) for the sugar group; peas and beans
+(`pea`, `bea` → pulses); soybeans, sunflower, rapeseed, groundnuts (`soy`, `sun`, `rap`, `nut` →
+their oil-crop types → oilseeds). Left out: cotton (no food group), and cassava and sugar cane,
+which are harvested over many months or after more than a year, so one planting and one maturity
+date per cell (GGCMI's convention for them) would draw a season that does not exist (Nigeria's
+cassava "sown in May, harvested in December"). Fruit, vegetables and animal products have no
+calendar here.
+
+**Per country and crop.** Weight of a cell = crop fraction (rainfed and irrigated separately,
+each with its own calendar) × cell area (proportional to cos latitude) × the cell's share in the
+country; the EU27 adds up its members. A cell's season runs from its planting month to its
+maturity month, both included, wrapping over the new year; the month of a day of year is taken
+from a 365-day year. Per month, the share of the crop's weighted area (in %, rounded) that is
+sown in it, harvested in it (maturity), and growing in it (inside the season). A crop with no
+weight in the country has no calendar.
+
+**What a food page shows.** The crops of the food group whose FBS production (window mean, as
+published; for sugar, the sugar beet and sugar cane items) is at least 5% of the group's (of the
+two sugar crops, for sugar: a cane country shows no strip), at most four, largest first. Winter
+and spring wheat are one row, "Wheat": their monthly shares weighted by their areas in the
+country (the kind is botany, not season: India's "spring" wheat is sown in November). A month is
+"harvest" when at least 20% of the area is harvested in it, otherwise "sowing" when at least 20%
+is sown in it, otherwise "growing" when at least 50% is growing, otherwise empty. The page says it
+is a typical year, not the years of the other figures.
+
+**Export:** `seasons.json` `meta` (sources, thresholds) and `countries` `{iso3: {group: [{crop,
+item, share, sown: [12], growing: [12], harvest: [12]}]}}`, `share` = the crop's % of the group's
+production.
+
 ## Scenario "without trade" (considered, not built)
 
 With all trade stopped a country keeps its production, so "available without trade" per person is

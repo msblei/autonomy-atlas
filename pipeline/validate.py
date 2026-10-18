@@ -36,7 +36,7 @@ BLOCK, WITHHOLD, WARN = "block", "withhold", "warn"
 # A warning the site already deals with (handled), or that a review found right (confirmed): listed
 # on the audit page for the record, not as an open question.
 HANDLED, CONFIRMED = "handled", "confirmed"
-PUBLISHED = ["ssr.json", "items.json", "trade.json", "countries.geojson"]
+PUBLISHED = ["ssr.json", "items.json", "trade.json", "seasons.json", "countries.geojson"]
 
 # Tolerances. Exported figures are rounded to 0.1, so sums of rounded parts drift a little.
 KT_TOL = 0.5  # kt, for identities between exported components
@@ -423,6 +423,31 @@ def check_published(ssr: dict, items: dict, trade: dict | None) -> list[Finding]
     return out
 
 
+def check_seasons(sea: dict, ssr: dict | None) -> list[Finding]:
+    """Crop calendars (methodology, "Seasons"): twelve months; each crop is sown and harvested
+    once, so those shares add up to 100% (within rounding); growing covers sowing and harvest
+    months; no calendar for a withheld food."""
+    out = []
+    for iso3, gs in sea.get("countries", {}).items():
+        for group, rows in gs.items():
+            if ssr and ssr["countries"].get(iso3, {}).get("indicators", {}).get(group, {}).get("withheld"):
+                out.append(Finding("season_withheld", BLOCK, "calendar for a withheld food", iso3, group))
+            if not 0 < len(rows) <= 4:
+                out.append(Finding("season_rows", BLOCK, f"{len(rows)} crops", iso3, group))
+            for r in rows:
+                if any(len(r[k]) != 12 for k in ("sown", "growing", "harvest")):
+                    out.append(Finding("season_months", BLOCK, f"{r['label']}: not 12 months", iso3, group))
+                    continue
+                for k in ("sown", "harvest"):
+                    if abs(sum(r[k]) - 100) > 6:
+                        out.append(Finding("season_sum", BLOCK, f"{r['label']} {k} adds up to {sum(r[k])}",
+                                           iso3, group))
+                if any(g + 1 < max(s_, h) for s_, g, h in zip(r["sown"], r["growing"], r["harvest"], strict=True)):
+                    out.append(Finding("season_growing", BLOCK, f"{r['label']}: growing below sown/harvest",
+                                       iso3, group))
+    return out
+
+
 # ------------------------------------------------------------------------------------------------
 
 
@@ -524,6 +549,9 @@ def run(*, write: bool = True) -> list[Finding]:
         findings.append(Finding("published_missing", BLOCK, "ssr.json / items.json not exported"))
     else:
         findings += check_published(ssr, its, trade)
+    sea = config.WEB_DATA / "seasons.json"
+    if sea.exists():
+        findings += check_seasons(json.loads(sea.read_text(encoding="utf-8")), ssr)
 
     # A warning about a figure that is withheld anyway (any reason) asks nothing of the reviewer:
     # the audit page lists the figure under "Withheld" already.

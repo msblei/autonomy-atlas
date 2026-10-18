@@ -188,3 +188,24 @@ function nameShare([, amount], total) {
   const p = (amount / total) * 100;
   return `${p < 1 ? "<1" : Math.round(p)}%`;
 }
+
+test("crop calendars: the strip shows the exported months in a typical year", async ({ page }) => {
+  const sea = JSON.parse(readFileSync(new URL("../public/data/seasons.json", import.meta.url), "utf8"));
+  const rows = sea.countries.DEU.cereals;
+  const t = sea.meta.thresholds;
+  await open(page, "DEU/cereals");
+  const strip = view(page).locator(".season");
+  await expect(strip.locator(".srow:not(.months)")).toHaveCount(rows.length);
+  for (const [i, r] of rows.entries()) {
+    const row = strip.locator(".srow:not(.months)").nth(i);
+    await expect(row.locator(".crop")).toHaveText(r.label);
+    for (let k = 0; k < 12; k++) {
+      const want = r.harvest[k] >= t.harvest ? "harvest" : r.sown[k] >= t.sowing ? "sowing" : r.growing[k] >= t.growing ? "growing" : null;
+      const cls = await row.locator(".m").nth(k).getAttribute("class");
+      expect(cls.trim(), `${r.label} month ${k + 1}`).toBe(want ? `m ${want}` : "m");
+    }
+  }
+  await expect(view(page)).toContainText("a typical year");
+  await open(page, "DEU/fruit"); // no calendar for fruit
+  await expect(view(page).locator(".season")).toHaveCount(0);
+});

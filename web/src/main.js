@@ -1291,7 +1291,49 @@ function viewFood() {
     ${euLine(id)}
     ${w ? "" : secondOpinion(id)}
     ${w ? "" : trend(id)}
+    ${w ? "" : seasonStrip(id)}
     ${compareFood(id)}`;
+}
+
+// When the main crops of this food are sown, growing and harvested: a typical year
+// (seasons.json, methodology "Seasons"). Fruit, vegetables and animal products have none.
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
+  "September", "October", "November", "December"];
+let seasonsLoading = null;
+function loadSeasons() {
+  seasonsLoading ??= loadJSON("data/seasons.json")
+    .then((d) => { state.seasons = d; if (state.iso3) render(); })
+    .catch((e) => console.error(e));
+}
+
+function seasonStrip(id) {
+  if (!state.seasons) { loadSeasons(); return ""; }
+  const rows = state.seasons.countries[id]?.[state.group];
+  if (!rows?.length) return "";
+  const t = state.seasons.meta.thresholds;
+  const kind = (r, k) => (r.harvest[k] >= t.harvest ? "harvest" : r.sown[k] >= t.sowing ? "sowing"
+    : r.growing[k] >= t.growing ? "growing" : "");
+  const WORD = { harvest: "harvested", sowing: "sown", growing: "growing" };
+  const harvestMonths = (r) => MONTHS.filter((_, k) => kind(r, k) === "harvest");
+  return `
+    <h3>When it is grown</h3>
+    <div class="season" role="table" aria-label="When the main crops are sown and harvested">
+      <div class="srow months" role="row"><span role="columnheader"></span>${MONTHS.map((m) => `<span role="columnheader" title="${m}">${m[0]}</span>`).join("")}</div>
+      ${rows.map((r) => `
+        <div class="srow" role="row" aria-label="${r.label}: harvested in ${namesOf(harvestMonths(r))}">
+          <span class="crop" role="rowheader">${r.label}</span>${MONTHS.map((m, k) => {
+            const c = kind(r, k);
+            return `<span class="m ${c}" role="cell" title="${m}: ${c ? WORD[c] : "nothing"}"></span>`;
+          }).join("")}
+        </div>`).join("")}
+    </div>
+    <p class="small season-key"><i class="m sowing"></i>sown <i class="m growing"></i>growing
+      <i class="m harvest"></i>harvested · a typical year</p>`;
+}
+
+function namesOf(list) {
+  if (!list.length) return "no single month";
+  return list.length === 1 ? list[0] : `${list.slice(0, -1).join(", ")} and ${list[list.length - 1]}`;
 }
 
 // Year by year since the first FBS year. The scale follows the data (at least a tenth of a year

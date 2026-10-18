@@ -29,7 +29,7 @@ MANIFEST = config.RAW / "manifest.json"
 
 def raw_inputs() -> dict[str, Path]:
     """Raw files the published figures depend on, keyed by a stable name."""
-    from . import jrc
+    from . import jrc, seasons
 
     f = config.RAW / "faostat"
     return {
@@ -46,6 +46,7 @@ def raw_inputs() -> dict[str, Path]:
         "cepii_baci": config.RAW / "baci" / "BACI_HS17_V202601.zip",
         "unsd_cpc_hs": config.RAW / "unsd" / "CPC21-HS2017.csv",
         "unsd_hs2022": config.RAW / "unsd" / "HS2022toHS2017ConversionAndCorrelationTables.xlsx",
+        **{f"seasons:{p.name}": p for p in seasons.inputs()},
     }
 
 
