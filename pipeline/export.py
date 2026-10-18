@@ -503,14 +503,15 @@ def export_trade() -> None:
         "meta": {
             "source": "fao_tm",
             # Groups whose partners come from another source (methodology, "Comext").
-            "group_source": {"fish": "eurostat_comext"},
+            "group_source": {"fish": {"eu": "eurostat_comext", "other": "cepii_baci"}},
             "years": t["years"].iloc[0],
             "basis": {
                 "imports": "tonnes as traded (product weight); dairy in milk equivalent",
                 "exports": "tonnes as traded (product weight); dairy in milk equivalent",
                 # trade.trace_origins scales the splits to FBS import totals.
                 "grown": "tonnes in FBS primary equivalents (shares only)",
-                "fish": "tonnes live weight (EUMOFA factors per CN8 code and year); EU members only",
+                "fish": "tonnes live weight: EU members and bloc from Comext (EUMOFA factor per CN8 "
+                        "code and year), other countries from BACI (the EU's mix of those factors per HS6)",
             },
             # Countries for which some flows come from partners' reports.
             "mirror": mirrored,

@@ -1124,10 +1124,10 @@ function renderFoot() {
        <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
     : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
   if (state.level === "trade") {
-    const eu = fromEurostat();
-    const t = state.data.meta.sources[tradeSourceKey()];
+    const key = tradeSourceKey();
+    const t = state.data.meta.sources[key];
     el.innerHTML = `${tools}Trade figures: <a href="${t.url}" target="_blank"
-      rel="noopener">${eu ? "Eurostat Comext" : `FAO ${t.title}`}</a>, ${(state.trade?.meta.years ?? m.years).replace("-", "–")} averages.
+      rel="noopener">${SOURCE_NAMES[key][1] ?? `FAO ${t.title}`}</a>, ${(state.trade?.meta.years ?? m.years).replace("-", "–")} averages.
       Licence: <a href="${t.licence_url}" target="_blank" rel="noopener">${t.licence}</a>.`;
     return;
   }
@@ -1851,13 +1851,22 @@ function tradeFlow() {
   return state.flow === "imports" && state.grown && !state.byValue && canTrace() ? "grown" : state.flow;
 }
 
-// Fish partners come from the EU's own trade figures (Eurostat Comext), not FAO's, and only for
-// EU countries; tracing where it was caught would need the whole world's trade.
-const tradeSourceKey = (group = state.group) => (tradeBasis() === "value" ? "eurostat_comext"
-  : state.trade?.meta.group_source?.[group] ?? "fao_tm");
-const fromEurostat = (group = state.group) => tradeSourceKey(group) === "eurostat_comext";
-const canTrace = (group = state.group) => (state.trade?.meta.group_source?.[group] ?? "fao_tm") === "fao_tm";
-const recordsOf = (group = state.group) => (fromEurostat(group) ? "The EU's trade records" : "FAO's trade records");
+// Fish partners come from the EU's own trade figures (Eurostat Comext) for EU countries and from
+// CEPII's reconciled world trade (BACI) elsewhere, not from FAO's (which has no fish); tracing
+// where it was caught would need one source for the whole world. Money is always Comext.
+function groupSource(group = state.group, id = state.iso3) {
+  const s = state.trade?.meta.group_source?.[group];
+  if (s && typeof s === "object") return isMember(id) || id === EU ? s.eu : s.other;
+  return s ?? "fao_tm";
+}
+const tradeSourceKey = (group = state.group) => (tradeBasis() === "value" ? "eurostat_comext" : groupSource(group));
+const canTrace = (group = state.group) => !state.trade?.meta.group_source?.[group];
+const SOURCE_NAMES = {
+  eurostat_comext: ["The EU's trade records", "Eurostat Comext"],
+  cepii_baci: ["World trade records", "CEPII BACI"],
+  fao_tm: ["FAO's trade records", null],
+};
+const recordsOf = (group = state.group) => SOURCE_NAMES[tradeSourceKey(group)][0];
 
 // A flow withheld because its trade records are far above the food balance (trade.json
 // meta.withheld; methodology, "Trade records against the food balance"): {trade, balance} in kt.
@@ -1918,13 +1927,13 @@ function viewTrade() {
   const g = groupInfo();
   const head = "";
   if (!state.trade) { loadTrade(); return `<p class="hint" data-loading>Loading…</p>`; }
-  if (state.group === "fish" && !tradeFor(id, state.group, state.flow, "weight")) {
-    return `<p class="lead-none">Trading partners for fish are known only for EU countries.</p>`;
-  }
   const value = tradeBasis() === "value";
   const wh = !value && tradeWithheld(id);
+  if (!wh && state.group === "fish" && !tradeFor(id, state.group, state.flow, "weight")) {
+    return `<p class="lead-none">No trading partners for fish in the trade records.</p>`;
+  }
   if (wh) {
-    return `<p class="lead-none">No reliable trading partners${fromEurostat() ? "" : " from FAO"}.</p>
+    return `<p class="lead-none">No reliable trading partners${tradeSourceKey() === "fao_tm" ? " from FAO" : ""}.</p>
       <details class="notes"><summary>Why?</summary><p>${recordsOf()} list ${tonnes(wh.trade)}
         ${state.flow === "imports" ? "bought" : "sold"} abroad a year, its food balance ${tonnes(wh.balance)}.
         Records this far above the balance usually count cargo passing through or shipments booked to
@@ -1984,14 +1993,14 @@ function viewTrade() {
         <li>Shares are of the food as grown: processed goods such as flour or juice are counted back to the grain or fruit, as in FAO's food balances.</li>` : ""}
       ${value ? `<li>In euros as the EU's own trade records (Eurostat) give them: ${imports ? "the price at the EU border, with freight and insurance" : "the price at the border"}, averaged over the years shown and not adjusted for rising prices.</li>`
         : grown ? "" : fbsTotal != null
-        ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from ${recordsOf().replace("The", "the")}, ${fromEurostat()
+        ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from ${recordsOf().replace("The", "the")}, ${state.group === "fish"
           ? "counted as whole fish, the way the food balance counts it: a tonne of fillets counts as about two and a half tonnes of fish (the EU's own factors)."
           : state.group === "dairy"
           ? "converted to the milk it takes to make each product (a tonne of cheese counts as about three and a half tonnes of milk), the EU's own factors."
           : "which count tonnes as shipped (a tonne of juice counts like a tonne of fruit)."}</li>`
         : `<li>Counted in tonnes as shipped, dairy as the milk it takes to make it: a tonne of juice counts the same as a tonne of fruit.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
       ${mirror && !value ? `<li>${nameOf(id)} did not report all of its trade, so where its own figures are missing or far too low we use what other countries say they sold to it or bought from it.</li>` : ""}
-      ${state.group === "all" ? "<li>Fish is not included: its trading partners are known only for EU countries.</li>" : ""}
+      ${state.group === "all" ? "<li>Fish is not included: it is counted as whole fish, everything else by weight as shipped.</li>" : ""}
     </ul></details>`;
 }
 
@@ -2001,7 +2010,7 @@ function viewTrade() {
 function partial(t, balanceKt) {
   if (balanceKt == null || !(balanceKt > 0) || t[0] / 1000 >= 0.5 * balanceKt) return "";
   const why = state.group === "fish"
-    ? "fish fed to fish farms as fishmeal, which the records count as feed"
+    ? "fish made into fishmeal and fish oil, mostly for fish farms, which trade records count as feed and oil"
     : `${food()} inside processed goods, which the records file under other products`;
   return `<p class="small">${recordsOf()} hold ${tonnes(t[0] / 1000)} of the ${tonnes(balanceKt)} in FAO's food
     balance. The balance also counts ${why}. The split by country is of the records.</p>`;

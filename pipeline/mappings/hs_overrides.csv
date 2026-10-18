@@ -160,7 +160,7 @@ hs,group,to_primary,note
 040390,dairy,1.07,buttermilk, kefir and other fermented milk
 040410,dairy,cn8,whey: powder or liquid by CN8 code (cn8_items.csv)
 040490,dairy,1.1,other milk products
-071410,potatoes_roots,,cassava fresh or dried; as cassava fresh
+071410,potatoes_roots,4.0,cassava; as cassava dry (FAO books all of this code as dried cassava, 2021-2023)
 071490,potatoes_roots,,other roots; as fresh
 # --- fish: live weight from EUMOFA's factor per CN8 code and year -----------------------------
 030191,fish,eumofa,live trout

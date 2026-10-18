@@ -453,7 +453,7 @@ version,hs,hs2017,group,to_primary,how
 2017,071350,071350,pulses,,FAO items: Broad beans and horse beans; dry
 2017,071360,071360,pulses,,FAO items: Pigeon peas; dry
 2017,071390,071390,pulses,,FAO items: Lupins; Other pulses n.e.c.; Vetches
-2017,071410,071410,potatoes_roots,,override: cassava fresh or dried; as cassava fresh
+2017,071410,071410,potatoes_roots,4.0,override: cassava; as cassava dry (FAO books all of this code as dried cassava
 2017,071420,071420,potatoes_roots,,FAO items: Sweet potatoes
 2017,071430,071430,potatoes_roots,,FAO items: Yams
 2017,071440,071440,potatoes_roots,,FAO items: Taro
@@ -1402,7 +1402,7 @@ version,hs,hs2017,group,to_primary,how
 2022,071350,071350,pulses,,FAO items: Broad beans and horse beans; dry
 2022,071360,071360,pulses,,FAO items: Pigeon peas; dry
 2022,071390,071390,pulses,,FAO items: Lupins; Other pulses n.e.c.; Vetches
-2022,071410,071410,potatoes_roots,,override: cassava fresh or dried; as cassava fresh
+2022,071410,071410,potatoes_roots,4.0,override: cassava; as cassava dry (FAO books all of this code as dried cassava
 2022,071420,071420,potatoes_roots,,FAO items: Sweet potatoes
 2022,071430,071430,potatoes_roots,,FAO items: Yams
 2022,071440,071440,potatoes_roots,,FAO items: Taro

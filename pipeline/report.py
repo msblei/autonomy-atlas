@@ -122,6 +122,38 @@ def _comext_section() -> str:
             + _table(off[["iso3", "group", "flow", "comext_kt", "fao_kt", "ratio"]]))
 
 
+def _baci_section() -> str:
+    from . import baci
+
+    path = config.PROCESSED / baci.COMPARE
+    if not path.exists():
+        return "<h2>BACI against FAO's trade matrix</h2><p class='bad'>No comparison (download BACI).</p>"
+    c = pd.read_parquet(path)
+    c = c[(c["baci_kt"] >= COMPARE_MIN_KT) | (c["fao_kt"] >= COMPARE_MIN_KT)]
+    r = c["ratio"]
+    two = lambda x: "" if pd.isna(x) else f"{x:.2f}"  # ratios near 1 need two decimals
+    by = (c.groupby("group")["ratio"].agg(pairs="size", median="median",
+                                          within_20=lambda x: ((x >= 0.8) & (x <= 1.25)).mean())
+          .reset_index().sort_values("median"))
+    by[["median", "within_20"]] = by[["median", "within_20"]].map(two)
+    m = c[c["mirror"]].sort_values("fao_kt", ascending=False)
+    off = c.assign(gap=(c["baci_kt"] - c["fao_kt"]).abs()).sort_values("gap", ascending=False).head(15)
+    cols = ["iso3", "group", "flow", "baci_kt", "fao_kt", "ratio"]
+    return ("<h2>BACI against FAO's trade matrix</h2>"
+            f"<p class='note'>Every country's trade {c['years'].iloc[0]}, each group (not fish) and flow "
+            f"with at least {COMPARE_MIN_KT} kt a year on either side, both in the partner lists' basis "
+            f"(methodology, \"BACI\"); FAO's side as the partner lists use it, mirror flows included. "
+            f"{len(c)} pairs: median BACI/FAO {r.median():.2f}, "
+            f"{((r >= 0.9) & (r <= 1.1)).mean():.0%} within 10%.</p>"
+            + _table(by)
+            + f"<p class='note'>Countries whose FAO flows rest partly on partners' reports ({m['iso3'].nunique()}; "
+              f"{((m['ratio'] >= 0.9) & (m['ratio'] <= 1.1)).mean():.0%} of their pairs within 10%), "
+              "largest flows:</p>"
+            + _table(m.head(15).assign(ratio=m.head(15)["ratio"].map(two))[cols])
+            + "<p class='note'>Largest gaps in kt:</p>"
+            + _table(off.assign(ratio=off["ratio"].map(two))[cols]))
+
+
 # What each warning tests, its usual cause, and what the site does (reviews of 2026-10-17/18).
 CHECK_NOTES = {
     "usda_gap": "FAO's and USDA's figures for one country and commodity put its self-sufficiency far "
@@ -202,6 +234,7 @@ def run() -> None:
         "<h2>Blocking findings</h2>" + _table(block, ["check", "iso3", "group", "detail"]),
         _usda_section(),
         _comext_section(),
+        _baci_section(),
         f"<h2>Largest changes since the last release{' (' + rel['stamp'] + ')' if rel else ''}</h2>"
         + (_table(chg.head(TOP_CHANGES)) if rel else "<p>No release stored yet "
            "(`atlas release-snapshot` after publishing).</p>"),

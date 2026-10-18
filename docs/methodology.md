@@ -282,7 +282,8 @@ Source: FAOSTAT Detailed Trade Matrix (`pipeline/trade.py`), same 3-year window 
 figures, yearly mean. Items are mapped to the food groups by CPC code in
 `pipeline/mappings/trade_items.csv` (feed such as oilcakes, live animals, fibres, tobacco and nuts
 other than groundnuts are left out). FAO's trade data has no fish: fish partners come from
-Eurostat Comext, for EU members and the EU bloc only (section "Comext").
+Eurostat Comext for EU members and the EU bloc (section "Comext"), and from CEPII BACI for every
+other country (section "BACI").
 
 - **Product weight, except where processing changes it a lot.** Partner shares count each
   shipment in the FBS basis of its group (`to_primary` in `trade_items.csv`; other items as
@@ -353,10 +354,10 @@ Eurostat Comext, for EU members and the EU bloc only (section "Comext").
   transship (Rotterdam, Antwerp). The UI notes this when they are among the top five; no
   adjustment is applied.
 - **Export file:** `trade.json` keeps, per country × group × flow, the total and every partner with
-  at least 0.5% (at most 24), plus "all food" = all groups added up by weight, fish excluded (only
-  EU members have fish partners, and all-food totals must compare across countries).
-  `meta.group_source` names the source per group where it is not the trade matrix (`fish:
-  eurostat_comext`), `meta.basis` the fish basis.
+  at least 0.5% (at most 24), plus "all food" = all groups added up by weight as shipped, fish
+  excluded (fish is counted in live weight, from other sources). `meta.group_source` names the
+  source per group where it is not the trade matrix (fish: Comext for the EU, BACI elsewhere),
+  `meta.basis` the fish basis.
 
 ### Trade records against the food balance
 
@@ -473,6 +474,55 @@ From the same Comext extraction (`VALUE_IN_EUROS`), for EU members and the EU bl
   value], …]]}}}` with the same list rule as by weight (every partner with at least 0.5%, at most
   24; values in thousand euros, rounded), and `concentration` (HHI over all partners, as by
   weight, of the value shares).
+
+## BACI: fish partners for the rest of the world, and a check on the trade matrix
+
+Source: CEPII BACI, release 202601, HS 2017 edition (`BACI_HS17_V202601.zip`, 2017–2024, one
+CSV per year; `atlas download --source baci`, 795 MB, kept zipped and streamed;
+`pipeline/baci.py`). Licence Etalab Open Licence 2.0; cite Gaulier & Zignago (2010), CEPII
+Working Paper 2010-23. BACI reconciles what exporters and importers report into one flow per
+year, exporter, importer and HS6 product: value (thousand USD, FOB) and quantity (tonnes).
+
+- **Countries:** BACI's numeric codes become ISO3 with its own `country_codes` file; "Other Asia,
+  nes" (S19) is Taiwan, as in the UN's practice and FAO's area list. Partners outside our
+  country lists and self-trade are dropped.
+- **Products:** HS 2017 codes of `hs_items.csv` (version 2017), groups and factors as for Comext.
+  Two kinds of HS6 codes are decided at CN8 level for Comext, fish (EUMOFA factor per CN8 code)
+  and whey (`cn8_items.csv`); at HS6 they take the **factor of the EU's own mix** under that
+  code in that year: Σ (tonnes × CN8 factor) / Σ tonnes over all members' Comext imports and
+  exports (CN8 codes of HS 2022 years counted under the HS 2017 code they convert to). A fish
+  HS6 code and year without Comext tonnes takes the median EUMOFA factor of its CN8 codes that
+  year; a code with neither keeps the nearest year's factor, or 1.
+- **Quantities:** rows without a quantity (under 1% of the value of every group but potatoes and
+  roots, 4%) are left out.
+- **Window:** the FBS window, yearly mean.
+
+**What it is used for.**
+
+1. *Fish partner lists for every country outside the EU* (members and the EU bloc keep Comext,
+   which has CN8 detail): imports = flows with the country as importer, exports = as exporter,
+   live weight, partners that are countries, yearly mean. `source` `baci`. `trade.json`
+   `meta.group_source` gives fish's source by area: `{"fish": {"eu": "eurostat_comext",
+   "other": "cepii_baci"}}`. No "grown" tracing for fish (two sources in one matrix).
+2. *A check on the trade matrix* (not a source; `data/processed/baci_vs_fao.parquet`, on the
+   audit page): for every country, group but fish and flow over the window, BACI against the
+   flows the partner lists use (own reports, mirror flows where a country reported nothing, the
+   under-reported groups filled), both in the FBS basis of the partner lists, partners that are
+   countries. Countries whose FAO flows rest on partners' reports (`meta.mirror`: Russia,
+   Belarus, …) are marked: there BACI is the independent view CLAUDE.md asks for.
+
+**What the comparisons showed (2021–2023).** Fish: BACI's totals in live weight against FAO's
+fish balances, countries with over 50 kt, median 0.94 for imports and 0.97 for exports; the
+large gaps are fish made into fishmeal and fish oil (Peru's exports, Norway's, Turkey's and
+China's imports for fish farms), which the FBS counts as fish and the trade records as feed.
+Other foods: median BACI/FAO 1.00–1.06 per group; for countries on mirror flows (Russia, Iran,
+Argentina, Australia, …) the large flows agree within a few percent. Remaining gaps are real
+differences between the compilations, not mappings: fresh cassava roots crossing from Cambodia
+and Laos to Vietnam and Thailand, which HS6 cannot tell from dried chips (counted ×4 like FAO's
+"cassava dry", the code's whole FAO trade); Romania's cereal imports, which in BACI include
+Ukrainian grain passing through Constanța since 2022; re-exports from the United Arab Emirates.
+The mapping review that the comparisons led to: potato starch left out, crisps moved to
+vegetables, whey split by CN8, HS 0714 10 counted as dried cassava.
 
 ## Where imports were grown (re-export tracing)
 

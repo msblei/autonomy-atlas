@@ -298,7 +298,61 @@ def load_comext_fish():
     d["partner"] = d["partner"].map(COMEXT_ISO).fillna(d["partner"])
     d["flow"] = d["flow"].map({"1": "imports", "2": "exports"})
     d = d[d["c"] != d["partner"]]
+    # methodology "BACI": the EU's own mix per HS 2017 code and year, all partners
+    conv = {(int(r["version"]), r["hs"]): r["hs2017"] for r in read_csv_comments(MAP / "hs_items.csv")}
+    m = d[d["q"] > 0].assign(hs=[conv.get((2017 if y <= 2021 else 2022, p[:6]))
+                                  for y, p in zip(d.loc[d["q"] > 0, "year"], d.loc[d["q"] > 0, "product"])])
+    m = m[m["hs"].notna()].assign(w=lambda x: x["q"] / 10)
+    sums = m.groupby(["hs", "year"])[["t", "w"]].sum()
+    global FISH_MIX
+    FISH_MIX = (sums["t"] / sums["w"]).to_dict()
     return d.groupby(["c", "partner", "named", "flow", "year"], as_index=False)["t"].sum()
+
+
+FISH_MIX = {}
+BACI_ZIP = ROOT / "data/raw/baci/BACI_HS17_V202601.zip"
+
+
+def load_baci_fish(years):
+    """Methodology "BACI": fish flows between countries in live weight, -> [c, partner, flow, t]
+    summed over `years` (both directions of every flow)."""
+    fish6 = sorted({r["hs"] for r in read_csv_comments(MAP / "hs_items.csv")
+                    if r["version"] == "2017" and r["group"] == "fish"})
+    cf = pd.read_excel(EUMOFA_XLSX, sheet_name="List of CF", dtype=str)[["Year", "CN-8", "CF"]]
+    cf.columns = ["year", "cn8", "cf"]
+    cf["cn8"] = cf["cn8"].str.replace(" ", "", regex=False)
+    cf["year"] = cf["year"].astype(int)
+    cf["cf"] = pd.to_numeric(cf["cf"], errors="coerce")
+    cf = cf[cf["cf"] > 0]
+    fac = {}
+    for k in fish6:
+        for y in years:
+            f = FISH_MIX.get((k, y))
+            if f is None:
+                c = cf[(cf["cn8"].str[:6] == k) & (cf["year"] == y)]["cf"]
+                f = float(c.median()) if len(c) else None
+            fac[(k, y)] = f
+        have = {y: fac[(k, y)] for y in years if fac[(k, y)] is not None}
+        for y in years:
+            if fac[(k, y)] is None:
+                fac[(k, y)] = have[min(have, key=lambda z: (abs(z - y), z))] if have else 1.0
+    z = zipfile.ZipFile(BACI_ZIP)
+    cc = pd.read_csv(z.open("country_codes_V202601.csv"), dtype=str)
+    known = set(ALL_ISO.values())
+    iso = {int(c): ("TWN" if i == "S19" else i) for c, i in zip(cc["country_code"], cc["country_iso3"])}
+    iso = {c: i for c, i in iso.items() if i in known}
+    rows = []
+    for y in years:
+        t = pd.read_csv(z.open(f"BACI_HS17_Y{y}_V202601.csv"), dtype={"k": str})
+        t = t[t["k"].isin(fish6) & t["q"].notna()]
+        t = t.assign(e=t["i"].map(iso), m=t["j"].map(iso))
+        t = t[t["e"].notna() & t["m"].notna() & (t["e"] != t["m"])]
+        t["t"] = t["q"] * [fac[(k, y)] for k in t["k"]]
+        rows.append(t[["e", "m", "t"]])
+    b = pd.concat(rows, ignore_index=True)
+    ex = b.rename(columns={"e": "c", "m": "partner"}).assign(flow="exports")
+    im = b.rename(columns={"m": "c", "e": "partner"}).assign(flow="imports")
+    return pd.concat([ex, im], ignore_index=True).groupby(["c", "partner", "flow"], as_index=False)["t"].sum()
 
 
 def load_tm():
@@ -1001,6 +1055,11 @@ def build_trade(D, res, min_origin_t=0.0):
     fish = fish.rename(columns={"t": "t"})[["c", "partner", "flow", "year", "group", "t"]]
     for (c, flow, p), v in (fish.groupby(["c", "flow", "partner"])["t"].sum() / n).items():
         out[c]["fish"].setdefault(flow, {})[p] = v
+    # fish elsewhere (methodology "BACI"): every country outside the EU
+    bf = load_baci_fish(WIN)
+    bf = bf[~bf["c"].isin(EU)]
+    for c, flow, p, v in zip(bf["c"], bf["flow"], bf["partner"], bf["t"]):
+        out[c]["fish"].setdefault(flow, {})[p] = v / n
     eu = pd.concat([bil, fish], ignore_index=True)
     eu = eu[eu["c"].isin(EU) & ~eu["partner"].isin(EU)]
     for (flow, g, p), v in (eu.groupby(["flow", "group", "partner"])["t"].sum() / n).items():
@@ -1142,6 +1201,7 @@ def main():
     SHAS["usda_psd_zip"] = sha256(USDA_ZIP)
     SHAS["comext_gz"] = sha256(COMEXT_GZ)
     SHAS["eumofa_xlsx"] = sha256(EUMOFA_XLSX)
+    SHAS["baci_zip"] = sha256(BACI_ZIP)
     for k in ("ssr.json", "items.json", "trade.json"):
         SHAS["export:" + k] = sha256(OUT_DIR / k)
     log("hashed inputs")

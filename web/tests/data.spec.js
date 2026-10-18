@@ -96,7 +96,7 @@ test("withheld trade flows are never shown, and say so", async ({ page }) => {
   for (const [iso3, group, flow] of withheld) {
     if (!C[iso3]) continue; // trade-only places have no page of their own
     await open(page, `${iso3}/${group}/${flow === "imports" ? "trade" : "sells"}`);
-    await expect(view(page)).toContainText("No reliable trading partners from FAO");
+    await expect(view(page)).toContainText("No reliable trading partners");
     await expect(view(page).locator("ol.partners")).toHaveCount(0);
     if (group === "all") {
       const row = page.locator(`#card [data-row="${flow}"] .value`);
@@ -146,9 +146,9 @@ test("all the numbers shows the published import and export concentration", asyn
   await expect(view(page)).toContainText(`${fmt(h.imports)} / ${fmt(h.exports)}`);
 });
 
-test("fish partners come from Eurostat for EU countries and are not traced", async ({ page }) => {
+test("fish partners: Eurostat for EU countries, BACI elsewhere, never traced", async ({ page }) => {
   const trade = JSON.parse(readFileSync(new URL("../public/data/trade.json", import.meta.url), "utf8"));
-  expect(trade.meta.group_source.fish).toBe("eurostat_comext");
+  expect(trade.meta.group_source.fish).toEqual({ eu: "eurostat_comext", other: "cepii_baci" });
   const [total, parts] = trade.countries.DEU.fish.imports;
   await open(page, "DEU/fish/trade");
   await expect(view(page).locator("ol.partners li").first()).toContainText(
@@ -157,9 +157,13 @@ test("fish partners come from Eurostat for EU countries and are not traced", asy
   await expect(page.locator("#foot")).toContainText("Eurostat Comext");
   // all food leaves fish out, so it compares across countries
   for (const id of Object.keys(trade.countries)) expect(trade.countries[id].fish?.grown).toBeUndefined();
-  expect(trade.countries.USA.fish).toBeUndefined();
+  // outside the EU: CEPII BACI, also not traced
+  const [usTotal, usParts] = trade.countries.USA.fish.imports;
   await open(page, "USA/fish/trade");
-  await expect(view(page)).toContainText("known only for EU countries");
+  await expect(view(page).locator("ol.partners li").first()).toContainText(
+    `${Math.round((usParts[0][1] / usTotal) * 100)}%`);
+  await expect(view(page).locator('[data-mode="grown"]')).toHaveCount(0);
+  await expect(page.locator("#foot")).toContainText("CEPII BACI");
 });
 
 test("money paid and earned: euros from Eurostat for EU countries, tonnes stay in the card", async ({ page }) => {

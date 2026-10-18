@@ -113,3 +113,36 @@ def test_value_partners_mean_over_window_and_eu_bloc_outside_only():
     assert ("DEU", "QV") not in v.index
     assert v[("EU27", "BRA")] == pytest.approx(400.0)  # members' purchases from outside the EU
     assert ("EU27", "NLD") not in v.index
+
+
+def test_baci_fish_partners_leave_the_eu_to_comext():
+    from pipeline import baci
+
+    y = pd.DataFrame([
+        ("NOR", "DEU", "fish", "exports", 2021, 10.0, 30.0),
+        ("NOR", "DEU", "fish", "exports", 2022, 10.0, 60.0),
+        ("DEU", "NOR", "fish", "imports", 2021, 10.0, 30.0),  # an EU member: Comext's job
+        ("NOR", "DEU", "meat", "exports", 2021, 10.0, 99.0),  # not fish
+    ], columns=["iso3", "partner", "group", "flow", "year", "tonnes", "primary"])
+    p = baci.fish_partners(y, (2021, 2023))
+    assert list(p["iso3"]) == ["NOR"]
+    assert p["tonnes"].iloc[0] == pytest.approx(30.0)  # (30 + 60) / 3 years, live weight
+    assert p["source"].iloc[0] == "baci"
+
+
+def test_baci_factor_falls_back_to_eumofa_median_then_nearest_year(tmp_path, monkeypatch):
+    from pipeline import baci, config
+
+    monkeypatch.setattr(config, "INTERIM", tmp_path)
+    pd.DataFrame([("030441", 2021, 1.7, 5.0)], columns=["hs2017", "year", "factor", "tonnes"]) \
+        .to_parquet(tmp_path / comext.MIX)
+    monkeypatch.setattr(comext, "load_eumofa", lambda: pd.DataFrame(
+        [(2022, "03044110", 1.5), (2022, "03044190", 2.5)], columns=["year", "cn8", "cf"]))
+    hs = pd.DataFrame([(2017, "030441", "fish", "eumofa"), (2017, "030289", "fish", "eumofa"),
+                       (2017, "100199", "cereals", "")], columns=["version", "hs", "group", "to_primary"])
+    f = baci.factors(hs, [2021, 2022, 2023]).set_index(["k", "year"])["factor"]
+    assert f[("030441", 2021)] == pytest.approx(1.7)  # the EU's own mix
+    assert f[("030441", 2022)] == pytest.approx(2.0)  # median of EUMOFA's CN8 factors
+    assert f[("030441", 2023)] == pytest.approx(2.0)  # nearest year with a factor
+    assert f[("030289", 2021)] == pytest.approx(1.0)  # nothing at all
+    assert f[("100199", 2022)] == pytest.approx(1.0)

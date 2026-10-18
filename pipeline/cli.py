@@ -13,6 +13,7 @@ import logging
 import sys
 
 from . import (
+    baci,
     comext,
     compute,
     crosswalk,
@@ -77,9 +78,11 @@ def main(argv: list[str] | None = None) -> int:
         comext.extract()
         trade.extract()
         compute.run(years=years)
+        baci.extract(trade.fbs_window())
         trade.run()
         comext.run_compare(trade.fbs_window())
         comext.run_value(trade.fbs_window())
+        baci.run_compare(trade.fbs_window())
         usda.run()
     elif args.cmd == "export":
         export.run()
@@ -90,9 +93,11 @@ def main(argv: list[str] | None = None) -> int:
         comext.extract()
         trade.extract()
         compute.run(years=years)
+        baci.extract(trade.fbs_window())
         trade.run()
         comext.run_compare(trade.fbs_window())
         comext.run_value(trade.fbs_window())
+        baci.run_compare(trade.fbs_window())
         usda.run()
         export.run()
         return _validate()

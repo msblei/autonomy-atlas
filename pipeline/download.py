@@ -94,17 +94,12 @@ def boundaries(*, force: bool = False) -> list[Path]:
     return [nuts, cntr, ne]
 
 
-def baci() -> None:
-    """BACI has no stable direct URL. Print instructions instead of guessing."""
-    target = config.RAW / "baci"
-    target.mkdir(parents=True, exist_ok=True)
-    print(
-        "BACI must be downloaded manually (free, Etalab 2.0 licence):\n"
-        f"  1. Open {config.BACI_PAGE}\n"
-        "  2. Download the latest HS22 (or HS17) release ZIP.\n"
-        f"  3. Extract the BACI_HSxx_Yyyyy_Vyyyymm.csv files into {target}\n"
-        "Cite: Gaulier & Zignago (2010), BACI, CEPII Working Paper 2010-23."
-    )
+def baci(*, force: bool = False) -> list[Path]:
+    """CEPII BACI, HS 2017 edition (795 MB, kept zipped; pipeline/baci.py). Etalab 2.0; cite
+    Gaulier & Zignago (2010), CEPII Working Paper 2010-23. A new release changes the file name:
+    update SOURCES["cepii_baci"] and baci.RELEASE together."""
+    url = config.SOURCES["cepii_baci"]["file_url"]
+    return [fetch(url, config.RAW / "baci" / url.rsplit("/", 1)[1], force=force, timeout=600)]
 
 
 def jrc() -> None:
@@ -271,11 +266,11 @@ ALL = {
 
 def run(sources: list[str] | None = None, *, force: bool = False) -> None:
     config.ensure_dirs()
-    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext"]
+    sources = sources or ["faostat", "eurostat", "boundaries", "usda", "comext", "baci"]
     for name in sources:
         fn = ALL[name]
         log.info("== %s", name)
-        if name in ("baci", "jrc", "crop_calendar"):
+        if name in ("jrc", "crop_calendar"):
             fn()
         else:
             fn(force=force)

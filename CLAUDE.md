@@ -81,13 +81,15 @@ make serve       # cd web && npm run dev
    plus "all food" protein coverage, tonnes/kcal basis, EU bloc when zoomed out, 3-year average,
    trends; JRC balances for EU dairy/tomatoes/olive oil/wine; USDA second opinion; every published
    number verified (`make verify`, independent recompute), every audit warning resolved.
-2. **Phase 2 (in part):** partner flows and arcs come from the FAOSTAT Detailed Trade Matrix for
+2. **Phase 2 (done, 2026-10):** partner flows and arcs come from the FAOSTAT Detailed Trade Matrix for
    now (partners' reports where a country under-reports; processed goods converted to the FBS
    basis; implausible flows withheld), with the share from Russia and Ukraine on the trade page
    and import/export concentration (HHI) on "All the numbers". Eurostat Comext adds EU members'
    fish partners and the EU bloc's fish balance, and a comparison with the FAO matrix on the audit
    page, and a value basis in euros for EU trade (what members pay and earn, per partner).
-   Still to do: CEPII BACI.
+   CEPII BACI gives fish partners for every other country and a check of the FAO matrix for
+   all countries (mirror-flow countries such as Russia marked) on the audit page. Phase 2 is
+   done but for the arcs' deck.gl ArcLayer (MapLibre lines do the job so far).
 3. **Phase 3:** seasons (FAO Crop Calendar API, USDA IPAD, GGCMI) as a 12-month strip per
    country × crop; NUTS2 production from Eurostat `apro_cpshr` and JRC EUCROPMAP rasters as a
    "what is grown where" layer.
@@ -104,7 +106,7 @@ make serve       # cd web && npm run dev
 | Bilateral trade (HS6/CN8, EU members) | Eurostat Comext DS-045409 | SDMX API `https://ec.europa.eu/eurostat/api/comext/dissemination/sdmx/2.1/data/DS-045409/` (`atlas download --source comext`, ~270 queued requests merged into one file) | CC BY 4.0 (Eurostat). EU reporters only. Fish partners and the EU bloc's fish shares (FAO has no fish trade); other foods only compared with the FAO matrix (`pipeline/comext.py`). HS6 → groups via `mappings/hs_items.csv` (`atlas crosswalk`) |
 | HS ↔ CPC correspondence | UN Statistics Division: CPC 2.1–HS 2017 correspondence, HS 2022→2017 conversion | `https://unstats.un.org/unsd/classifications/Econ` | UN terms of use (attribution). Base of the HS6 crosswalk; hand decisions in `mappings/hs_overrides.csv` |
 | Fish live-weight factors | EUMOFA, Metadata 2 Annex 7 "Conversion factors by CN-8 code" | `https://fishery-aquaculture-market-observatory.ec.europa.eu/en/data/metadata` | EC reuse notice (attribution). Per CN8 code and year, 2011– |
-| Bilateral trade (HS6, reconciled) | CEPII BACI | manual download from CEPII page | Etalab 2.0; ~2-year lag |
+| Bilateral trade (HS6, reconciled) | CEPII BACI, HS 2017 edition, release 202601 | `https://www.cepii.fr/DATA_DOWNLOAD/baci/data/BACI_HS17_V202601.zip` (`atlas download --source baci`, 795 MB, kept zipped) | Etalab 2.0, cite Gaulier & Zignago (2010). ~1-year lag. Fish partners outside the EU (live weight with the EU's EUMOFA mix per HS6); other foods only compared with the FAO matrix (`pipeline/baci.py`). A new release renames the file: update `config.SOURCES` and `baci.RELEASE` |
 | EU balances (dairy, tomatoes, olive oil, wine) | DG AGRI–JRC "EU estimated agricultural balance sheets" | browser download only (`atlas download --source jrc` prints steps) → `data/raw/jrc/` | EC reuse notice (attribution). Intra-EU trade counted once, processed goods converted back; replaces FAO for EU dairy, tomatoes, olive oil, wine (`pipeline/jrc.py`, comparison in methodology) |
 | Second opinion on FBS (cereals, oilseeds, oils, sugar, meat, butter, coffee) | USDA FAS PSD | `https://apps.fas.usda.gov/psdonline/downloads/psd_alldata_csv.zip` (`atlas download --source usda`) | US government work, public domain. EU only as a bloc. Compared, never substituted: `pipeline/usda.py`; large gaps shown next to FAO's figure |
 | Regional crop production | Eurostat `apro_cpshr` | SDMX TSV: `https://ec.europa.eu/eurostat/api/dissemination/sdmx/2.1/data/apro_cpshr?format=TSV&compressed=true` | NUTS2, 2000–2024 |

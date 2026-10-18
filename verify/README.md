@@ -22,6 +22,7 @@ Inputs, read directly:
 - `data/raw/usda/psd_alldata_csv.zip` (USDA PSD, read out of the zip)
 - `data/raw/comext/DS-045409_food.csv.gz` (Eurostat Comext; only its fish CN8 rows are used) and
   `data/raw/eumofa/conversion_factors_cn8.xlsx` (EUMOFA live-weight factors)
+- `data/raw/baci/BACI_HS17_V202601.zip` (CEPII BACI; fish HS6 codes of the window years only)
 - `pipeline/mappings/{world.csv,trade_only.csv,countries.yaml,products.yaml,trade_items.csv,usda_countries.csv,comext_partners.csv}`
 
 Outputs:
@@ -120,7 +121,10 @@ alternatives now are the pipeline's earlier behaviours, kept to explain any regr
     published (JRC-adjusted) national P and M. Trade-only countries, and countries without a
     window balance, keep trade-matrix imports and P = 0. Fish partners: EU members' Comext rows
     (CN8 under 0301–0309, 1604, 1605, EUMOFA factor of that year or the nearest listed year; the
-    earlier year on a tie), named partners only; no "grown"; "all" leaves fish out.
+    earlier year on a tie), named partners only; no "grown"; "all" leaves fish out. Other
+    countries' fish from BACI: live weight with the EU's Comext mix per HS 2017 code and year
+    (all partners), else the median EUMOFA factor of CN8 codes starting with that code that
+    year, else the nearest year (earlier on a tie), else 1; rows without quantity dropped.
 
 ## Not recomputed
 

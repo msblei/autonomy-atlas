@@ -109,6 +109,28 @@ def read_raw() -> pd.DataFrame:
 
 def convert(w: pd.DataFrame, hs: pd.DataFrame, cf: pd.DataFrame, partners: dict[str, str]) -> pd.DataFrame:
     """Raw rows -> groups, tonnes and primary equivalents (see module doc)."""
+    out = _rows(w, hs, cf, partners)
+    keys = ["reporter", "partner", "country", "group", "flow", "year"]
+    return out.groupby(keys, as_index=False)[["tonnes", "primary", "eur"]].sum(min_count=1)
+
+
+MIX = "comext_hs6_factors.parquet"
+
+
+def mix_factors(rows: pd.DataFrame, hs: pd.DataFrame) -> pd.DataFrame:
+    """For HS6 codes decided at CN8 level (fish, whey): the factor of the EU's own mix under the
+    code each year, Σ tonnes × factor / Σ tonnes over members' imports and exports, keyed by the
+    HS 2017 code (methodology, "BACI"). Columns: hs2017, year, factor, tonnes."""
+    r = rows[(rows["product"].str.len() == 8) & rows["tonnes"].notna() & (rows["tonnes"] > 0)]
+    conv = hs[["version", "hs", "hs2017"]].drop_duplicates(["version", "hs"])
+    r = r.assign(hs=r["product"].str[:6]).merge(conv, on=["version", "hs"], how="inner")
+    r = r.assign(w=r["tonnes"] * r["factor"])
+    g = r.groupby(["hs2017", "year"], as_index=False)[["w", "tonnes"]].sum()
+    return g.assign(factor=g["w"] / g["tonnes"]).drop(columns="w")
+
+
+def _rows(w: pd.DataFrame, hs: pd.DataFrame, cf: pd.DataFrame, partners: dict[str, str]) -> pd.DataFrame:
+    """Raw rows in groups with their factor, one row per product (before summing)."""
     w = w.assign(year=w["year"].astype(int), flow=w["flow"].map(FLOWS), tonnes=w["q100"] / 10)
     w = w[w["flow"].notna()]
     w["version"] = w["year"].map(hs_version)
@@ -146,9 +168,7 @@ def convert(w: pd.DataFrame, hs: pd.DataFrame, cf: pd.DataFrame, partners: dict[
     out["reporter"] = out["reporter"].map(partners)
     out["country"] = out["partner"].isin(partners)
     out["partner"] = out["partner"].map(partners).fillna(out["partner"])
-    out = out[out["partner"] != out["reporter"]]  # Spain with its Canary Islands, Ceuta, Melilla
-    keys = ["reporter", "partner", "country", "group", "flow", "year"]
-    return out.groupby(keys, as_index=False)[["tonnes", "primary", "eur"]].sum(min_count=1)
+    return out[out["partner"] != out["reporter"]]  # Spain with its Canary Islands, Ceuta, Melilla
 
 
 def extract() -> None:
@@ -159,7 +179,11 @@ def extract() -> None:
         dest.unlink(missing_ok=True)
         return
     partners = load_partners()
-    out = convert(read_raw(), crosswalk.load(), load_eumofa(), partners)
+    hs = crosswalk.load()
+    rows = _rows(read_raw(), hs, load_eumofa(), partners)
+    mix_factors(rows, hs).to_parquet(config.INTERIM / MIX, index=False)
+    keys = ["reporter", "partner", "country", "group", "flow", "year"]
+    out = rows.groupby(keys, as_index=False)[["tonnes", "primary", "eur"]].sum(min_count=1)
     out.to_parquet(dest, index=False)
     log.info("wrote %s (%d rows; fish %.0f kt/year imported by members, live weight)", dest, len(out),
              out.query("group == 'fish' and flow == 'imports'").groupby("year")["primary"].sum().mean() / 1000)

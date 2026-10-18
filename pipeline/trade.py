@@ -34,7 +34,7 @@ import pyarrow as pa
 import pyarrow.compute as pc
 import pyarrow.csv as pacsv
 
-from . import comext, config
+from . import baci, comext, config
 from .compute import EU_BLOC
 from .harmonise import load_countries
 
@@ -352,6 +352,9 @@ def run() -> None:
     cx = config.INTERIM / comext.YEARLY
     if cx.exists():  # EU members' fish partners (the trade matrix has no fish)
         p = pd.concat([p, comext.fish_partners(pd.read_parquet(cx), years)], ignore_index=True)
+    bx = config.INTERIM / baci.YEARLY
+    if bx.exists():  # everyone else's fish partners
+        p = pd.concat([p, baci.fish_partners(pd.read_parquet(bx), years)], ignore_index=True)
     p = add_eu_bloc(p)
     groups = groups[groups["basis"] == "tonnes"][["iso3", "group", "production", "imports"]]
     out = pd.concat([p, trace_origins(p, groups)], ignore_index=True)

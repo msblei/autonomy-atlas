@@ -112,6 +112,14 @@ SOURCES: dict[str, dict[str, str]] = {
         "licence": "United Nations terms of use (free reuse with attribution)",
         "licence_url": "https://www.un.org/en/about-us/terms-of-use",
     },
+    "cepii_baci": {
+        "title": "BACI, international trade database at the product level (HS 2017, release 202601)",
+        "publisher": "CEPII; Gaulier and Zignago (2010), CEPII Working Paper 2010-23",
+        "url": "https://www.cepii.fr/CEPII/en/bdd_modele/bdd_modele_item.asp?id=37",
+        "file_url": "https://www.cepii.fr/DATA_DOWNLOAD/baci/data/BACI_HS17_V202601.zip",
+        "licence": "Etalab Open Licence 2.0",
+        "licence_url": "https://www.etalab.gouv.fr/wp-content/uploads/2018/11/open-licence.pdf",
+    },
     "gisco_countries": {
         "title": "Countries 2024, 1:20 million",
         "publisher": "Eurostat GISCO",
@@ -143,8 +151,7 @@ COMEXT_FIRST_YEAR = 2021  # food other than fish: the FBS window and later (a co
 COMEXT_FISH_FIRST_YEAR = 2010  # fish: every trend year, for the EU bloc's fish balance
 
 # --- Trade (phase 2) -----------------------------------------------------------------------------
-# BACI has no stable download URL; fetch manually from the CEPII page and drop the CSVs in
-# data/raw/baci/. Licence: Etalab 2.0, cite CEPII.
+# BACI: SOURCES["cepii_baci"] (a direct zip per release; pipeline/baci.py names the release).
 BACI_PAGE = "https://www.cepii.fr/DATA_DOWNLOAD/baci/doc/baci_webpage.html"
 
 # --- Seasons (phase 3) ---------------------------------------------------------------------------
