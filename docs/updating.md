@@ -35,7 +35,7 @@ trade, Comext, BACI, regions, feed and scenario take the same window. No year is
 | CEPII BACI | once a year (January) | the file name carries the release (`V202601`): change `config.SOURCES["cepii_baci"]["file_url"]` **and** `baci.RELEASE` together, then download |
 | Eurostat `apro_cpshr` | a few times a year | `--force` download |
 | EUMOFA conversion factors | when CN codes change (yearly) | the URL holds a dated folder (`system/files/2026-05/`): if the download fails, take the new link from the EUMOFA metadata page and update `config.SOURCES["eumofa_cf"]` |
-| UNSD CPC–HS correspondences | with a new HS version | see "Known dates" |
+| UNSD CPC–HS correspondences and HS conversions | with a new HS version (next: HS 2028) | see "Known dates" |
 | GGCMI calendars, ISIMIP land use and country masks, JRC crop shares, GISCO boundaries | rarely (static releases) | nothing; a new release is a new URL in `config.SOURCES` |
 
 ## The one manual step: JRC balance sheets
@@ -70,13 +70,16 @@ and wine fall back to FAO's figures (`pipeline/jrc.py`).
 
 ## Known dates that will break something
 
-- **HS 2027, from January 2027.** Comext reports each year in the HS version in force
-  (`comext.hs_version`: 2017 up to 2021, 2022 after). From 2027 it will use HS 2027 codes, which
-  `mappings/hs_items.csv` does not know: new codes would drop out of the Comext figures. Before
-  the first refresh that includes 2027: add the UNSD HS 2027 → HS 2022 (or → HS 2017) conversion
-  to `pipeline/crosswalk.py` the way HS 2022 is handled, extend `hs_version`, regenerate with
-  `atlas crosswalk`. The FBS window will not include 2027 before late 2029, but the monthly
-  imports and the money basis come from Comext's latest years sooner.
+- **HS 2028, from 1 January 2028.** (The revision first planned for 2027 was postponed a year by
+  the WCO.) Comext reports each year in the HS version in force (`comext.hs_version`: 2017 up to
+  2021, 2022 from 2022 to 2027). HS 2028 codes are not in `mappings/hs_items.csv`, so
+  `hs_version` stops the build on any 2028 year instead of letting those products drop out.
+  Expect this from the first monthly Comext refresh in early 2028. To fix: download the UNSD
+  "HS2028toHS2022ConversionAndCorrelationTables.xlsx" (UNSD publishes it on
+  `unstats.un.org/unsd/classifications/Econ`; not out as of October 2026, only the WCO's PDF
+  correlation tables), convert HS 2028 → HS 2022 → HS 2017 in `pipeline/crosswalk.py` the way
+  HS 2022 is handled, let `hs_version` return 2028, and regenerate with `atlas crosswalk`.
+  The FBS window reaches 2028 only around 2030; the monthly imports and money basis sooner.
 - **NUTS 2024 → next NUTS version.** `regions.py` matches codes to the NUTS 2024 boundaries, else
   2021: add the new version's GISCO file to `regions.NUTS` when Eurostat switches.
 - **Ukraine's backfilled statistics** (2022–2025, published monthly since December 2025) change

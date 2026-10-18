@@ -151,3 +151,14 @@ def test_baci_factor_falls_back_to_eumofa_median_then_nearest_year(tmp_path, mon
 def test_fresh_headings_name_each_product_once():
     assert len(comext.FRESH) == len(set(comext.FRESH.values()))
     assert all(len(h) == 4 and h[:2] in ("07", "08") for h in comext.FRESH)
+
+
+def test_hs_2028_years_stop_instead_of_dropping_codes():
+    import pytest
+
+    from pipeline import comext
+
+    assert comext.hs_version(2021) == 2017
+    assert comext.hs_version(2027) == 2022
+    with pytest.raises(ValueError, match="HS 2028"):
+        comext.hs_version(2028)

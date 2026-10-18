@@ -77,7 +77,12 @@ def fish_cn8_codes() -> list[str]:
 
 
 def hs_version(year: int) -> int:
-    """Comext reports in the HS version in force: HS 2017 up to 2021, HS 2022 from 2022."""
+    """Comext reports in the HS version in force: HS 2017 up to 2021, HS 2022 from 2022 to 2027.
+    HS 2028 applies from 1 January 2028; its codes are not in hs_items.csv, so stop rather than
+    drop them silently (docs/updating.md, "Known dates")."""
+    if year >= 2028:
+        raise ValueError(f"Comext {year} is in HS 2028 codes, which the crosswalk does not convert yet: "
+                         "add the UNSD HS 2028 -> HS 2022 conversion (docs/updating.md, 'Known dates')")
     return 2017 if year <= 2021 else 2022
 
 
