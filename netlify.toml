@@ -1,0 +1,19 @@
+# Netlify serves the prebuilt site from web/dist: the data files are produced by the Python
+# pipeline on a laptop (make release), not on Netlify, so there is no build command here.
+# Deploy with `netlify deploy --prod --dir web/dist` after `make release`.
+[build]
+  publish = "web/dist"
+
+# Vite names its bundles by content hash: safe to cache for a year. Everything else (index.html,
+# data/*.json, fonts) keeps Netlify's default (revalidate on every request, ETag).
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"

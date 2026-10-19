@@ -31,3 +31,6 @@ verify/.cache/
 verify/recompute_report.json
 web/test-results/
 web/playwright-report/
+
+# Netlify CLI state (site link)
+.netlify/
