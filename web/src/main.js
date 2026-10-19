@@ -1530,8 +1530,8 @@ function moveMarker() {
 // The footer of every page: the view's tools and sources, then contact and the legal pages.
 function renderFoot() {
   renderFootBody();
-  document.getElementById("foot").insertAdjacentHTML("beforeend", `<p class="legal">
-    Borders © EuroGeographics for the administrative boundaries ·
+  document.getElementById("foot").insertAdjacentHTML("beforeend", `<p class="legal">Borders © EuroGeographics</p>
+    <p class="legal">
     <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">Report an error</a> ·
     <a href="#legal"${state.level === "legal" ? ` aria-current="page"` : ""}>Legal notice</a> ·
     <a href="#privacy"${state.level === "privacy" ? ` aria-current="page"` : ""}>Privacy</a></p>`);
