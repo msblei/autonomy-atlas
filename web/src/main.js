@@ -1,4 +1,7 @@
-import maplibregl from "maplibre-gl";
+// The map library (250 KB compressed, by far the largest download) arrives on its own, after the
+// page's own code: the start page is drawn as soon as the figures are in, the map follows
+// (startMap). Until then state.mapReady is false and nothing touches `map` or `popup`.
+let maplibregl, map, popup;
 import { feature as topoFeature } from "topojson-client";
 import "maplibre-gl/dist/maplibre-gl.css";
 import "@fontsource-variable/atkinson-hyperlegible-next";
@@ -96,21 +99,28 @@ const RANK_MIN_POP_K = 500;
 // ours too, so tiny places (Vatican, Guernsey) never crowd the big ones. The label font is the
 // site's own, as glyph tiles in public/fonts (scripts/build-glyphs.mjs): nothing comes from a
 // third-party server.
-const map = new maplibregl.Map({
-  container: "map",
-  style: {
-    version: 8,
-    glyphs: `${new URL("fonts/", document.baseURI).href}{fontstack}/{range}.pbf`,
-    sources: {},
-    layers: [{ id: "ocean", type: "background", paint: { "background-color": "#d6dfe0" } }],
-  },
-  center: [15, 30],
-  zoom: 1.5,
-  minZoom: 1,
-  maxZoom: 7,
-  attributionControl: false,
-});
-map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+async function startMap() {
+  maplibregl = (await import("maplibre-gl")).default;
+  map = new maplibregl.Map({
+    container: "map",
+    style: {
+      version: 8,
+      glyphs: `${new URL("fonts/", document.baseURI).href}{fontstack}/{range}.pbf`,
+      sources: {},
+      layers: [{ id: "ocean", type: "background", paint: { "background-color": "#d6dfe0" } }],
+    },
+    center: [15, 30],
+    zoom: 1.5,
+    minZoom: 1,
+    maxZoom: 7,
+    attributionControl: false,
+  });
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
+  map.once("movestart", dropLand);
+  popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "tip", offset: 14 });
+  map.on("load", onMapLoad);
+}
+startMap();
 
 // The grey land from index.html stands in for the map until its first colours are drawn (or until
 // the map moves, since the silhouette cannot follow).
@@ -121,9 +131,6 @@ function dropLand() {
   land.addEventListener("transitionend", () => land.remove(), { once: true });
   setTimeout(() => land.remove(), 500);
 }
-map.once("movestart", dropLand);
-
-const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "tip", offset: 14 });
 
 async function loadJSON(path) {
   const r = await fetch(path);
@@ -268,7 +275,7 @@ const dataReady = Promise.all([geoReady, loadJSON("data/ssr_core.json").then(pre
   return null;
 });
 
-map.on("load", async () => {
+async function onMapLoad() {
   const geo = await dataReady;
   if (!geo) return;
 
@@ -355,7 +362,7 @@ map.on("load", async () => {
     requestAnimationFrame(() => { queued = false; if (mouse) hoverAt(mouse); });
   });
   map.on("click", "atlas-fill", (e) => select(e.features[0].properties.iso3));
-});
+}
 
 // Country names, in four ranks by size: the big ones from the start, the small ones only zoomed
 // in, so the map never turns into a page of text. Zoomed out, the EU gets one label.

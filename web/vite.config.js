@@ -31,4 +31,11 @@ export default defineConfig({
   base: "./",
   server: { port: 5173, open: false },
   plugins: [inlineCss()],
+  build: {
+    rollupOptions: {
+      // main.js imports the map library on its own (import()), so the page's code runs before it;
+      // its own chunk, which Vite lists as a modulepreload so both download from the start.
+      output: { manualChunks: (id) => (id.includes("node_modules/maplibre-gl/") ? "maplibre" : undefined) },
+    },
+  },
 });
