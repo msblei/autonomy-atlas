@@ -127,6 +127,42 @@ def test_imports_far_above_trade_records_against_the_typical_ratio():
     assert abs(v["ssr_alt"].iloc[0] - 100 * 19968 / (64649 - (50974 - m_alt))) < 1e-6
 
 
+def test_dairy_is_not_read_against_the_trade_records():
+    # the records' milk equivalent (EU factors) and FAO's differ by product: no typical ratio.
+    # United Kingdom 2021-2023: 9,693 kt in the balance, 3,363 kt in the records (2.9x)
+    rows = [[c, "dairy", 100, 120, 220, 1000, ""] for c in ("AAA", "BBB", "CCC", "DDD")]
+    rows.append(["GBR", "dairy", 15000, 9693, 20000, 67000, ""])
+    trade = pd.Series({(c, "dairy"): 100.0 for c in ("AAA", "BBB", "CCC", "DDD")} | {("GBR", "dairy"): 3363.0})
+    assert checks.plausibility(groups_frame(rows), trade).empty
+    # the same figures as fruit are read against the records
+    fruit = [r[:1] + ["fruit"] + r[2:] for r in rows]
+    trade_f = pd.Series({(c, "fruit"): v for (c, _), v in trade.items()})
+    v = checks.plausibility(groups_frame(fruit), trade_f)
+    assert set(v["iso3"]) == {"GBR"} and "imports_vs_trade" in set(v["test"])
+
+
+def test_records_resting_on_partners_reports_give_no_second_reading():
+    # Russia 2022-2023: its dairy imports are partners' reports (mixed window), a tenth of the real flow
+    from pipeline import plausible
+
+    partners = pd.DataFrame([
+        ["RUS", "dairy", "imports", "BLR", 1_000_000.0, "mixed"],
+        ["RUS", "dairy", "imports", "ARG", 50_000.0, "reported"],
+        ["RUS", "cereals", "imports", "KAZ", 200_000.0, "reported"],
+        ["RUS", "cereals", "exports", "EGY", 9_000_000.0, "mirror"],
+    ], columns=["iso3", "group", "flow", "partner", "tonnes", "source"])
+    assert plausible.own_records(partners) == {("RUS", "cereals")}
+    kt = plausible.trade_imports(partners)
+    assert kt.to_dict() == {("RUS", "cereals"): 200.0, ("RUS", "dairy"): 1050.0}
+    # the pair counts in the typical ratio but is not read against it: four at 1.2x, Russia at 3x
+    rows = [[c, "fruit", 100, 120, 220, 1000, ""] for c in ("AAA", "BBB", "CCC", "DDD")]
+    rows.append(["RUS", "fruit", 100, 300, 400, 2000, ""])  # 200 kg a person: under fruit's ceiling
+    trade = pd.Series({(c, "fruit"): 100.0 for c in ("AAA", "BBB", "CCC", "DDD", "RUS")})
+    assert list(checks.plausibility(groups_frame(rows), trade)["iso3"]) == ["RUS"]
+    own = {(c, "fruit") for c in ("AAA", "BBB", "CCC", "DDD")}
+    assert checks.plausibility(groups_frame(rows), trade, own).empty
+
+
 def test_withheld_for_another_reason_is_not_tested_but_own_verdict_is_retested():
     g = groups_frame([["NZL", "dairy", 22007, 417, 9814, 5130, "supply_nonpositive"],
                       ["IRL", "dairy", 8960, 1279, 4588, 5110, checks.IMPLAUSIBLE]])

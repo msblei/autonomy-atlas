@@ -1596,8 +1596,7 @@ function viewIntro() {
   return `
     <h1 class="hero">Could your country feed itself?</h1>
     <p class="lede">How long its own food would last, if it bought nothing from abroad.</p>
-    <p class="small">What a country's own fields, pastures and waters yield against what it uses:
-      a measure of land and harvests, not of hunger or food security.</p>
+    <p class="small">What a country's own fields, pastures and waters yield against what it uses.</p>
     ${own ? `<button type="button" class="primary" data-go="#${own}">
       <span>Start with ${nameOf(own)}</span>${CHEVRON}</button>` : ""}
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
@@ -1611,7 +1610,7 @@ function viewNoData() {
   const nat = state.data?.meta?.national?.[state.iso3];
   if (nat && state.group === "all") {
     const s = state.data.meta.sources[nat.source];
-    return `<p class="q">Food produced in ${nameOf(state.iso3)} alone would give enough calories</p>
+    return `<p class="q">Food produced in ${inText(state.iso3)} alone would give enough calories</p>
     <p class="answer">${forHowLong(nat.value)}.</p>
     ${strip(nat.value)}
     <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}. This is its own statistic:
@@ -1649,7 +1648,7 @@ function viewCountry() {
         contradict themselves, and the total changes a lot depending on how they are read.</p></details>`
     : v == null
     ? `<p class="lead-none">Not enough data from FAO.</p>`
-    : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough calories</p>
+    : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${inText(id)}`} alone would give enough calories</p>
       <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
       ${strip(v)}${restsOn(id)}`;
   return `
@@ -1674,12 +1673,15 @@ function foodList(id) {
   return `
     <h3>Food by food</h3>
     <ul class="foodlist">${rows.map(({ g, v, robust }) => `
-      <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}">
+      <li><a href="${hashFor({ iso3: id, group: g.key, level: "food" })}"${robust
+        ? ` title="FAO's figures for ${g.label.toLowerCase()} do not hold together; only this band is certain, on any reading of them"` : ""}>
         ${foodIcon(g.key)}
         <span class="name">${g.label}</span>
         ${strip(robust ? Math.min(v, SEASONS[4].max) : v, { small: true })}
-        <span class="when">${robust ? robustBand(v) : lasts(v, { short: true })}</span>
+        <span class="when${robust ? " band" : ""}">${robust ? `${robustBand(v)}*` : lasts(v, { short: true })}</span>
       </a></li>`).join("")}</ul>
+    ${rows.some((r) => r.robust) ? `<p class="small">* FAO's figures for ${namesOf(rows.filter((r) => r.robust).map((r) => r.g.label.toLowerCase()))}
+      do not hold together; only the band is certain, on any reading of them.</p>` : ""}
     ${missing.length ? `<p class="small">No figure for ${namesOf(missing.map((g) => g.label.toLowerCase()))}:
       FAO's figures for ${missing.length === 1 ? "it do" : "them do"} not hold together.</p>` : ""}`;
 }
@@ -1734,7 +1736,7 @@ function viewFood() {
          it here, and leave ${who} out of every comparison for ${food()}.</p></details>`
     : v == null
     ? `<p class="lead-none">No data from FAO.</p>`
-    : `<p class="q">${cap(food())} produced ${id === EU ? "in the EU" : `in ${who}`} alone${v < 0.5 ? ":" : " would last"}</p>
+    : `<p class="q">${cap(food())} produced ${id === EU ? "in the EU" : `in ${inText(id)}`} alone${v < 0.5 ? ":" : " would last"}</p>
        <p class="answer"><a href="${link({ level: "sources" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
        ${strip(v)}`;
   return `

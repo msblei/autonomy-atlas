@@ -239,13 +239,22 @@ USE_CEILING_KG = {"dairy": 550, "meat": 150, "eggs": 30, "fish": 120, "fruit": 2
 PLAUS_TRADE_OVER = 1.5
 PLAUS_TRADE_MIN_KT = 50.0  # both the balance and the records at least 50 kt
 MIN_POPULATION_K = 500  # micro-states and tourist hubs (Macao, Maldives) are left out
+# Groups the trade records cannot read a second time: dairy, where the records' milk equivalent
+# follows the EU's factors and the balance FAO's, so the ratio between them runs from 1.2 to 2.7
+# across the middle half of countries (cereals: 1.2 to 1.7) and no typical ratio describes a
+# country's product mix (methodology, "Withheld as implausible", 2026-10-19).
+NO_TRADE_READING = frozenset({"dairy"})
 
 
-def plausibility(groups: pd.DataFrame, trade_imports: pd.Series | None = None) -> pd.DataFrame:
+def plausibility(groups: pd.DataFrame, trade_imports: pd.Series | None = None,
+                 own_records: set | None = None) -> pd.DataFrame:
     """One row per (iso3, group, test) whose second reading moves the group's SSR materially.
 
     `groups`: tonnes rows (iso3, group, production, imports, supply, population in 1000, flag);
-    `trade_imports`: kt per (iso3, group) from the trade records. Only figures that are shown
+    `trade_imports`: kt per (iso3, group) from the trade records (plausible.trade_imports);
+    `own_records`: the pairs resting on the country's own reports (plausible.own_records): every
+    pair counts in the group's typical ratio, only these are read against it; dairy gets no trade
+    reading (NO_TRADE_READING). Only figures that are shown
     (flag "" or IMPLAUSIBLE) are tested. Columns: iso3, group, test ("use_per_person" |
     "imports_vs_trade"), detail, ssr, ssr_alt (NaN: the second reading leaves no use at home),
     value, limit, trade_kt."""
@@ -268,9 +277,12 @@ def plausibility(groups: pd.DataFrame, trade_imports: pd.Series | None = None) -
     if trade_imports is not None:
         j = g.set_index(["iso3", "group"]).join(
             trade_imports.rename("trade_kt").rename_axis(["iso3", "group"]), how="inner")
-        j = j[(j["imports"] >= PLAUS_TRADE_MIN_KT) & (j["trade_kt"] >= PLAUS_TRADE_MIN_KT)]
+        j = j[(j["imports"] >= PLAUS_TRADE_MIN_KT) & (j["trade_kt"] >= PLAUS_TRADE_MIN_KT)
+              & ~j.index.get_level_values("group").isin(NO_TRADE_READING)]
         j["ratio"] = j["imports"] / j["trade_kt"]
         j["typical"] = j.groupby(level="group")["ratio"].transform("median")
+        if own_records is not None:
+            j = j[[k in own_records for k in j.index]]
         j = j[j["ratio"] > PLAUS_TRADE_OVER * j["typical"]]
         for (iso3, group), r in j.iterrows():
             m_alt = r["trade_kt"] * r["typical"]

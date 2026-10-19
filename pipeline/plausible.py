@@ -26,12 +26,28 @@ def trade_imports(partners: pd.DataFrame) -> pd.Series:
     return p.groupby(["iso3", "group"])["tonnes"].sum() / 1000
 
 
+def own_records(partners: pd.DataFrame) -> set[tuple[str, str]]:
+    """(iso3, group) pairs whose import records rest on the country's own reports only. Where a
+    partner row is a mirror or mixed flow (trade.py: partners' reports for a year the country did
+    not report, or for a group it under-reports), the records are a stopgap for the partner
+    lists, not a yardstick for the balance: Russia 2022-2023, partners' reports hold a tenth of
+    its dairy imports (methodology, "Withheld as implausible"). Such pairs still count in the
+    group's typical ratio, which is a statistic over every record; they are not read against it."""
+    p = partners[partners["flow"] == "imports"]
+    if "source" not in p:
+        return set(p.groupby(["iso3", "group"]).size().index)
+    # fish records come from Comext and BACI ("comext", "baci"): a country's own records too
+    own = p.groupby(["iso3", "group"])["source"].agg(lambda s: not s.isin(["mirror", "mixed"]).any())
+    return set(own[own].index)
+
+
 def verdicts() -> pd.DataFrame:
     groups = pd.read_parquet(config.PROCESSED / "ssr_groups.parquet")
     groups = groups[groups["basis"] == "tonnes"]
     src = config.PROCESSED / "trade_partners.parquet"
     imports = trade_imports(pd.read_parquet(src)) if src.exists() else None
-    return checks.plausibility(groups, imports)
+    own = own_records(pd.read_parquet(src)) if src.exists() else None
+    return checks.plausibility(groups, imports, own)
 
 
 def load() -> dict[tuple[str, str], tuple[float, float]]:

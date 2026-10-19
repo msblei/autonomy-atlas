@@ -1652,8 +1652,11 @@ def build_trade(D, res, min_origin_t=0.0):
     eu = eu[eu["c"].isin(EU) & ~eu["partner"].isin(EU)]
     for (flow, g, p), v in (eu.groupby(["flow", "group", "partner"])["t"].sum() / n).items():
         out["EU27"][g].setdefault(flow, {})[p] = v
-    # mirror bookkeeping: countries with any flow-year filled from partners
+    # mirror bookkeeping: countries with any flow-year filled from partners, and the country x
+    # group x flow pairs whose records rest partly on them (no second reading of the balance)
     mirror = set(bil.loc[bil["src"] == "mirror", "c"])
+    m = bil[bil["src"] == "mirror"]
+    mirror_pairs = set(zip(m["c"], m["group"], m["flow"]))
 
     # grown: Kastner et al. (2011) per group on window-mean matrices, kt
     imp = bil[bil["flow"] == "imports"].groupby(["group", "partner", "c"])["t"].sum() / n
@@ -1712,7 +1715,7 @@ def build_trade(D, res, min_origin_t=0.0):
                 for p, v in parts.items():
                     d[p] = d.get(p, 0) + v
         out[c]["all"] = allf
-    return out, mirror, grown
+    return out, mirror, grown, mirror_pairs
 
 
 # --------------------------------------------------------------------------------------------
@@ -1764,11 +1767,13 @@ CEILING_KG = {"dairy": 550, "meat": 150, "eggs": 30, "fish": 120, "fruit": 250, 
               "pulses": 60, "wine_beer": 200}
 
 
-def plausibility(res, trade):
+def plausibility(res, trade, mirror_pairs=frozenset()):
     """{(iso3, group): [reading, ...]} for the figures a second reading moves by more than
     max(10 points, 10% of it) or leaves without use at home; a reading is {test, ssr_alt, ...}
     with the figures the UI quotes. Tested: shown figures (or withheld as implausible), countries
-    of 500,000 people or more, D > 0."""
+    of 500,000 people or more, D > 0. No trade reading for dairy, nor where the records of the
+    country and group rest partly on partners' reports (`mirror_pairs`, methodology "Withheld as
+    implausible")."""
     rows = {}  # (iso, g) -> (P, M, D, pop)
     for iso, r in res.items():
         if "groups" not in r or isnan(r.get("population_k")) or r["population_k"] < 500:
@@ -1792,13 +1797,15 @@ def plausibility(res, trade):
                 out[(iso, g)].append({"test": "use_per_person", "ssr_alt": alt, "kg": kg, "ceiling_kg": cap})
     pairs = defaultdict(list)
     for (iso, g), (P, M, Dd, pop) in rows.items():
+        if g == "dairy":
+            continue
         t = sum(trade.get(iso, {}).get(g, {}).get("imports", {}).values()) / 1000
         if M >= 50 and t >= 50:
             pairs[g].append((iso, P, M, Dd, t))
     for g, ps in pairs.items():
-        typical = float(np.median([M / t for _, _, M, _, t in ps]))
+        typical = float(np.median([M / t for _, _, M, _, t in ps]))  # every record counts here
         for iso, P, M, Dd, t in ps:
-            if M / t <= 1.5 * typical:
+            if (iso, g, "imports") in mirror_pairs or M / t <= 1.5 * typical:
                 continue
             d_alt = Dd - (M - t * typical)
             alt = 100 * P / d_alt if d_alt > 0 else math.nan
@@ -1866,7 +1873,8 @@ def main():
     log("hashed inputs")
     D = load_all()
     res0 = compute_balances(D, PRIMARY)
-    plaus = plausibility(res0, build_trade(D, res0)[0])
+    t0 = build_trade(D, res0)
+    plaus = plausibility(res0, t0[0], t0[3])
     prange = plaus_ranges(res0, plaus)
     log(f"plausibility: {len(plaus)} figures withheld as implausible")
     res = compute_balances(D, PRIMARY, prange)
@@ -1880,7 +1888,7 @@ def main():
     usda_rec = usda_flags(D, res, usda)
     usda_alt = usda_flags(D, res, usda, "both")
     log(f"USDA PSD: {len(usda)} country-commodity pairs, {len(usda_rec)} groups flagged")
-    trade, mirror, _ = build_trade(D, res)
+    trade, mirror, _, _ = build_trade(D, res)
     trade_alts = {
         "grown: origins < 0.5 t dropped": build_trade(D, res, 0.5)[0],
         "grown: origins < 0.5 t dropped + avg=item_years_skipna":

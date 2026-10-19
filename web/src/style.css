@@ -274,6 +274,7 @@ a.sum-row[href]:hover strong svg { stroke: var(--ink); }
 .foodlist .name { grid-column: 2; grid-row: 1; font-weight: 700; }
 .foodlist .strip { grid-column: 2; grid-row: 2; width: 100%; margin-top: 6px; }
 .foodlist .when { grid-column: 3; grid-row: 1 / span 2; text-align: right; font: 14px var(--sans); color: var(--ink-soft); }
+.foodlist .when.band { font-style: italic; } /* a band on any reading, not a figure (the footnote says so) */
 
 .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .cols p { margin: 0 0 4px !important; }

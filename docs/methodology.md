@@ -97,7 +97,23 @@ way:
 | Test | Second reading | Why |
 |---|---|---|
 | `use_per_person`: D per person above a ceiling (kg/year: dairy 550 in milk equivalent, meat 150, eggs 30, fish 120, fruit 250, vegetables 300, pulses 60, wine and beer 200) | D = ceiling × population | no national average is known above these; cereals, oilseeds, oils, sugar, roots and stimulants have none (feed, crushing, biofuel, distilling) |
-| `imports_vs_trade`: imports more than 1.5× the group's typical ratio to the trade records (median over countries; both ≥ 50 kt) | M = trade records × typical ratio, D lowered by the difference | the balance counts primary equivalents, the records product weight, so each group has its own usual ratio; far above it, the balance describes conversions or flows the records do not hold |
+| `imports_vs_trade`: imports more than 1.5× the group's typical ratio to the trade records (median over countries; both ≥ 50 kt); not dairy, and not where the records rest on partners' reports (below) | M = trade records × typical ratio, D lowered by the difference | the balance counts primary equivalents, the records product weight, so each group has its own usual ratio; far above it, the balance describes conversions or flows the records do not hold |
+
+Two kinds of figure get no trade reading (2026-10-19). **Dairy:** the records' milk equivalent
+follows the EU's factors (section "Trade partners"), the balance FAO's, and the two differ by
+product, so the ratio between them runs from 1.2 to 2.7 across the middle half of countries,
+against 1.2 to 1.7 for cereals and 1.1 to 1.4 for fruit: no typical ratio describes a country's
+product mix, and the test withheld the United Kingdom, Canada, South Africa and Russia on their
+cheese or powder mix alone (Russia's 84% is also Rosstat's figure). Dairy is read a second time
+by use per person only (`checks.NO_TRADE_READING`). **Records resting on partners' reports:**
+where any partner flow of the country and group is a mirror or mixed flow (section "Trade
+partners": a year the country did not report, or a group it under-reports), the records are a
+stopgap for the partner lists, not a yardstick for the balance, and the pair is not read against
+the typical ratio (`plausible.own_records`); it still counts in that ratio, a statistic over every
+record, so the yardstick does not move with the pairs tested (Germany's vegetables, at 2.06×
+against 1.5 × 1.37, would otherwise have slipped under it). Russia reported 3,468 kt of dairy
+imports for 2021 and nothing after; its partners' reports hold 386 kt for 2022 and 171 kt for
+2023, a tenth of its buying.
 
 The trade records are the yearly partner flows of section "Trade partners" (FAO trade matrix,
 fish from Comext and BACI) for the same window. A figure is withheld (`implausible`) when a second
@@ -117,8 +133,8 @@ although on its own it is withheld").
 test reads a figure it withheld before like any other, so a second run gives the same verdicts.
 
 Examples, 2021–2023 (published → second reading): Germany vegetables 24% → 35% (the Federal
-Office for Agriculture, BLE, has about 36%); United Kingdom vegetables 20% → 32%, dairy 75% →
-90% (Defra about 90%); Turkey cereals 67% → 86% (USDA 92% for wheat); United States fruit 31% →
+Office for Agriculture, BLE, has about 36%); United Kingdom vegetables 20% → 32% (its dairy, 75%, is
+no longer read against the records; Defra has about 90%, FAO's figure stands as published); Turkey cereals 67% → 86% (USDA 92% for wheat); United States fruit 31% →
 55%; Ireland dairy 195% → 319%, the Netherlands 113% → 147% and Denmark 140% → 175% (the
 Commission's dairy balance leaves out infant formula, casein and milk protein concentrates, which
 these countries export, so too little leaves the country and their use at home reaches 700–900 kg
@@ -143,8 +159,9 @@ losses, processing, other uses, tourist and residuals are left out of `component
 stands, because residuals sit on the utilisation side (D = food + … + residuals) and SSR uses only
 the availability side.
 
-2021–2023 counts: 183 group balances withheld (63 `supply_nonpositive`, 11 `food_exceeds_supply`,
-22 `parts_contradict`, 82 `implausible`, 5 `reviewed`), 20 uses breakdowns withheld, 3 protein and 6 kcal "all food" headlines.
+2021–2023 counts (2026-10-19, after dairy and partners'-report records left the trade reading): 163 group
+balances withheld (63 `supply_nonpositive`, 11 `food_exceeds_supply`, 22 `parts_contradict`, 62 `implausible`,
+5 `reviewed`), 17 uses breakdowns withheld, 3 protein and 6 kcal "all food" headlines.
 
 ## Aggregation to product groups
 
