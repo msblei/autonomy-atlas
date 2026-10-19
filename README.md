@@ -11,22 +11,6 @@ trade explorers show flows but not whether a country could feed itself; crop cal
 but not trade. Food Autonomy Atlas puts those layers on one map, for the whole continent, product by
 product, with every number traceable to its source.
 
-## Status
-
-**Phase 1 working locally.** The pipeline builds FAO Food Balance figures for ~178 countries plus
-the EU as a bloc, with the European Commission's balance sheets for EU dairy, tomatoes, olive oil
-and wine. The map opens on one plain question: if a country ate only what its own farms produce,
-for how many months of the year would its food last? Choose a country and a food, and a card shows
-the year's balance (produces + buys − sells = uses), which is also the way in: how long the food
-lasts and how that changed, who the country buys from and sells to (on the map), and what the food
-is used for. "How do we know?" works every figure out from FAO's lines; "All the numbers" shows
-SSR/IDR, tonnes/kcal and FAO items.
-
-Every published number is checked before release (`make verify`): tests, invariant checks, an
-independent recomputation written from `docs/methodology.md` alone, and browser tests of what the
-page shows. Figures whose FAO balance contradicts itself, or that a review found implausible, are
-withheld everywhere and the page says why.
-
 ## Quick start
 
 ```bash
@@ -48,14 +32,6 @@ web/        Vite + MapLibre GL frontend
 docs/       research report (existing tools, data inventory, pitfalls) and methodology
 data/       raw / interim / processed (gitignored)
 ```
-
-## Roadmap
-
-1. Country-level SSR/IDR choropleth from FAO Food Balance Sheets.
-2. Trade partners and arcs (FAO trade matrix; fish from Eurostat Comext), import concentration;
-   for EU countries also in euros (Comext); fish from Comext and CEPII BACI.
-3. Crop calendars and NUTS2 regional production ("what is grown where, and when").
-4. Feed-adjusted meat and eggs; "What if Russia and Ukraine stopped selling?" (done).
 
 ## Data and licences
 
