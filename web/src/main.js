@@ -537,28 +537,38 @@ function fitTrade() {
 // The inhabited world, between the panel and the food menu.
 function showWorld(duration = 900) {
   if (!state.mapReady) return;
-  const bounds = [[-125, -40], [150, 62]];
+  frame([[-125, -40], [150, 62]], { duration });
+}
+
+// Where the middle of the open area sits, relative to the map's own centre. Given to easeTo and
+// flyTo as `offset`, never as `padding`: a padding given to them stays on the map and is added
+// again by every later fitBounds, until nothing fits (a phone after the EU had been framed).
+function offsetOf(padding) {
+  return [(padding.left - padding.right) / 2, (padding.top - padding.bottom) / 2];
+}
+
+// Frame `bounds` in the open area. fitBounds does nothing (and warns) when the padding leaves no
+// room, and when the fit needs a zoom below the map's lowest it clamps the zoom but keeps the
+// centre it computed for the other one (the Pacific, in a short window). In both cases take the
+// middle of the bounds at the lowest zoom instead.
+function frame(bounds, { duration = 900, maxZoom } = {}) {
   const padding = openArea();
-  // A short window cannot hold the whole inhabited world above the map's lowest zoom: MapLibre
-  // then clamps the zoom but keeps the centre it computed for the zoom it could not use, and the
-  // map ends up over the Pacific. Take the middle of the bounds at the lowest zoom instead.
-  const cam = map.cameraForBounds(bounds, { padding });
-  if (!cam || cam.zoom < map.getMinZoom()) {
-    map.easeTo({ center: new maplibregl.LngLatBounds(bounds).getCenter(), zoom: map.getMinZoom(), padding, duration });
-    return;
-  }
-  map.fitBounds(bounds, { padding, duration });
+  const opts = maxZoom == null ? { padding } : { padding, maxZoom };
+  const cam = map.cameraForBounds(bounds, opts);
+  if (cam && cam.zoom >= map.getMinZoom()) { map.fitBounds(bounds, { ...opts, duration }); return; }
+  map.easeTo({ center: new maplibregl.LngLatBounds(bounds).getCenter(), zoom: map.getMinZoom(),
+    offset: offsetOf(padding), duration });
 }
 
 function flyTo(iso3) {
   if (!state.mapReady) return; // the map flies there itself once it has loaded
   // The EU only reads as one shape when zoomed out past EU_ZOOM.
-  if (iso3 === EU) { map.flyTo({ center: [10, 50], zoom: EU_ZOOM - 0.2, padding: openArea(), duration: 900 }); return; }
+  if (iso3 === EU) { map.flyTo({ center: [10, 50], zoom: EU_ZOOM - 0.2, offset: offsetOf(openArea()), duration: 900 }); return; }
   const b = state.bbox[iso3];
   if (!b) return;
   // Wide or antimeridian-crossing countries (Russia, the US) would zoom out to the whole world.
   if (b[2] - b[0] > 180) return;
-  map.fitBounds([[b[0], b[1]], [b[2], b[3]]], { padding: openArea(), maxZoom: 4, duration: 900 });
+  frame([[b[0], b[1]], [b[2], b[3]]], { maxZoom: 4 });
 }
 
 // ------------------------------------------------------------------------------------------------
