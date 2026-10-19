@@ -33,6 +33,10 @@
 html, body { margin: 0; height: 100%; overflow: hidden; background: var(--ground); overscroll-behavior: none; }
 
 #map { position: absolute; inset: 0; }
+/* the land silhouette from index.html, over the map until its colours are drawn */
+#land { position: absolute; inset: 0; overflow: hidden; pointer-events: none; transition: opacity 0.3s; }
+#land img { position: absolute; max-width: none; }
+#land.off { opacity: 0; }
 a { color: var(--ink); text-decoration-thickness: 1px; text-underline-offset: 3px; }
 svg { flex: none; }
 :focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }

@@ -4,6 +4,13 @@
 [build]
   publish = "web/dist"
 
+# The borders are TopoJSON: served as JSON so the CDN compresses them (as octet-stream it sent all
+# 437 KB uncompressed; as JSON about 160 KB).
+[[headers]]
+  for = "/data/*.topojson"
+  [headers.values]
+    Content-Type = "application/json; charset=utf-8"
+
 # Vite names its bundles by content hash: safe to cache for a year. Everything else (index.html,
 # data/*.json, fonts) keeps Netlify's default (revalidate on every request, ETag).
 [[headers]]

@@ -14,10 +14,16 @@
     <link rel="icon" href="./favicon.svg" type="image/svg+xml" />
     <link rel="icon" href="./favicon.png" sizes="32x32" type="image/png" />
     <link rel="apple-touch-icon" href="./apple-touch-icon.png" />
+    <!-- The first screen's data starts downloading with the script instead of after it has run. -->
+    <link rel="preload" href="./data/ssr_core.json" as="fetch" crossorigin fetchpriority="high" />
+    <link rel="preload" href="./data/countries.topojson" as="fetch" crossorigin fetchpriority="high" />
     <link rel="stylesheet" href="./src/style.css" />
   </head>
   <body>
     <div id="map"></div>
+    <!-- Land, grey, in the map's projection and start view (scripts/build-topo.mjs), over the map
+         area from the page's first paint until the map has drawn its colours (main.js removes it). -->
+    <div id="land" aria-hidden="true"><img src="./data/silhouette.svg" alt="" onerror="this.remove()" /></div>
 
     <!-- Which food the map shows (a menu on the right), and what its colours mean (at the bottom). -->
     <nav id="foodrail" aria-label="Food shown on the map">
@@ -70,5 +76,38 @@
     </aside>
 
     <script type="module" src="./src/main.js"></script>
+    <script>
+      // Puts the land silhouette where the map will draw the world. The map frames the bounds
+      // [-125, -40] to [150, 62] in the open area beside the panel, at zoom 1 at the least
+      // (showWorld and openArea in main.js; 512 px tiles, so the world is 1024 px wide at zoom 1).
+      // The food menu and the map key are not drawn yet, so their sizes are given here. The image
+      // holds three worlds side by side, the middle one is the real one.
+      (() => {
+        const img = document.querySelector("#land img");
+        if (!img) return;
+        const W = innerWidth, H = innerHeight, panel = document.getElementById("panel");
+        // On a phone the panel is a sheet that grows with the start page to its largest height.
+        const sheet = Math.round(H * (H <= 700 ? 0.57 : 0.5)) + 2;
+        const pad = W > 760
+          ? { left: panel.offsetWidth + 40, right: 236 + 40, top: 40, bottom: 58 + 40 }
+          : { left: 20, right: 20, top: 42 + 57 + 30, bottom: sheet + 20 };
+        const mx = (lon) => (lon + 180) / 360;
+        const my = (lat) => (180 - (180 / Math.PI) * Math.log(Math.tan(Math.PI / 4 + (lat * Math.PI) / 360))) / 360;
+        const w = -125, e = 150, s = -40, n = 62;
+        let world = Math.min((W - pad.left - pad.right) / (mx(e) - mx(w)), (H - pad.top - pad.bottom) / (my(s) - my(n)));
+        let ax, ay;
+        if (world >= 1024) { ax = (mx(w) + mx(e)) / 2; ay = (my(s) + my(n)) / 2; }
+        else { world = 1024; ax = mx((w + e) / 2); ay = my((s + n) / 2); }
+        const px = W / 2 + (pad.left - pad.right) / 2, py = H / 2 + (pad.top - pad.bottom) / 2;
+        // The map never shows past the poles: the world is at least as tall as the window, and
+        // the view is nudged back inside it.
+        world = Math.max(world, H);
+        const cy = Math.min(Math.max(ay * world + H / 2 - py, H / 2), world - H / 2);
+        img.style.width = `${3 * world}px`;
+        img.style.height = `${world}px`;
+        img.style.left = `${px - (ax + 1) * world}px`;
+        img.style.top = `${H / 2 - cy}px`;
+      })();
+    </script>
   </body>
 </html>

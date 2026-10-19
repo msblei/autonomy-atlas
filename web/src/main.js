@@ -112,6 +112,17 @@ const map = new maplibregl.Map({
 });
 map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "bottom-right");
 
+// The grey land from index.html stands in for the map until its first colours are drawn (or until
+// the map moves, since the silhouette cannot follow).
+function dropLand() {
+  const land = document.getElementById("land");
+  if (!land) return;
+  land.classList.add("off");
+  land.addEventListener("transitionend", () => land.remove(), { once: true });
+  setTimeout(() => land.remove(), 500);
+}
+map.once("movestart", dropLand);
+
 const popup = new maplibregl.Popup({ closeButton: false, closeOnClick: false, className: "tip", offset: 14 });
 
 async function loadJSON(path) {
@@ -253,6 +264,7 @@ const dataReady = Promise.all([geoReady, loadJSON("data/ssr_core.json").then(pre
   document.getElementById("view").innerHTML =
     `<p class="hint">No data yet. Run <code>make all</code> in the repo root to download FAOSTAT and build <code>web/public/data/</code>.</p>`;
   console.error(e);
+  dropLand();
   return null;
 });
 
@@ -297,6 +309,7 @@ map.on("load", async () => {
   state.bloc = map.getZoom() < EU_ZOOM;
   paintMap();
   renderLegend();
+  map.once("idle", dropLand);
   if (state.level === "trade") fitTrade();
   else if (state.level === "where" && state.regionGeo) fitRegions();
   else if (state.iso3) flyTo(state.iso3);
