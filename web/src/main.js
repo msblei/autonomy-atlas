@@ -1437,26 +1437,28 @@ function buildCard() {
     </a>`).join("") + `<p class="cardnote" aria-live="polite"></p>`;
 }
 
-// Produced + bought − sold is not always exactly what is used, and the reader can add the four
-// figures up: when they do not, say in a few words why (stocks, or the rounding of the figures
-// shown). Empty when they add up; the slot keeps its height so the card never changes shape.
+// Produced + bought − sold is not always exactly what is used. Rounding explains itself; a real
+// gap (stocks) gets an asterisk on "Uses" and one line under the card saying where the rest went.
+// Empty when there is none; the slot keeps its height so the card never changes shape.
+const NOTE_KCAL = 50; // kcal per person a day: below this, rounding of the four figures
+const NOTE_SHARE = 0.015; // tonnes: a gap under this share of the use is rounding
 function cardNote(id, group = state.group) {
   if (group === "all" ? country(id)?.indicators?.all?.kcal?.withheld : withheld(id, group)) return "";
   const bal = group === "all" ? country(id)?.indicators?.all?.kcal?.balance : null;
+  let gap;
   if (bal?.used > 0) {
-    const gap = Math.round(bal.produced) + Math.round(bal.imports) - Math.round(bal.exports) - Math.round(bal.used);
-    return gap ? `Off by ${Math.abs(gap).toLocaleString("en-GB")} kcal: stock changes and rounding` : "";
+    gap = bal.produced + bal.imports - bal.exports - bal.used;
+    if (Math.abs(gap) < NOTE_KCAL) return "";
+  } else {
+    const c = country(id)?.indicators?.[group]?.components_kt;
+    if (group === "all" || !c || !(c.supply > 0) || c.imports == null) return "";
+    gap = (c.production ?? 0) + c.imports - (c.exports ?? 0) - c.supply;
+    // only when the figures as the rows show them (shortTonnes) do not add up either
+    const shown = (kt) => (Math.abs(kt) >= 100 ? Math.round(kt / 100) * 100 : Math.abs(kt) >= 1 ? Math.round(kt) : Math.round(kt * 1000) / 1000);
+    const seen = shown(c.production ?? 0) + shown(c.imports) - shown(c.exports ?? 0) - shown(c.supply);
+    if (Math.abs(gap) < NOTE_SHARE * c.supply || Math.abs(seen) < 1e-6) return "";
   }
-  const c = country(id)?.indicators?.[group]?.components_kt;
-  if (group === "all" || !c || !(c.supply > 0) || c.imports == null) return "";
-  // the figures as the rows show them (shortTonnes), so the gap is the one the reader sees
-  const shown = (kt) => (Math.abs(kt) >= 100 ? Math.round(kt / 100) * 100 : Math.abs(kt) >= 1 ? Math.round(kt) : Math.round(kt * 1000) / 1000);
-  const P = c.production ?? 0, M = c.imports, X = c.exports ?? 0, D = c.supply;
-  const gap = shown(P) + shown(M) - shown(X) - shown(D);
-  if (Math.abs(gap) < 1e-6) return "";
-  const store = D - (P + M - X); // > 0: taken out of storage, < 0: put into storage
-  const why = Math.abs(store) < 0.0025 * D ? "rounding" : store > 0 ? "taken out of stocks" : "put into stocks";
-  return `Off by ${shortTonnes(Math.abs(gap))}: ${why}`;
+  return gap > 0 ? "* The rest went into stocks." : "* Stocks made up the rest.";
 }
 
 function renderFrame() {
@@ -1477,6 +1479,8 @@ function renderFrame() {
   document.getElementById("foodline").innerHTML = `${foodIcon(state.group)}<span>${groupInfo().label}</span>`;
   if (!state.full) return; // the card's figures come with the full ssr.json (a moment later)
   const rows = cardRows(id);
+  const note = cardNote(id);
+  if (note) rows.used.label += "*";
   const here = state.level === "trade" ? state.flow
     : state.level === "used" ? "used"
     : ["food", "country", "where"].includes(state.level) ? "food" : null;
@@ -1499,7 +1503,7 @@ function renderFrame() {
     if (a.dataset.row === here && on) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
   }
-  document.querySelector("#card .cardnote").textContent = cardNote(id);
+  document.querySelector("#card .cardnote").textContent = note;
   moveMarker();
 }
 
