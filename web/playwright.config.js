@@ -1,7 +1,8 @@
 // Browser tests: what the page shows must be what web/public/data says (tests/*.spec.js).
 import { defineConfig } from "@playwright/test";
 
-const PORT = 5181;
+const PORT = 5181; // the dev server, for every test but one
+const BUILT = 5182; // the built site (tests/build.spec.js), built into dist-test so dist stays the release
 export default defineConfig({
   testDir: "tests",
   timeout: 120_000,
@@ -12,12 +13,24 @@ export default defineConfig({
   // The installed Google Chrome (own temporary profile); no browser download needed.
   // Reduced motion: the panel hands details over instantly, so the data tests need not wait out the
   // fades (the animation itself is checked by hand).
-  use: { baseURL: `http://localhost:${PORT}/`, viewport: { width: 1280, height: 900 }, channel: "chrome",
-    contextOptions: { reducedMotion: "reduce" } },
-  webServer: {
-    command: `node_modules/.bin/vite --port ${PORT} --strictPort`,
-    url: `http://localhost:${PORT}/`,
-    reuseExistingServer: false,
-    timeout: 60_000,
-  },
+  use: { viewport: { width: 1280, height: 900 }, channel: "chrome", contextOptions: { reducedMotion: "reduce" } },
+  projects: [
+    { name: "dev", testIgnore: /build\.spec\.js/, use: { baseURL: `http://localhost:${PORT}/` } },
+    { name: "built", testMatch: /build\.spec\.js/, use: { baseURL: `http://localhost:${BUILT}/` } },
+  ],
+  webServer: [
+    {
+      command: `node_modules/.bin/vite --port ${PORT} --strictPort`,
+      url: `http://localhost:${PORT}/`,
+      reuseExistingServer: false,
+      timeout: 60_000,
+    },
+    {
+      command: `node_modules/.bin/vite build --outDir dist-test --emptyOutDir --logLevel warn`
+        + ` && node_modules/.bin/vite preview --outDir dist-test --port ${BUILT} --strictPort`,
+      url: `http://localhost:${BUILT}/`,
+      reuseExistingServer: false,
+      timeout: 120_000,
+    },
+  ],
 });

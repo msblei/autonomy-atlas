@@ -34,3 +34,4 @@ web/playwright-report/
 
 # Netlify CLI state (site link)
 .netlify/
+web/dist-test/
