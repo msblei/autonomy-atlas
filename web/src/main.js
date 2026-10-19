@@ -80,16 +80,11 @@ const FLAG_TEXT = {
   jrc_group_only: "Dairy comes from the European Commission's balance in milk equivalent, for dairy as a whole: no ratio per product and none weighted by calories.",
 };
 
-// Short names for the food buttons; the full label is in their tooltip and on every page.
-const SHORT = {
-  all: "All food", potatoes_roots: "Potatoes", sugar: "Sugar", oilseeds: "Oilseeds",
-  vegetable_oils: "Oils", fish: "Fish", stimulants: "Coffee, cocoa, tea", wine_beer: "Wine, beer",
-};
 const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
 // Where readers report errors (footer, "How do we know?").
 const CONTACT = "hello@mariusbleif.com";
 // The map key as a ruler in months, one short label per colour (SEASONS, in the same order).
-const SEASON_SHORT = ["0–6", "6–9", "9–11", "11–12", "≈12", "12+"];
+const SEASON_SHORT = ["0–6", "6–9", "9–11", "11–12", "12", "12+"];
 // Per-person rankings cover countries of this many thousand people or more: the plausibility test's
 // floor (methodology, "Per-person figures"); below it FAO's rounding to 1 kt is tens of kg a head.
 const RANK_MIN_POP_K = 500;
@@ -1284,11 +1279,11 @@ function renderControls() {
   document.getElementById("foodrail").classList.toggle("open", foodsOpen);
   foods.innerHTML = `
     <button type="button" class="current" aria-expanded="${foodsOpen}" aria-controls="foodlist">
-      ${foodIcon(cur.key)}<span>${SHORT[cur.key] ?? cur.label}</span>${CHEVRON_DOWN}</button>
+      ${foodIcon(cur.key)}<span>${cur.label}</span>${CHEVRON_DOWN}</button>
     <div class="list" id="foodlist">${state.data.groups.map((g, i) => `
     ${i === 1 ? `<span class="sep" aria-hidden="true"></span>` : ""}
     <button type="button" data-food="${g.key}" title="${g.label}" class="${g.key === "all" ? "all" : ""}" style="--i:${i}"
-      aria-pressed="${g.key === state.group}">${foodIcon(g.key)}<span>${SHORT[g.key] ?? g.label}</span></button>`).join("")}</div>`;
+      aria-pressed="${g.key === state.group}">${foodIcon(g.key)}<span>${g.label}</span></button>`).join("")}</div>`;
   foods.querySelector(".current").onclick = (e) => {
     e.stopPropagation();
     foodsOpen = !foodsOpen;
@@ -1400,7 +1395,11 @@ function cardRows(id, group = state.group) {
   // All food: what is produced and used is given per food, not added up, because the sum would
   // count food twice (soybeans and the oil pressed from them, grain and the beer brewed from it).
   // Trade can be added up: every shipment is counted once.
-  if (group === "all") {
+  const noBalance = !Object.keys(country(id)?.indicators ?? {}).length;
+  if (noBalance) {
+    for (const k of ["food", "used"]) Object.assign(rows[k], { empty: "no balance", why: `FAO publishes no food balance for ${nameOf(id)}` });
+    rows.imports.unit = rows.exports.unit = "as shipped"; // the trade records, by weight
+  } else if (group === "all") {
     for (const k of ["food", "used"]) {
       Object.assign(rows[k], { empty: "per food", why: "Not added up across foods: that would count food twice, "
         + "such as soybeans and the oil pressed from them. Each food has its own figure in the list below." });
@@ -1595,14 +1594,19 @@ function viewIntro() {
   const own = readersCountry();
   return `
     <h1 class="hero">Could your country feed itself?</h1>
-    <p class="lede">How long its own food would last, if it bought nothing from abroad.</p>
+    <p class="lede">How long its own ${food()} would last, if it bought nothing from abroad.</p>
     <p class="small">What a country's own fields, pastures and waters yield against what it uses.</p>
-    ${own ? `<button type="button" class="primary" data-go="#${own}">
+    ${own ? `<button type="button" class="primary" data-go="${goTo(own)}">
       <span>Start with ${nameOf(own)}</span>${CHEVRON}</button>` : ""}
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
       .concat(country(EU) ? [EU] : [])
-      .map((id) => `<button type="button" data-go="#${id}">${id === EU ? "European Union" : nameOf(id)}</button>`)
+      .map((id) => `<button type="button" data-go="${goTo(id)}">${id === EU ? "European Union" : nameOf(id)}</button>`)
       .join("")}</div>`;
+}
+
+// Where a start-page button goes: the country, on the food the map shows.
+function goTo(id) {
+  return hashFor({ iso3: id, group: state.group, level: state.group === "all" ? "country" : "food" });
 }
 
 // No food balance (Japan, Singapore): say so; the card still shows what it buys and sells.
@@ -1682,8 +1686,22 @@ function foodList(id) {
       </a></li>`).join("")}</ul>
     ${rows.some((r) => r.robust) ? `<p class="small">* FAO's figures for ${namesOf(rows.filter((r) => r.robust).map((r) => r.g.label.toLowerCase()))}
       do not hold together; only the band is certain, on any reading of them.</p>` : ""}
+    ${feedListNote(id)}
     ${missing.length ? `<p class="small">No figure for ${namesOf(missing.map((g) => g.label.toLowerCase()))}:
       FAO's figures for ${missing.length === 1 ? "it do" : "them do"} not hold together.</p>` : ""}`;
+}
+
+// The list counts every animal raised here; the sum at the top counts pigs and poultry only for
+// home-grown feed and cattle for their traded feed (methodology, "Feed"): say what that does.
+function feedListNote(id) {
+  const f = country(id)?.feed;
+  if (!f) return "";
+  const parts = [["meat", f.meat_ssr], ["eggs", f.eggs_ssr], ["dairy", f.dairy_ssr]]
+    .filter(([g, v]) => v != null && pctFor(id, g) != null && Math.abs(pctFor(id, g) - v) >= 0.5)
+    .map(([g, v]) => `${g} ${lasts(v, { short: true })}`);
+  if (!parts.length) return "";
+  return `<p class="small">Meat, eggs and dairy above count every animal raised here. Counting only home-grown feed,
+    as the sum at the top does: ${listOf(parts)} (each food's page shows both).</p>`;
 }
 
 // Countries ranked by the "all food" figure, the one the map shows (methodology, "How long").
@@ -1829,7 +1847,7 @@ function viewWhere() {
   const top = rows.slice(0, 8);
   const rest = Math.max(0, 100 - top.reduce((a, x) => a + x.share, 0));
   const max = top[0].share;
-  const name = (code) => state.regions.names[code] ?? code;
+  const name = (code) => regionName(code);
   const level = id !== EU && rows.length && rows[0].code.length === 3 ? `${nameOf(id)} reports by state, not by smaller region. ` : "";
   // no "Fields" where the crop map leaves this country blank (pipeline/cropmap.py, area_check)
   const blankHere = !!state.cropmap?.groups[state.group]?.left_out?.[id];
@@ -1852,6 +1870,7 @@ function viewWhere() {
     <details class="notes"><summary>About these figures</summary>
     <ul class="caveats">
       <li>Harvested ${cropWords()} by region from the EU's crop statistics (Eurostat), ${state.regions.meta.years.replace("-", "–")} averages. They are not FAO's food balance, so only the shares are shown here.</li>
+      <li>The regions are the EU's statistical regions (NUTS 2024, level 2${id === "FRA" ? "; for France these are the regions as they were before the 2016 merger, Picardie and Champagne-Ardenne among them" : ""}).</li>
       ${state.group === "sugar" ? `<li>Counted as beet straight from the field, several times the weight of the sugar made
         from it: the card above counts sugar.</li>` : ""}
       <li>${level}${fields
@@ -1973,13 +1992,18 @@ function regionLegend() {
       <span class="gap"></span><span class="nodata"><i style="background:${NO_DATA}"></i><em>none</em></span></div>`];
 }
 
+// GISCO writes "Centre — Val de Loire"; the region itself writes "Centre-Val de Loire".
+function regionName(code) {
+  return (state.regions?.names[code] ?? code).replace(" — ", "-");
+}
+
 function regionTooltip(code) {
   const r = regionsFor()?.regions.find(([c]) => c === code);
   if (!r) return null;
   const [, kt, share, density] = r;
   // The colour is tonnes per km² (how densely it grows); the share is of the country's harvest.
   const dens = density == null ? "" : `<br><span class="small">${density < 10 ? density.toFixed(1) : Math.round(density).toLocaleString("en-GB")} t per km²</span>`;
-  return `<strong>${state.regions.names[code] ?? code}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)}${state.group === "sugar" ? " of beet" : ""} a year${dens}`;
+  return `<strong>${regionName(code)}</strong><br>${share < 1 ? "<1" : Math.round(share)}% of ${state.iso3 === EU ? "the EU's" : `${nameOf(state.iso3)}'s`} ${cropWords()}, ${tonnes(kt)}${state.group === "sugar" ? " of beet" : ""} a year${dens}`;
 }
 
 // When fruit, vegetables and potatoes come from abroad, month by month (import_months.json,
@@ -2227,6 +2251,7 @@ function compareFood(id) {
     })
     .map((r) => r.c.name);
   const names = unranked.length > 1 ? `${unranked.slice(0, -1).join(", ")} and ${unranked.at(-1)}` : unranked[0];
+  const hubs = rows.slice(-5).map((r) => r.id).filter((h) => PORTS[h]);
   return `
     <h3>Who has ${food()} to spare?</h3>
     <p class="small">What it produces minus what it uses, per person a year</p>
@@ -2234,6 +2259,8 @@ function compareFood(id) {
       <div><p class="small">Most to spare</p>${rankList(rows.slice(0, 5), signed)}</div>
       <div><p class="small">Most missing</p>${rankList(rows.slice(-5).reverse(), signed)}</div>
     </div>
+    ${hubs.length ? `<p class="small">${namesList(hubs)} ${hubs.length > 1 ? "are ports" : "is a port"}: FAO's balance books what lands in
+      ${listOf(hubs.map((h) => PORTS[h]))} as bought and used there, more than ${hubs.length > 1 ? "their" : "its"} people and animals eat.</p>` : ""}
     ${unranked.length ? `<p class="small">Not ranked, because FAO's figures for them do not hold together: ${names},
       which produce${unranked.length === 1 ? "s" : ""} much of it per person.</p>` : ""}`;
 }
@@ -2625,6 +2652,10 @@ function checkYourself(id) {
       <li>Items: ${items}.</li>
       <li>Years: ${years().join(", ")}, then take the average.</li>
     </ol>
+    ${state.group === "all" && country(id)?.indicators?.all?.kcal?.ssr != null && country(id)?.indicators?.all?.kcal?.feed_ssr != null
+      ? `<p class="small">That gives the sum before feed, <strong>${Math.round(country(id).indicators.all.kcal.ssr)}%</strong>.
+        The feed step takes FAO's Supply Utilization Accounts, Feedipedia's protein contents and GLEAM's cattle diets,
+        all listed under “How do we know?”, and gives ${Math.round(country(id).indicators.all.kcal.feed_ssr)}%.</p>` : ""}
     <p class="small">Or download the whole table:
       <a href="${s.file_url}">FAO data file</a> (zip, ${s.size_mb ? `about ${s.size_mb} MB` : "large"}).</p>
     ${id === EU ? `<p class="aside">Our EU figures differ from FAO's own “European Union (27)” row on purpose.
@@ -2925,7 +2956,8 @@ function viewTrade() {
     hasValue(id, state.group, state.flow) && ["value", imports ? "Money paid" : "Money earned"]].filter(Boolean);
   const toggle = modes.length > 1 ? `
     <div class="seg sub" role="group" aria-label="How to count">
-      ${modes.map(([k, label]) => `<button type="button" data-mode="${k}" aria-pressed="${mode === k}">${label}</button>`).join("")}
+      ${modes.map(([k, label]) => `<button type="button" data-mode="${k}" aria-pressed="${mode === k}"${k === "sold" && state.group === "all"
+        ? ` title="Shares by weight as shipped, every food added up in tonnes"` : ""}>${label}</button>`).join("")}
     </div>` : "";
   if (!t || !t[0] || !rows.length) {
     // No trade record is not the same as no trade: say what we have, not what we infer.
@@ -3040,8 +3072,8 @@ function tradeLegend() {
     : tradeBasis() === "value"
       ? `Where the money for ${whoOf(id)}'s ${food()} <b>${state.flow === "imports" ? "goes" : "comes from"}</b>`
       : state.flow === "imports"
-        ? `Where ${whoOf(id)} <b>buys</b> its ${food()}`
-        : `Where ${whoOf(id)} <b>sells</b> its ${food()}`;
+        ? `Where ${whoOf(id)} <b>buys</b> its ${food()}${state.group === "all" ? ", by weight" : ""}`
+        : `Where ${whoOf(id)} <b>sells</b> its ${food()}${state.group === "all" ? ", by weight" : ""}`;
   const steps = [...TRADE_STEPS].reverse().map((s) => ({ color: s.color, label: s.label }));
   const body = `<div class="scale">
       <span class="home"><i style="background:${HOME}"></i><em>${nameOf(id)}</em></span><span class="gap"></span>

@@ -401,7 +401,9 @@ The first figure readers see is a duration, not a ratio:
 with p = feed-adjusted uncapped kcal SSR (`kcal.feed_ssr`) for "all food" and tonnes SSR for a single food. Text rounds to half
 months ("about 10 months of the year"), switches to weeks below about 2 months and to "a few
 days" below one week. Above 100% it says "the whole year, with N months to spare",
-N = round((p − 100) / 100 × 12); from 200% "p/100 years". Map colours use the same bands (under
+N = round((p − 100) / 100 × 12), up to 150%; from 150% a ratio, "the whole year, and p/100 times
+what it uses" (2026-10-19: "2.6 years" of sugar is not food for 2.6 years, the ratio is what the
+land produces). Map colours use the same bands (under
 6 months, 6–9, 9–11, 11–12, the whole year, more than enough), so map and text always agree
 (`web/src/calendar.js`).
 

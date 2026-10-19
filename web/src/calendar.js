@@ -50,10 +50,18 @@ const half = (m) => {
   return `${Math.floor(r)}${r % 1 ? "½" : ""}`;
 };
 
+// A surplus beyond half a year is said as a ratio, not as a longer duration: "2.6 years" of
+// sugar is not food for 2.6 years, "2.6 times what it uses" is what the land produces.
+export const RATIO_FROM = 150;
+
 // How long it lasts, as a noun phrase: "about 10 months", "about 6 weeks", "almost the whole
-// year", "the whole year, with 3 months to spare", "2.5 years". `short` is for lists and labels.
+// year", "the whole year, with 3 months to spare", "the whole year, and 2.6 times what it uses".
+// `short` is for lists and labels.
 export function lasts(pct, { short = false } = {}) {
-  if (pct >= 200) return `${(pct / 100).toFixed(1)} years`;
+  if (pct >= RATIO_FROM) {
+    const x = (pct / 100).toFixed(1);
+    return short ? `${x} times its use` : `the whole year, and ${x} times what it uses`;
+  }
   const spare = spareMonths(pct);
   if (spare >= 1) {
     if (short) return `year + ${spare} mo`;
@@ -73,7 +81,8 @@ export function lasts(pct, { short = false } = {}) {
   return short ? w : `about ${w}`;
 }
 
-// "for about 10 months of the year" / "for the whole year, with 3 months to spare" / "for 2.5 years"
+// "for about 10 months of the year" / "for the whole year, with 3 months to spare" / "for the
+// whole year, and 2.6 times what it uses"
 export function forHowLong(pct) {
   const s = lasts(pct);
   if (s === "none at all") return s;
