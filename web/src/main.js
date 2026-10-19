@@ -1531,6 +1531,7 @@ function moveMarker() {
 function renderFoot() {
   renderFootBody();
   document.getElementById("foot").insertAdjacentHTML("beforeend", `<p class="legal">
+    Borders © EuroGeographics for the administrative boundaries ·
     <a href="mailto:${CONTACT}?subject=Food%20Autonomy%20Atlas">Report an error</a> ·
     <a href="#legal"${state.level === "legal" ? ` aria-current="page"` : ""}>Legal notice</a> ·
     <a href="#privacy"${state.level === "privacy" ? ` aria-current="page"` : ""}>Privacy</a></p>`);
@@ -1552,8 +1553,7 @@ function renderFootBody() {
   }
   if (state.level === "where" && regionsFor()) {
     el.innerHTML = `${tools}Figures: <a href="https://ec.europa.eu/eurostat/databrowser/view/apro_cpshr/default/table" target="_blank"
-      rel="noopener">Eurostat crop statistics by region</a>, ${state.regions.meta.years.replace("-", "–")} averages. Boundaries
-      © EuroGeographics.`;
+      rel="noopener">Eurostat crop statistics by region</a>, ${state.regions.meta.years.replace("-", "–")} averages.`;
     return;
   }
   if (state.level === "trade") {

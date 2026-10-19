@@ -2,7 +2,7 @@
 # "Input data" -> "Dry Matter Intake" (total feed dry matter intake, tonnes a year), read country by country
 # in a browser on 2026-10-18: both production systems (grassland, mixed) summed; cattle = Cattle + Buffalo,
 # sheep_goats = Sheep + Goats. Countries GLEAM does not list (Nauru, Tuvalu) are missing.
-# © FAO 2022, reuse for non-commercial purposes with attribution. Methodology: "Feed", "Cattle, sheep and goats".
+# © FAO 2022, CC BY 4.0 (the dashboard's terms; cite "FAO. 2022. GLEAM 3 Dashboard. In: Shiny Apps"). Methodology: "Feed", "Cattle, sheep and goats".
 iso3,kind,By-products,Crop residues,Fodder crop,Grains,Grass and leaves,Oil seed cakes
 AFG,cattle,112556,103960,0,0,12325341,533711
 AFG,sheep_goats,192598,21333,0,115,4906234,192606
