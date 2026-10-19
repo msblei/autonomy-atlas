@@ -233,7 +233,8 @@ def eumofa_codes():
 
 def comext_value(years):
     """Methodology "Value basis": out[c][group][flow] = {partner: EUR a year}, members (named
-    partners, no self-trade) and EU27 (members to non-members); "all" = every group but fish."""
+    partners, no self-trade) and EU27 (members to non-members); "all" = every group, fish included
+    (methodology "Value basis")."""
     hs = {(int(r["version"]), r["hs"]): r for r in read_csv_comments(MAP / "hs_items.csv") if r["group"]}
     cn8 = {r["cn8"]: r["group"] for r in read_csv_comments(MAP / "cn8_items.csv")}
     fish = eumofa_codes()
@@ -260,12 +261,10 @@ def comext_value(years):
         f = {"1": "imports", "2": "exports"}[flow]
         v = float(val) / len(years)
         out[c][g][f][p] += v
-        if g != "fish":
-            out[c]["all"][f][p] += v
+        out[c]["all"][f][p] += v  # all food with fish (methodology "Value basis")
         if c in EU and p not in EU:
             out["EU27"][g][f][p] += v
-            if g != "fish":
-                out["EU27"]["all"][f][p] += v
+            out["EU27"]["all"][f][p] += v
     return out
 
 

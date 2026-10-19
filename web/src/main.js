@@ -90,6 +90,9 @@ const EXAMPLES = ["DEU", "USA", "BRA", "EGY"];
 const CONTACT = "hello@mariusbleif.com";
 // The map key as a ruler in months, one short label per colour (SEASONS, in the same order).
 const SEASON_SHORT = ["0–6", "6–9", "9–11", "11–12", "≈12", "12+"];
+// Per-person rankings cover countries of this many thousand people or more: the plausibility test's
+// floor (methodology, "Per-person figures"); below it FAO's rounding to 1 kt is tens of kg a head.
+const RANK_MIN_POP_K = 500;
 
 // ------------------------------------------------------------------------------------------------
 // map
@@ -534,7 +537,17 @@ function fitTrade() {
 // The inhabited world, between the panel and the food menu.
 function showWorld(duration = 900) {
   if (!state.mapReady) return;
-  map.fitBounds([[-125, -40], [150, 62]], { padding: openArea(), duration });
+  const bounds = [[-125, -40], [150, 62]];
+  const padding = openArea();
+  // A short window cannot hold the whole inhabited world above the map's lowest zoom: MapLibre
+  // then clamps the zoom but keeps the centre it computed for the zoom it could not use, and the
+  // map ends up over the Pacific. Take the middle of the bounds at the lowest zoom instead.
+  const cam = map.cameraForBounds(bounds, { padding });
+  if (!cam || cam.zoom < map.getMinZoom()) {
+    map.easeTo({ center: new maplibregl.LngLatBounds(bounds).getCenter(), zoom: map.getMinZoom(), padding, duration });
+    return;
+  }
+  map.fitBounds(bounds, { padding, duration });
 }
 
 function flyTo(iso3) {
@@ -667,8 +680,23 @@ function lackLine(id) {
   const top = rankable().map((r) => ({ ...r, v: scenValue(r.id) })).filter((r) => r.v != null && r.v >= 1)
     .sort((a, b) => b.v - a.v).slice(0, 5);
   return `${v != null ? `<p class="lack"><strong>${v < 1 ? "Under 1" : Math.round(v)}%</strong> ${what} would be missing
-    for ${who}.</p>` : ""}
+    for ${who}.</p>` : noLack(id, who)}
     ${top.length ? `<p class="small">Would miss ${state.group === "all" ? "it" : food()} most</p>${rankList(top, (x) => `${Math.round(x)}%`)}` : ""}`;
+}
+
+// Why a country that is not a seller has no figure in the scenario: the foods without one (the
+// "all food" figure needs foods carrying 90% of the calories; methodology, "Scenarios").
+function noLack(id, who) {
+  if (isSeller(id)) return "";
+  if (state.group !== "all") {
+    return `<p class="small">No figure for ${who} in this scenario: ${withheld(id)
+      ? `FAO's figures for ${food()} do not hold together` : `its trade records for ${food()} are missing or withheld`}.</p>`;
+  }
+  const none = state.data.groups.filter((g) => g.key !== "all" && scenValue(id, g.key) == null).map((g) => g.label.toLowerCase());
+  const which = none.length > 4 ? `${none.length} of its ${state.data.groups.length - 1} foods have` : `${listOf(none)} ${none.length > 1 ? "have" : "has"}`;
+  return `<p class="small">No figure for ${who} in this scenario: ${none.length
+    ? `${which} none (FAO's figures for ${none.length > 1 ? "them" : "it"} do not hold together, or the trade records are missing), and ${none.length > 1 ? "they carry" : "it carries"} more than a tenth of its calories`
+    : "not enough of its foods have one"}.</p>`;
 }
 
 // The "What if?" control on the map: a button that opens the scenarios; while one is on, a badge
@@ -752,6 +780,35 @@ function withheld(id, group = state.group) {
   return country(id)?.indicators?.[group]?.withheld ?? null;
 }
 
+// "a, b and c" from plain words (namesList is for country codes).
+function listOf(words) {
+  return words.length > 1 ? `${words.slice(0, -1).join(", ")} and ${words[words.length - 1]}` : words[0] ?? "";
+}
+
+// FAO's item names in running text: "Meat, Other" -> "other meat", "Offals, Edible" -> "edible offals".
+const PLAIN_ITEMS = {
+  "Fats, Animals, Raw": "raw animal fats", "Meat, Aquatic Mammals": "meat of aquatic mammals",
+  "Alcohol, Non-Food": "non-food alcohol", "Pulses, Other and products": "other pulses", "Butter, Ghee": "butter and ghee",
+  "Milk - Excluding Butter": "milk", "Sugar (Raw Equivalent)": "sugar", "Coconuts - Incl Copra": "coconuts",
+  "Fish, Body Oil": "fish body oil", "Fish, Liver Oil": "fish liver oil", "Aquatic Animals, Others": "other aquatic animals",
+};
+function plainItem(name) {
+  if (PLAIN_ITEMS[name]) return PLAIN_ITEMS[name];
+  const m = /^(.+?), (.+)$/.exec(name);
+  return (m ? `${m[2]} ${m[1]}` : name).toLowerCase();
+}
+
+// The headline counts foods withheld as implausible or by review at FAO's published reading
+// (methodology, "Withheld as implausible"): say so wherever the sum is shown.
+function restsOn(id) {
+  const names = state.data.groups
+    .filter((g) => g.key !== "all" && ["implausible", "reviewed"].includes(withheld(id, g.key)?.reason))
+    .map((g) => g.label.toLowerCase());
+  if (!names.length) return "";
+  return `<p class="small">The sum counts FAO's figures for ${listOf(names)} as published, although on
+    ${names.length > 1 ? "their own they are" : "its own it is"} withheld (${names.length > 1 ? "each food's page says" : "its page says"} why).</p>`;
+}
+
 // Why: in FAO's own words and figures, for the food page and the receipt.
 function whyWithheld(id, group = state.group) {
   const w = withheld(id, group);
@@ -770,7 +827,7 @@ function whyWithheld(id, group = state.group) {
   }
   const what = {
     food_exceeds_supply: `FAO counts more ${food(group)} eaten (${tonnes(c.food)}) than there is left for use at home (${tonnes(c.supply)})`,
-    parts_contradict: `the total rests on ${w.items?.length ? `figures for ${w.items.map((i) => i.toLowerCase()).join(", ")} that contradict themselves` : "single foods whose figures contradict themselves"}, and it changes a lot depending on how they are read`,
+    parts_contradict: `the total rests on ${w.items?.length ? `figures for ${listOf(w.items.map(plainItem))} that contradict themselves` : "single foods whose figures contradict themselves"}, and it changes a lot depending on how they are read`,
   }[w.reason] ?? (X > P + M - S
     ? `they list more ${food(group)} sold abroad (${tonnes(X)}) than was produced (${tonnes(P)}) and bought abroad (${tonnes(M)}) together${S ? "" : ", with nothing taken out of storage"}`
     : `production (${tonnes(P)}) plus imports (${tonnes(M)}) minus exports (${tonnes(X)}) leaves ${tonnes(c.supply)} for use at home`);
@@ -937,8 +994,9 @@ function tooltip(iso3) {
     ? country(id)?.indicators?.all?.kcal?.withheld : withheld(id);
   if (scenarioOn() && isSeller(id)) return `<strong>${nameOf(id)}</strong><span class="v">Stops selling</span>`;
   if (v == null) {
-    return `<strong>${nameOf(id)}</strong><span class="v"><i class="hatch"></i>${contradicts
-      ? "No reliable data from FAO" : "No data from FAO"}</span>`;
+    const why = scenarioOn() && !contradicts ? "No figure in this scenario: some of its foods have none"
+      : contradicts ? "No reliable data from FAO" : "No data from FAO";
+    return `<strong>${nameOf(id)}</strong><span class="v"><i class="hatch"></i>${why}</span>`;
   }
   if (state.level === "table") return `<strong>${nameOf(id)}</strong>${fmt(v)}`;
   if (scenarioOn()) {
@@ -1548,9 +1606,9 @@ function viewNoData() {
     ${strip(nat.value)}
     <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}. This is its own statistic:
       <strong>${Math.round(nat.value)}%</strong> of the calories it uses, ${nat.years.replace("-", "–")}
-      (<a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>). It counts meat
-      and milk only for home-grown feed, for cattle too, so it is a little stricter than the FAO-based figures
-      elsewhere on the map, and it is not ranked with them. There are no figures food by food.</p>`;
+      (<a href="${s.url}" target="_blank" rel="noopener">${s.publisher}, ${s.title}</a>). It counts meat, milk
+      and eggs only for home-grown feed, imported hay included, so it is a little stricter than the FAO-based
+      figures elsewhere on the map, and it is not ranked with them. There are no figures food by food.</p>`;
   }
   return `<p class="lead-none">No food balance from FAO.</p>
     <p class="small">FAO publishes no food balance for ${nameOf(state.iso3)}, so there is nothing to divide. The card
@@ -1583,7 +1641,7 @@ function viewCountry() {
     ? `<p class="lead-none">Not enough data from FAO.</p>`
     : `<p class="q">Food produced ${id === EU ? "in the EU" : `in ${who}`} alone would give enough calories</p>
       <p class="answer"><a href="${link({ level: "sources", group: "all" })}" title="How do we know?">${forHowLong(v)}</a>.</p>
-      ${strip(v)}`;
+      ${strip(v)}${restsOn(id)}`;
   return `
     ${head}
     ${euLine(id, "all")}
@@ -2138,6 +2196,7 @@ function storageNote(id) {
 // Biggest surplus and shortfall per person for one food (produced minus used, kg/person/year).
 function compareFood(id) {
   const rows = rankable()
+    .filter((r) => (r.c.population_k ?? 0) >= RANK_MIN_POP_K)
     .map((r) => {
       const pc = perCapita(r.id);
       return { ...r, v: pc?.production != null && pc?.supply != null ? pc.production - pc.supply : null };
@@ -2152,7 +2211,7 @@ function compareFood(id) {
   const unranked = rankable()
     .filter((r) => {
       const prod = withheld(r.id)?.components_kt?.production, pop = r.c.population_k;
-      return prod != null && pop && (prod * 1000) / pop > fifth;
+      return prod != null && pop >= RANK_MIN_POP_K && (prod * 1000) / pop > fifth;
     })
     .map((r) => r.c.name);
   const names = unranked.length > 1 ? `${unranked.slice(0, -1).join(", ")} and ${unranked.at(-1)}` : unranked[0];
@@ -2164,7 +2223,7 @@ function compareFood(id) {
       <div><p class="small">Most missing</p>${rankList(rows.slice(-5).reverse(), signed)}</div>
     </div>
     ${unranked.length ? `<p class="small">Not ranked, because FAO's figures for them do not hold together: ${names},
-      which produce much of it per person.</p>` : ""}`;
+      which produce${unranked.length === 1 ? "s" : ""} much of it per person.</p>` : ""}`;
 }
 
 // Level 3: the receipt. Every figure behind the date, the sum, and how to look it up at FAO.
@@ -2512,14 +2571,15 @@ function receiptAll(id, v) {
       ${country(id).indicators.all.n_withheld === 1 ? "food is" : "foods are"} left out because FAO's figures for
       ${country(id).indicators.all.n_withheld === 1 ? "it contradict" : "them contradict"} themselves (more sold or eaten
       than there was). Their calories still count in the daily total.</p>` : ""}
+    ${restsOn(id)}
     <p>For each food we take what is produced at home divided by what is used, and weigh it by how
       many of those calories the food provides. A surplus of one food can make up for a shortage of
       another: wheat can stand in for imported fruit or oil. ${p?.ssr != null ? `Together that gives
       <strong>${Math.round(p.ssr)}%</strong>.` : ""}</p>
     ${f?.imported_pct != null ? `<p>Pigs and chickens live on grain and oilseed meal, not grass. <strong>${Math.round(f.imported_pct)}%</strong>
       of the protein in feed other than grass and hay ${where} comes from abroad, so pork, chicken and eggs count
-      only for the rest. Beef, lamb and milk count only for the bought share of the cattle's and sheep's diet,
-      which live mostly on grass.
+      only for the rest. Cattle and sheep live mostly on grass, so beef, lamb and milk lose only the imported
+      share of the grain and meal they get besides it.
       That gives <strong>${Math.round(v)}%</strong>.</p>` : ""}
     ${inMonths(id, v)}
     ${country(id)?.indicators?.all?.protein?.feed_ssr != null ? `<p class="small">Counted by protein instead
@@ -2633,7 +2693,7 @@ function feedRows(id) {
   const f = country(id)?.feed;
   if (!f || !["meat", "eggs", "dairy"].includes(state.group)) return "";
   const adj = state.group === "meat" ? f.meat_ssr ?? null : state.group === "eggs" ? f.eggs_ssr ?? null : null;
-  return `<tr><td>Imported share of feed protein</td><td>${fmt(f.imported_pct)}%</td></tr>
+  return `<tr><td>Imported share of feed protein</td><td>${fmt(f.imported_pct)}</td></tr>
     ${adj != null ? `<tr><td>SSR counting pigs and poultry only for home-grown feed</td><td>${fmt(adj)}%</td></tr>` : ""}`;
 }
 
@@ -2663,15 +2723,16 @@ function expertDetail(id) {
         <tr><td>Calories: coverage (capped) / SSR</td><td>${fmt(a.kcal?.share)} / ${fmt(a.kcal?.ssr)}</td></tr>
         <tr><td>Protein, feed-adjusted: coverage (capped) / SSR</td><td>${fmt(a.protein?.feed_share)} / ${fmt(a.protein?.feed_ssr)}</td></tr>
         <tr><td>Protein: coverage (capped) / SSR</td><td>${fmt(a.protein?.share)} / ${fmt(a.protein?.ssr)}</td></tr>
-        <tr><td>Imported share of feed protein</td><td>${c.feed?.imported_pct != null ? `${fmt(c.feed.imported_pct)}%` : "–"}</td></tr>
+        <tr><td>Imported share of feed protein</td><td>${c.feed?.imported_pct != null ? fmt(c.feed.imported_pct) : "–"}</td></tr>
         <tr><td>Protein supply</td><td>${a.protein?.g_per_day ?? "–"} g/cap/day</td></tr>
         <tr><td>Food supply</td><td>${a.kcal?.per_day ?? "–"} kcal/cap/day</td></tr>
         <tr><td>Population</td><td>${pop(c)}</td></tr>
         ${hhiRows(id)}
       </table>
       <p class="note">Coverage = Σ wᵢ·min(SSRᵢ, 100) / Σ wᵢ over FBS commodities, w = kcal or protein
-        per capita. SSR = same without the cap. Feed-adjusted: SSRᵢ × (1 − imported share of feed
-        protein) for pigmeat, poultry meat and eggs. The map and the headline use feed-adjusted
+        per capita. SSR = same without the cap. Feed-adjusted: SSRᵢ × (1 − f) for pigmeat, poultry meat
+        and eggs, SSRᵢ × (1 − f × the traded share of the cattle's or sheep's feed protein) for beef, dairy
+        and mutton, f = the imported share of feed protein. The map and the headline use feed-adjusted
         calories. ${HHI_NOTE}</p>`;
   }
   const g = c.indicators[state.group] ?? {};
@@ -2894,19 +2955,19 @@ function viewTrade() {
     <details class="notes"><summary>About these figures</summary>
     <ul class="caveats">
       ${grown ? `<li>Traced back by assuming that every country sells on an even mix of what it grows and what it buys. It is an estimate, not a shipping record.</li>
-        <li>Shares are of the food as grown: processed goods such as flour or juice are counted back to the grain or fruit, as in FAO's food balances.</li>` : ""}
+        <li>Shares are by weight as shipped (a tonne of flour counts as a tonne), dairy as the milk it takes to make it; tomato products, dried roots, roasted coffee and cocoa products count as the crop they came from.</li>` : ""}
       ${value ? `<li>In euros as the EU's own trade records (Eurostat) give them: ${imports ? "the price at the EU border, with freight and insurance" : "the price at the border"}, averaged over the years shown and not adjusted for rising prices.</li>`
         : grown ? "" : fbsTotal != null
         ? `<li>The totals come from FAO's food balances, like the rest of this site. The split by country comes from ${recordsOf().replace("The", "the")}, ${state.group === "fish"
           ? "counted as whole fish, the way the food balance counts it: a tonne of fillets counts as about two and a half tonnes of fish (the EU's own factors)."
           : state.group === "dairy"
           ? "converted to the milk it takes to make each product (a tonne of cheese counts as about three and a half tonnes of milk), the EU's own factors."
-          : "which count tonnes as shipped (a tonne of juice counts like a tonne of fruit)."}</li>`
-        : `<li>Counted in tonnes as shipped, dairy as the milk it takes to make it: a tonne of juice counts the same as a tonne of fruit.${state.group === "all" ? " All foods are added up by weight." : ""}</li>`}
+          : `which count tonnes as shipped${CONVERTED[state.group] ? `, ${CONVERTED[state.group]}` : " (a tonne of juice counts like a tonne of fruit)"}.`}</li>`
+        : `<li>Counted in tonnes as shipped (a tonne of juice counts the same as a tonne of fruit), dairy as the milk it takes to make it${CONVERTED[state.group] ? `, ${CONVERTED[state.group]}` : ""}.${state.group === "all" ? " All foods are added up by weight; tomato products, dried roots, roasted coffee and cocoa products count as the crop they came from." : ""}</li>`}
       ${mirror && !value ? `<li>${nameOf(id)} did not report all of its trade, so where its own figures are missing or far too low we use what other countries say they sold to it or bought from it.</li>` : ""}
       ${state.group === "all" ? (value
-        ? "<li>Fish is not included, so that euros and tonnes describe the same goods.</li>"
-        : "<li>Fish is not included: it is counted as whole fish, everything else by weight as shipped.</li>") : ""}
+        ? "<li>Fish is included: the EU's own records have it in euros. The lists by weight leave it out, because FAO's trade matrix has no fish.</li>"
+        : "<li>Fish is left out: FAO's trade matrix has none, and the EU's records count it as whole fish, which cannot be added to goods counted as shipped.</li>") : ""}
       ${value ? `<li>Only the foods on this site: live animals, nuts, animal feed, spirits, cider and soft drinks,
         margarine, soups, sauces and other food preparations, baby milk, casein and tobacco are left out, so the totals are well below the
         “agri-food trade” figures the European Commission publishes.</li>` : ""}
@@ -2936,6 +2997,13 @@ function shortTonnes(kt) {
   if (a >= 1) return `${Math.round(kt).toLocaleString("en-GB")} thousand tonnes`;
   return `${Math.round(kt * 1000).toLocaleString("en-GB")} tonnes`;
 }
+
+// Trade records count product weight as shipped, except these conversions (mappings/trade_items.csv).
+const CONVERTED = {
+  vegetables: "tomato paste, juice and peeled tomatoes as the tomatoes they came from",
+  potatoes_roots: "dried roots, flour and starch as the fresh crop",
+  stimulants: "roasted coffee, extracts and cocoa products as the beans",
+};
 
 function tradeTooltip(iso3) {
   const id = state.iso3;

@@ -324,8 +324,10 @@ def export_ssr() -> None:
                 "ssr": "production / domestic supply * 100",
                 "idr": "imports / domestic supply * 100",
                 "protein_share": "sum(protein_i * min(ssr_i, 100)) / sum(protein_i), FBS leaf items",
-                "kcal_feed_ssr": "sum(kcal_i * ssr_i') / sum(kcal_i), ssr_i' = (1 - imported feed "
-                                 "protein share) * ssr_i for pigmeat, poultry meat and eggs",
+                "kcal_feed_ssr": "sum(kcal_i * ssr_i') / sum(kcal_i), ssr_i' = (1 - f) * ssr_i for pigmeat, "
+                                 "poultry meat and eggs, (1 - f * traded share of the cattle's or sheep's feed "
+                                 "protein, GLEAM 3) * ssr_i for bovine meat, dairy and mutton, f = imported "
+                                 "share of feed protein",
             },
         },
         "groups": group_entries(products),
@@ -555,7 +557,9 @@ def _value_block() -> dict | None:
     if not src.exists():
         return None
     v = pd.read_parquet(src)
-    v = pd.concat([v, v[v["group"] != "fish"].assign(group="all")], ignore_index=True)
+    # All food with fish: Comext has it, and for the EU it is the largest import group by value
+    # (methodology, "Value basis"); the lists by weight have none (the FAO matrix has no fish).
+    v = pd.concat([v, v.assign(group="all")], ignore_index=True)
     countries: dict = {}
     concentration: dict = {}
     for (iso3, group, flow), sub in v.groupby(["iso3", "group", "flow"]):
@@ -567,7 +571,7 @@ def _value_block() -> dict | None:
             concentration.setdefault(iso3, {}).setdefault(group, {})[flow] = h
     return {
         "meta": {"source": "eurostat_comext", "years": v["years"].iloc[0], "unit": "thousand EUR",
-                 "basis": "nominal euros a year; imports CIF, exports FOB; all food without fish"},
+                 "basis": "nominal euros a year; imports CIF, exports FOB; all food with fish"},
         "countries": countries,
         "concentration": concentration,
     }

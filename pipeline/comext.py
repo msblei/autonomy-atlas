@@ -281,7 +281,7 @@ MONTHLY_GROUPS = ("fruit", "vegetables", "potatoes_roots")
 FRESH = {
     "0701": "Potatoes", "0702": "Tomatoes", "0703": "Onions, garlic", "0704": "Cabbages",
     "0705": "Lettuce", "0706": "Carrots, roots", "0707": "Cucumbers", "0708": "Peas and beans",
-    "0709": "Peppers and more", "0803": "Bananas", "0804": "Avocados, mangoes", "0805": "Citrus fruit",
+    "0709": "Peppers, courgettes, asparagus", "0803": "Bananas", "0804": "Pineapples, avocados, mangoes", "0805": "Citrus fruit",
     "0806": "Grapes", "0807": "Melons", "0808": "Apples, pears", "0809": "Stone fruit",
     "0810": "Berries, kiwis",
 }

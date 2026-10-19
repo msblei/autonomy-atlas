@@ -84,11 +84,12 @@ test("rankings never list a withheld figure and agree with the data", async ({ p
       expect(C[id].indicators?.[g]?.withheld, `${id}/${g} is withheld but ranked`).toBeUndefined();
       expect(C[id].indicators?.[g]?.components_kt, `${id}/${g} ranked without figures`).toBeTruthy();
     }
-    // "Most to spare": the five largest (production - supply) per person among countries shown.
+    // "Most to spare": the five largest (production - supply) per person among countries shown,
+    // of 500,000 people or more (methodology, "Per-person figures": the plausibility test's floor).
     const pc = (id) => {
       const c = C[id].indicators?.[g]?.components_kt;
       const pop = C[id].population_k;
-      return c && pop && c.production != null && c.supply != null ? ((c.production - c.supply) * 1000) / pop : null;
+      return c && pop >= 500 && c.production != null && c.supply != null ? ((c.production - c.supply) * 1000) / pop : null;
     };
     const pool = Object.keys(C).filter((id) => id !== "EU27" || !members.length).map((id) => [id, pc(id)])
       .filter(([, v]) => v != null).sort((a, b) => b[1] - a[1]);

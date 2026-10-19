@@ -108,7 +108,9 @@ highest; no upper end when a reading leaves no use at home), so the UI can still
 "less than it uses" when all agree, and `withheld.plausibility` lists each reading with the
 figures the text quotes (kg a person and the ceiling; the records' kt, the ratio and the typical
 ratio). As for a figure withheld by review, the group's items keep their own figures and "all
-food" uses the published reading (dairy, which counts there as one food, too).
+food" uses the published reading (dairy, which counts there as one food, too); the country's page
+says so under the headline and in "The sum for …" ("counts FAO's figures for cereals as published,
+although on its own it is withheld").
 
 `atlas build` runs the test after the trade partners exist, writes
 `data/processed/plausibility.parquet`, then computes the balances again with its verdicts; the
@@ -300,6 +302,12 @@ Commission on the affected pages ("How do we know?").
 kg/person/year = component (1000 t) × 1000 / population (1000 persons). Population is FBS item
 2501 "Population", element "Total Population - Both sexes", from the same file and window. "Food"
 in FBS is food available for consumption (incl. household waste), not intake.
+
+**Per-person rankings** ("Who has … to spare?", `web/src/main.js` `compareFood`) cover countries of
+500,000 people or more, the floor of the plausibility test (section "Withheld as implausible"):
+below it, FAO's rounding to a thousand tonnes is itself tens of kilograms a head, and the smallest
+balances are never tested. Tuvalu, 2021–2023: 6 kt of cereals bought for 10,000 people, 4 kt of it
+booked as feed, which ranked it fourth in "most missing" at 600 kg a head.
 
 Utilisation of domestic supply: food, feed, seed, losses, processing (turned into another FBS
 item, e.g. barley → beer, soybeans → oil + cake), other uses (non-food: biofuel, industry),
@@ -618,7 +626,9 @@ From the same Comext extraction (`VALUE_IN_EUROS`), for EU members and the EU bl
   EUMOFA factor above 0); no conversion factors, a euro is a euro. Self-trade and partners that
   are no country are left out, as for the partner lists by weight.
 - **EU bloc:** members' trade with non-members, summed.
-- **All food** = all groups but fish, as for weight (the two bases describe the same goods).
+- **All food** = every group, fish included: Comext has it, and for the EU fish is the largest
+  import group by value (2021–2023: about a fifth of what it pays abroad). The lists by weight
+  have no fish in "all food", because the FAO trade matrix has none; the UI says so on both.
 - **Never mixed with weight.** It is a basis of its own: the trade page switches between "by
   weight" (FAO trade matrix, FBS basis, as above; fish from Comext in live weight) and "by
   value" (Comext, EUR) for the whole view: list, totals, map. The balance card stays in tonnes.
@@ -812,8 +822,8 @@ infer harvests from them.
   products with opposite seasons cancel. The seasons are in single fresh products, by HS
   heading: potatoes (0701); tomatoes (0702), onions and garlic (0703), cabbages and cauliflower
   (0704), lettuce (0705), carrots and other roots (0706), cucumbers (0707), fresh peas and beans
-  (0708), peppers, courgettes and other fresh vegetables (0709); bananas (0803), dates, figs,
-  avocados and mangoes (0804), citrus (0805), grapes (0806), melons (0807), apples and pears
+  (0708), peppers, courgettes, asparagus and other fresh vegetables (0709); bananas (0803),
+  pineapples, avocados, mangoes, dates and figs (0804), citrus (0805), grapes (0806), melons (0807), apples and pears
   (0808), apricots, cherries, peaches and plums (0809), berries, kiwis and other fresh fruit
   (0810). Only the HS6 codes of each heading that belong to the food group count (olives in 0709
   are oilseeds).
@@ -1014,7 +1024,8 @@ and Ukraine" stands for any group; a country in the group gets no figure.
   17% to 3% (protein-weighted then), the food it buys most from Russia left out.
 - **No figure:** for Russia and Ukraine themselves; for a withheld food (its balance contradicts
   itself) or a withheld import flow (section "Trade records against the food balance"); where
-  D ≤ 0 (nothing used).
+  D ≤ 0 (nothing used). The country's page and the map tooltip say so ("no figure for Norway in
+  this scenario: cereals, fish and vegetables have none").
 - **What it does not say:** that the food would be missing for long (other sellers step in, at a
   price), or what animals would lack in feed (sunflower meal from Ukraine is feed, not a food
   group here). The page says so.
