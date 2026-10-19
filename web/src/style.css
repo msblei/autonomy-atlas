@@ -109,6 +109,8 @@ svg { flex: none; }
 }
 #foodline span { overflow: hidden; text-overflow: ellipsis; }
 #card { margin: 10px 0 14px; }
+/* why produced + bought − sold is not exactly what is used; one line, kept even when empty */
+#card .cardnote { min-height: 18px; margin: 4px 10px 0; font-size: 12px; line-height: 18px; color: var(--ink-soft); }
 
 #view { flex: 1 1 auto; overflow: auto; padding: 16px 20px 22px; }
 /* A new detail takes over from the old one; --in / --out follow the direction of the highlight. */
