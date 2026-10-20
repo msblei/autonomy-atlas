@@ -1154,7 +1154,7 @@ function swipeToFold(el, { fromTop = false } = {}) {
     if (y0 == null) return;
     dy = e.touches[0].clientY - y0;
     const dx = e.touches[0].clientX - x0;
-    // Sideways (the food menu) or, on the content, upwards (scrolling): not a fold.
+    // Sideways, or on the content upwards (scrolling): not a fold.
     if (Math.abs(dx) > Math.abs(dy) || (fromTop && dy < 0)) { reset(); return; }
     if (dy > 0 && !panel.classList.contains("folded")) {
       panel.classList.add("dragging");
@@ -1172,6 +1172,18 @@ function swipeToFold(el, { fromTop = false } = {}) {
 }
 for (const el of [grab, document.querySelector(".head"), document.getElementById("peek")]) swipeToFold(el);
 for (const el of [document.getElementById("frame"), document.getElementById("view")]) swipeToFold(el, { fromTop: true });
+
+// More below: the bottom edge of what scrolls (the sheet on phones, the detail on wide screens)
+// fades while it can scroll further (.more, drawn by the stylesheet). Phones show no scrollbar, so
+// nothing else says that a page goes on. Checked on every scroll and whenever the content changes.
+const view = document.getElementById("view");
+function markMore() {
+  for (const el of [panel, view]) el.classList.toggle("more", el.scrollHeight - el.scrollTop - el.clientHeight > 6);
+}
+for (const el of [panel, view]) el.addEventListener("scroll", markMore, { passive: true });
+new MutationObserver(() => requestAnimationFrame(markMore)).observe(panel, { childList: true, subtree: true, attributes: true });
+new ResizeObserver(markMore).observe(panel);
+panel.addEventListener("load", markMore, true); // an image (the crop map) makes a page longer
 
 // The folded sheet's one line: the place, the food, and the row of the card that is open.
 function renderPeek() {
@@ -1289,8 +1301,8 @@ function renderLegend() {
 
 // The food buttons belong to the map: they change what it shows. Each choice keeps the country
 // and the level, so switching from coffee imports to meat imports is a single tap.
-// The food menu: on wide screens one button with the food shown, opening the list; on phones the
-// list is a strip of its own (CSS), so .current is hidden there.
+// The food menu: one button with the food shown, opening the list (on phones in two columns over
+// the map, so that every food is in view at once; CSS).
 let foodsOpen = false;
 const CHEVRON_DOWN = `<svg class="chev" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" /></svg>`;
 function renderControls() {
@@ -2202,7 +2214,14 @@ function trend(id) {
         ${pts.map(([i, v]) => `<circle cx="${x(i)}" cy="${y(v)}" r="2" class="yeardot"><title>${yrs[i]}: ${lasts(v, { short: true })}</title></circle>`).join("")}
         ${odds.map(([i, v]) => `<circle cx="${x(i)}" cy="${yIn(v)}" r="3.2" class="odd"><title>${yrs[i]}: ${lasts(v, { short: true })}, unusual</title></circle>`).join("")}
         <circle cx="${x(li)}" cy="${y(lv)}" r="3.2" class="dot" />
-        ${extremes.map(([i, v]) => `<text x="${x(i)}" y="${y(v) + (v === highest[1] ? -6 : 13)}" class="tick" text-anchor="middle">${lasts(v, { short: true })}</text>`).join("")}
+        ${extremes.map(([i, v]) => {
+          // Centred on its year, unless that would run past the left edge (the first year sits on
+          // it, and the panel cuts off whatever sticks out): then it starts at the edge.
+          const t = lasts(v, { short: true });
+          const start = x(i) < t.length * 3.5;
+          return `<text x="${start ? PL : x(i)}" y="${y(v) + (v === highest[1] ? -6 : 13)}" class="tick"
+            text-anchor="${start ? "start" : "middle"}">${t}</text>`;
+        }).join("")}
         <text x="${x(fi) + 2}" y="${H - 3}" class="yr">${yrs[fi]}</text>
         <text x="${x(li)}" y="${H - 3}" class="yr" text-anchor="end">${yrs[li]}</text>
         <text x="${x(li) + 8}" y="${y(lv) + 4}" class="val">${lasts(lv, { short: true })}</text>
