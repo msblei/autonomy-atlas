@@ -1,5 +1,7 @@
 # Food Autonomy Atlas
 
+https://food-autonomy-atlas.com
+
 Interactive map of European agriculture: what's grown where and when, who imports and exports
 what, and how self-sufficient each country really is.
 
