@@ -241,7 +241,7 @@ a.sum-row[href][aria-current]:hover { background: transparent; }
 .sum-row strong { display: inline-flex; align-items: center; gap: 4px; font-weight: 700; white-space: nowrap; }
 .sum-row strong svg { width: 14px; height: 14px; fill: none; stroke: var(--ink-faint); stroke-width: 2.4; stroke-linecap: round; stroke-linejoin: round; }
 a.sum-row[href]:hover strong svg { stroke: var(--ink); }
-.sum-row[aria-current] strong svg, .sum-row[aria-disabled] strong svg { visibility: hidden; }
+.sum-row[aria-current] strong svg, .sum-row:not([href]) strong svg { visibility: hidden; }
 .sum-row[aria-disabled] strong { font-weight: 400; }
 .wf-track { position: relative; display: block; height: 6px; background: var(--sunken); border-radius: 3px; margin-top: 5px; overflow: hidden; }
 .sum-row[aria-current] .wf-track { background: var(--edge); }

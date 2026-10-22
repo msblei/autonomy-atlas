@@ -1381,7 +1381,8 @@ function cardRows(id, group = state.group) {
     food: { ...row("Produces", "", overview), always: true },
     imports: row(`Buys${out}`, "+", go("trade", "imports")),
     exports: row(`Sells${out}`, "−", go("trade", "exports")),
-    used: row("Uses", "=", go("used")),
+    // All food has no page of its own for uses (the router folds it into the overview): a plain row.
+    used: row("Uses", "=", group === "all" ? null : go("used")),
   };
   // A withheld balance: FAO's own figures contradict themselves, and trade records next to them
   // would disagree with them too, so none is shown.
@@ -1530,7 +1531,8 @@ function renderFrame() {
     bar.style.left = `${has ? r.bar[0] : 0}%`;
     bar.style.width = `${has ? r.bar[1] : 0}%`;
     if (has && !r.title) a.removeAttribute("title"); else a.title = has ? r.title : r.why;
-    if (on) { a.href = r.href; a.removeAttribute("aria-disabled"); }
+    if (on && r.href) { a.href = r.href; a.removeAttribute("aria-disabled"); }
+    else if (on) { a.removeAttribute("href"); a.removeAttribute("aria-disabled"); } // a figure, nothing to open
     else { a.removeAttribute("href"); a.setAttribute("aria-disabled", "true"); }
     if (a.dataset.row === here && on) a.setAttribute("aria-current", "page");
     else a.removeAttribute("aria-current");
