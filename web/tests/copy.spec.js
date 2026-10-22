@@ -6,7 +6,7 @@ import { expect, test } from "@playwright/test";
 const ALLOWED = [
   "85% of 12 months is about 10 months", // worked example of the arithmetic
   "Of every 10 kg used here", // "of every 10 kg", a proportion
-  "Of every 10 kg of ${foodName()}", // the same, in the tour
+  "Of every 10 kg of ${foodName}", // the same, in the tour
   '"<1 kg"', // formatter output
   "* 100, tonnes: v", // code: a share in per cent next to a field named tonnes
 ];

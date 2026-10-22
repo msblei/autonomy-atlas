@@ -1,67 +1,75 @@
-// The tour: the real atlas, step by step, with Italy as the worked example. Each step opens a
-// page of the app (by its hash), dims everything but the part it explains, and puts a short card
-// next to it. Every figure in the cards is read from the data the page itself shows, never typed.
-// Next, Back, the arrow keys, the mouse wheel and a swipe move through it; a click on the lit part
-// works as in the app (and moves the tour on when it is what the next step shows); Esc ends it.
+// The tour: the real atlas, built up step by step, with Italy as the worked example. Each step
+// opens a page of the app (by its hash) and shows only the parts it is about, in the places they
+// have in the app; everything else is invisible (not moved). The map stays plain land except where
+// a step is about it. Where a step shows something to click, that click (and only the one the
+// example needs) moves the tour on, as Next does. At the end the whole map and every control
+// come in: the finale. Every figure in the cards is read from the data the page shows.
 
 const ID = "ITA";
 const FOOD = "cereals";
 const SCENARIO = "black_sea";
 const PAD = 6; // around each lit part
-const RADIUS = 10;
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
   "September", "October", "November", "December"];
 const CLOSE = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18" /></svg>`;
+const ARROW = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M13 6l6 6-6 6" /></svg>`;
+// Never hidden: the map (the veil does that) and the tour itself.
+const SKIP = new Set(["map", "land", "tour"]);
 
 let api = null;
+let list = [];
 let at = -1;
-let root = null;
-let busy = 0; // a counter, so a step that is still waiting for its page gives way to a newer one
+let root, rings, card, rule;
+let busy = 0; // a counter, so a step still waiting for its page gives way to a newer one
 let follow = 0; // requestAnimationFrame id while the lit parts are followed after a change
-let lit = []; // the selectors of the lit parts, per hole, for re-measuring
-let scenarioOurs = false;
 
 const pct = (v) => `${v < 1 ? "under 1" : Math.round(v)}%`;
 const kcal = (v) => `${Math.round(v).toLocaleString("en-GB")} kcal`;
 const calm = () => matchMedia("(prefers-reduced-motion: reduce)").matches;
 const phone = () => matchMedia("(max-width: 760px)").matches;
+const q = (sel) => document.querySelector(sel);
+const linkText = (sel) => (q(sel)?.textContent ?? "").replace("›", "").trim();
+// The answer at the top of a food or country page: the question, the answer and the year strip.
+const ANSWER = ["#view .q", "#view .answer", "#view svg.strip"];
+const ROW = (r) => `#card .sum-row[data-row="${r}"]`;
 
 // ------------------------------------------------------------------------------------------------
 // the steps
+//   hash      the page it opens          holes   what it lights (each a list of parts, one ring)
+//   keep      shown for orientation, not clickable   map   "blank" | "focus" (Italy) | "full"
+//   only      the one choice let through (country, food, scenario)   reached   moved on to by a state
 
 function steps() {
   const { state, country, pctFor, lasts, forHowLong, lastDay, nameOf, inText, listOf, shortTonnes } = api;
   const it = nameOf(ID);
-  const foodName = () => api.food(FOOD);
-  const foodRows = () => state.data.groups.filter((g) => g.key !== "all")
-    .map((g) => ({ name: g.label.toLowerCase(), v: pctFor(ID, g.key) })).filter((r) => r.v != null);
+  const foodName = api.food(FOOD);
+  const foodLabel = api.groupInfo(FOOD).label;
+  const scen = () => api.scenInfo(SCENARIO)?.label ?? "";
+  const place = ["#where"];
   return [
     {
-      title: `A tour with ${it}`,
-      hash: "#", group: "all",
-      text: () => `How long would the food a country produces feed its own people, if it bought nothing
-        abroad? This tour takes one country, ${it}, through every part of the atlas, step by step.`,
-      hint: phone() ? "Next, or a swipe over the map, moves on." : "Next, the arrow keys or the mouse wheel move on. Esc ends the tour.",
-      first: true,
+      landing: true, hash: "#", group: "all", map: "blank",
+      title: "Could your country feed itself?",
+      text: () => "How long the food a country produces would last its own people, if it bought nothing abroad.",
     },
     {
-      title: "The map",
-      hash: "#", group: "all",
+      title: "The map", hash: "#", group: "all", map: "full",
       holes: [["#legend"]],
+      camera: () => api.showWorld(),
       text: () => `Every country has one colour: how many months its own harvests, herds and catches
         would feed its people. Red runs out within half a year, dark green has more than it needs.`,
       hint: "Counted in calories, so bread, oil and sugar weigh most.",
     },
     {
-      title: "Pick a country",
-      hash: "#", group: "all",
+      title: "Pick a country", hash: "#", group: "all", map: "focus",
       holes: [[".head .search"]],
-      text: () => `Type a name here, or click a country on the map. We take ${it}.`,
+      only: { country: ID },
+      camera: () => api.showEurope(),
+      text: () => `Type <strong>${it}</strong> into the search box, or click it on the map.`,
     },
     {
-      title: it,
-      hash: `#${ID}`,
-      holes: [["#view .q", "#view .answer", "#view svg.strip"]],
+      title: it, hash: `#${ID}`, map: "focus",
+      holes: [ANSWER], keep: place,
       ready: () => pctFor(ID, "all") != null,
       text: () => {
         const v = pctFor(ID, "all");
@@ -69,167 +77,166 @@ function steps() {
         return `Food produced in ${it} alone would give enough calories ${forHowLong(v)}${day
           ? `: eaten from 1 January, it would run out on ${day}` : ""}.`;
       },
-      hint: "The coloured boxes are the months of the year.",
+      hint: "The boxes are the months of the year.",
     },
     {
-      title: "Behind the answer",
-      hash: `#${ID}`,
-      holes: [["#card"]],
+      title: "Behind the answer", hash: `#${ID}`, map: "focus",
+      holes: [["#card"]], keep: place,
       ready: () => !!country(ID)?.indicators?.all?.kcal?.balance,
       text: () => {
         const b = country(ID).indicators.all.kcal.balance;
         return `Per person and day, ${it} produces <strong>${kcal(b.produced)}</strong>, buys
-          <strong>${kcal(b.imports)}</strong> abroad and sells <strong>${kcal(b.exports)}</strong>. It uses <strong>${kcal(b.used)}</strong>. Produced against
-          used gives the months.`;
+          <strong>${kcal(b.imports)}</strong> abroad and sells <strong>${kcal(b.exports)}</strong>. It uses
+          <strong>${kcal(b.used)}</strong>. Produced against used gives the months.`;
       },
-      hint: "The four rows open the details. We will come back to them.",
     },
     {
-      title: "Food by food",
-      hash: `#${ID}`,
-      holes: [["#view .foodlist"]],
+      title: "Food by food", hash: `#${ID}`, map: "focus",
+      holes: [["#view .detail > h3", "#view .foodlist"]], keep: place,
       text: () => {
-        const rows = foodRows();
+        const rows = state.data.groups.filter((g) => g.key !== "all")
+          .map((g) => ({ name: g.label.toLowerCase(), v: pctFor(ID, g.key) })).filter((r) => r.v != null);
         const spare = rows.filter((r) => r.v >= 100).sort((a, b) => b.v - a.v).slice(0, 2).map((r) => r.name);
         const short = rows.filter((r) => r.v < 75).sort((a, b) => a.v - b.v).slice(0, 2).map((r) => r.name);
         return `The same question for each food on its own.${spare.length ? ` ${it} produces more ${listOf(spare)}
           than it uses` : ""}${short.length ? `${spare.length ? ", but" : ""} its own ${listOf(short)} would run out first` : ""}.`;
       },
-      hint: "Each line opens that food.",
     },
     {
-      title: "Choose a food",
-      hash: `#${ID}`,
-      holes: [["#foodrail"]],
-      text: () => `This menu switches the map and the page to one food. Next we take ${foodName()}.`,
+      title: "Choose a food", hash: `#${ID}`, map: "focus",
+      holes: [["#foodrail"]], keep: place,
+      only: { food: FOOD },
+      text: () => `This menu switches the map and the page to one food. Open it and choose
+        <strong>${foodLabel}</strong>.`,
     },
     {
-      title: api.groupInfo(FOOD).label,
-      hash: `#${ID}/${FOOD}`,
-      holes: [["#view .q", "#view .answer", "#view svg.strip"], ["#card"]],
+      title: foodLabel, hash: `#${ID}/${FOOD}`, map: "full",
+      holes: [ANSWER, ["#card"]], keep: place,
       ready: () => pctFor(ID, FOOD) != null,
       text: () => {
         const c = country(ID).indicators[FOOD].components_kt;
-        return `${it}'s own ${foodName()} would last ${lasts(pctFor(ID, FOOD))}. It produces
+        return `${it}'s own ${foodName} would last ${lasts(pctFor(ID, FOOD))}. It produces
           <strong>${shortTonnes(c.production)}</strong> a year and buys <strong>${shortTonnes(c.imports)}</strong>
-          abroad. The card now counts tonnes.`;
+          abroad. Click <strong>Buys abroad</strong> to see who sells them.`;
       },
     },
     {
-      title: "Who sells it",
-      hash: `#${ID}/${FOOD}/trade`,
-      holes: [['#card .sum-row[data-row="imports"]'], ["#view .partners"]],
+      title: "Who sells it", hash: `#${ID}/${FOOD}/trade`, map: "full",
+      holes: [["#view .partners"], [ROW("used")]], keep: [...place, ROW("imports")],
       ready: () => api.shares(ID, FOOD, "imports").length > 0,
       text: () => {
         const top = api.shares(ID, FOOD, "imports").slice(0, 3);
-        return `“Buys abroad” opens the countries it buys from. The most comes from
-          ${listOf(top.map((r) => `${inText(r.id)} (${pct(r.share)})`))}. The map draws each as a line to ${it}.`;
+        return `The most comes from ${listOf(top.map((r) => `${inText(r.id)} (${pct(r.share)})`))}; the map
+          draws each seller as a line to ${it}. Then click <strong>Uses</strong>.`;
       },
-      hint: "Click a seller to see what it trades itself.",
     },
     {
-      title: "What it is used for",
-      hash: `#${ID}/${FOOD}/used`,
-      holes: [['#card .sum-row[data-row="used"]'], ["#view .detail > h3", "#view .uses"]],
+      title: "What it is used for", hash: `#${ID}/${FOOD}/used`, map: "focus",
+      holes: [["#view .detail > h3", "#view .detail > .row", "#view .detail > .track", "#view .uses"], [ROW("food")]], keep: [...place, ROW("used")],
       ready: () => api.perCapita(ID, FOOD)?.supply > 0,
       text: () => {
         const pc = api.perCapita(ID, FOOD);
         const tenths = Math.round((pc.food / pc.supply) * 10);
         const rest = api.USES.filter((u) => u.key !== "food").sort((a, b) => (pc[b.key] ?? 0) - (pc[a.key] ?? 0))[0];
-        return `“Uses” splits what is used. Of every 10 kg of ${foodName()} used in ${it}, ${tenths} go to food
-          directly; most of the rest is ${rest.label}.`;
+        return `Of every 10 kg of ${foodName} used in ${it}, ${tenths} go to food directly; most of the rest is
+          ${rest.label}. Click <strong>Produces</strong> to go back.`;
       },
     },
     {
-      title: "When it grows",
-      hash: `#${ID}/${FOOD}`,
-      holes: [["#view .season", "#view .season-key"]],
-      ready: () => !!state.seasons?.countries?.[ID]?.[FOOD]?.length,
+      title: "When it grows", hash: `#${ID}/${FOOD}`, map: "focus",
+      holes: [["#view .season", "#view .season-key"], ["#view a.more"]], keep: place,
+      ready: () => !!state.seasons?.countries?.[ID]?.[FOOD]?.length && !!q("#view a.more"),
       text: () => {
         const r = state.seasons.countries[ID][FOOD][0];
         const t = state.seasons.meta.thresholds;
         const harvest = MONTHS.filter((_, k) => r.harvest[k] >= t.harvest);
         const sown = MONTHS.filter((_, k) => r.harvest[k] < t.harvest && r.sown[k] >= t.sowing);
         return `A typical year for each crop. ${r.label} is sown in ${listOf(sown)} and harvested in
-          ${listOf(harvest)}: one harvest has to last until the next.`;
+          ${listOf(harvest)}: one harvest has to last until the next. Then click
+          <strong>${linkText("#view a.more")}</strong>`;
       },
     },
     {
-      title: "Where it grows",
-      hash: `#${ID}/${FOOD}/where`,
-      holes: [["#view .q", "#view .partners"], ["#legend"]],
+      title: "Where it grows", hash: `#${ID}/${FOOD}/where`, map: "full",
+      holes: [["#view .q", "#view .partners"], ["#legend"]], keep: place,
       ready: () => !!api.regionsFor(ID, FOOD)?.regions?.length,
       text: () => {
         const [code, , share] = api.regionsFor(ID, FOOD).regions[0];
-        return `${api.regionName(code)} alone grows ${pct(share)} of ${it}'s ${foodName()}. The map shades
-          each region by tonnes per square kilometre${document.querySelector("#view [data-fields]")
-          ? `; “Fields” shows the fields themselves, from satellite images` : ""}.`;
+        return `${api.regionName(code)} alone grows ${pct(share)} of ${it}'s ${foodName}. The map shades
+          each region by tonnes per square kilometre${q("#view [data-fields]")
+          ? `; <strong>Fields</strong> shows the fields themselves, from satellite images` : ""}.`;
       },
     },
     {
-      title: "What if…?",
-      hash: `#${ID}/${FOOD}`,
-      holes: [["#whatif .badge", "#whatif .open"], ["#view .lack"]],
-      enter: async () => {
-        await api.loadScenario();
-        if (state.scenario !== SCENARIO) { scenarioOurs = true; api.setScenario(SCENARIO); }
-      },
+      title: "What if…?", hash: `#${ID}/${FOOD}`, map: "focus",
+      holes: [["#whatif .open", "#whatif .menu"]], keep: place,
+      only: { scenario: SCENARIO },
+      enter: async () => { endScenario(); await api.loadScenario(); },
+      ready: () => !!state.scen,
+      text: () => `Scenarios stop some countries from selling. Click <strong>What if…?</strong> and choose
+        <strong>${scen()}</strong>.`,
+    },
+    {
+      title: scen, hash: `#${ID}/${FOOD}`, map: "full",
+      holes: [["#whatif .badge"], ["#view .lack"]], keep: [...place, "#legend"],
+      reached: () => state.scenario === SCENARIO,
+      enter: async () => { await api.loadScenario(); if (state.scenario !== SCENARIO) api.setScenario(SCENARIO); },
       leave: () => endScenario(),
       ready: () => state.scenario === SCENARIO && api.scenValue(ID, FOOD) != null,
-      text: () => `Scenarios stop some countries from selling. Here: “${api.scenInfo(SCENARIO).label}”.
-        ${it} would miss <strong>${pct(api.scenValue(ID, FOOD))}</strong> of the ${foodName()} it uses; the map
-        shows the share for every country.`,
-      hint: "The cross on the badge ends a scenario.",
+      text: () => `${it} would miss <strong>${pct(api.scenValue(ID, FOOD))}</strong> of the ${foodName} it uses.
+        The map shows the share for every country.`,
     },
     {
-      title: "How do we know?",
-      hash: `#${ID}/${FOOD}`,
-      holes: [["#foot .tools"]],
-      text: () => `Every figure has its sources. “How do we know?” walks through the sum for ${it} and how to
-        check it in FAO's own tables; “All the numbers” lists FAO's figures, food item by food item.`,
+      title: "How do we know?", hash: `#${ID}/${FOOD}`, map: "focus",
+      holes: [["#foot .tools"]], keep: place,
+      text: () => `Every figure has its sources. <strong>How do we know?</strong> walks through the sum for
+        ${it} and how to check it in FAO's own tables; <strong>All the numbers</strong> lists FAO's figures,
+        food item by food item.`,
     },
     {
-      title: "Your turn",
-      hash: "#", group: "all",
+      title: "Your turn", hash: "#", group: "all", map: "full", reveal: true, last: true,
       holes: [[".head .search"]],
-      last: true,
+      camera: () => api.showWorld(1600),
       text: () => `That was ${it}. Find your own country in the search box, or click one on the map.`,
     },
   ];
 }
 
 function endScenario() {
-  if (scenarioOurs && api.state.scenario === SCENARIO) api.setScenario(null);
-  scenarioOurs = false;
+  if (api.state.scenario) api.setScenario(null);
 }
 
 // ------------------------------------------------------------------------------------------------
 // moving through it
 
-let list = [];
-
-export function startTour(a) {
+export function startTour(from, a) {
   api = a;
   list = steps();
   if (!root) build();
   root.hidden = false;
   document.body.classList.add("touring");
-  go(0);
+  go(from);
 }
 
-function end() {
+// The end of the tour, early or not: every part of the app comes in, the map gets its colours.
+function end({ to } = {}) {
   if (at < 0) return;
   list[at]?.leave?.();
+  endScenario();
   at = -1;
   busy++;
   cancelAnimationFrame(follow);
+  api.setGate(null);
+  rule.textContent = "";
   root.classList.add("leaving");
+  reveal();
+  api.setVeil({ mode: "full", ids: [] });
   setTimeout(() => {
     root.hidden = true;
     root.classList.remove("leaving");
-    document.body.classList.remove("touring");
-  }, calm() ? 0 : 160);
-  document.getElementById("country")?.focus({ preventScroll: true });
+    document.body.classList.remove("touring", "tour-all");
+  }, calm() ? 0 : 200);
+  if (to) location.hash = to;
 }
 
 async function go(i) {
@@ -240,6 +247,10 @@ async function go(i) {
   const ticket = ++busy;
   const s = list[i];
   card.classList.add("waiting");
+  api.setGate((kind, v) => (kind === "country" ? s.only?.country === v : true));
+  rule.textContent = gateRules(s);
+  // What the step is not about goes at once; its own parts come in as the page draws them.
+  if (!s.reveal) { document.body.classList.remove("tour-all"); hideAround(s); }
   if (s.group && !api.state.iso3 && api.state.group !== s.group) api.setGroup(s.group);
   if (s.hash && location.hash !== s.hash && !(s.hash === "#" && location.hash === "")) {
     if (s.group) api.state.group = s.group; // the world map keeps the food it shows
@@ -248,6 +259,10 @@ async function go(i) {
   await s.enter?.();
   await ready(s, ticket);
   if (ticket !== busy) return;
+  document.documentElement.classList.remove("tour-boot");
+  api.setVeil({ mode: s.map ?? "full", ids: [ID] });
+  if (s.reveal) { reveal(); document.body.classList.add("tour-all"); } else { document.body.classList.remove("tour-all"); hideAround(s); }
+  s.camera?.();
   show(s, i);
 }
 
@@ -258,9 +273,9 @@ function ready(s, ticket) {
   return new Promise((done) => {
     const check = () => {
       if (ticket !== busy) { done(); return; }
-      const detail = document.querySelector("#view .detail[data-hash]");
+      const detail = q("#view .detail[data-hash]");
       const page = !s.hash || s.hash === "#" || detail?.dataset.hash === location.hash;
-      const parts = (s.holes ?? []).every((h) => document.querySelector(h[0]));
+      const parts = (s.holes ?? []).every((h) => q(h[0]));
       let data = true;
       try { data = s.ready ? !!s.ready() : true; } catch { data = false; }
       if ((page && parts && data) || performance.now() - t0 > 5000) done();
@@ -270,53 +285,67 @@ function ready(s, ticket) {
   });
 }
 
+// Menu entries other than the example's are shown but cannot be chosen.
+function gateRules(s) {
+  const off = "opacity: .35 !important; pointer-events: none !important;";
+  return [
+    s.only?.food ? `#foods .list [data-food]:not([data-food="${s.only.food}"]) { ${off} }` : "",
+    s.only?.scenario ? `#whatif [data-pick]:not([data-pick="${s.only.scenario}"]) { ${off} }` : "",
+  ].join("\n");
+}
+
 function show(s, i) {
   let text;
   try { text = s.text(); } catch (e) { console.error(e); text = ""; }
-  lit = s.holes ?? [];
-  // A lit part below the fold of a scrolling list comes into view first.
-  for (const h of lit) {
-    const el = document.querySelector(h[0]);
+  // Lit parts below the fold of a scrolling list come into view first.
+  for (const h of s.holes ?? []) {
+    const el = q(h[0]);
     const box = el && scroller(el)?.getBoundingClientRect();
     const r = el?.getBoundingClientRect();
-    if (box && (r.top < box.top || r.bottom > box.bottom)) el.scrollIntoView({ block: "center", behavior: calm() ? "auto" : "smooth" });
+    if (box && (r.top < box.top || r.bottom > box.bottom)) {
+      el.scrollIntoView({ block: r.height > box.height * 0.6 ? "start" : "center", behavior: calm() ? "auto" : "smooth" });
+    }
   }
-  const n = list.length - 1; // the opening card is not counted
-  card.innerHTML = `
+  const n = list.length - 1; // the landing is not counted
+  const title = typeof s.title === "function" ? s.title() : s.title;
+  card.innerHTML = s.landing ? `
+    <h1 id="tour-title">${title}</h1>
+    <p>${text}</p>
+    <div class="tour-btns">
+      <button type="button" class="tour-next" data-tour-next><span>Start the tour</span>${ARROW}</button>
+      <button type="button" class="tour-skip" data-tour-end>Go to the map</button>
+    </div>` : `
     <div class="tour-top">
-      <span class="tour-count">${s.first ? "Tour" : `${i} of ${n}`}</span>
+      <span class="tour-count">${i} of ${n}</span>
       <button type="button" class="tour-x" data-tour-end aria-label="End the tour">${CLOSE}</button>
     </div>
-    ${s.first ? "" : `<div class="tour-progress" aria-hidden="true"><span style="width:${(i / n) * 100}%"></span></div>`}
-    <h2 id="tour-title">${s.title}</h2>
+    <div class="tour-progress" aria-hidden="true"><span style="width:${(i / n) * 100}%"></span></div>
+    <h2 id="tour-title">${title}</h2>
     ${text ? `<p>${text}</p>` : ""}
     ${s.hint ? `<p class="tour-hint">${s.hint}</p>` : ""}
     <div class="tour-btns">${buttons(s, i)}</div>`;
-  card.classList.toggle("wide", !!(s.first || s.last));
+  card.classList.toggle("landing", !!s.landing);
+  card.classList.toggle("wide", !!s.last);
   wireCard();
-  card.classList.remove("waiting");
-  card.classList.remove("in");
+  card.classList.remove("waiting", "in");
   void card.offsetWidth;
   card.classList.add("in");
   place();
-  // The page settles after a change (the detail slides in, a list scrolls, the map flies): follow
-  // the lit parts for a moment.
+  // The page settles after a change (the detail slides in, a list scrolls, the map flies):
+  // follow the lit parts for a moment.
   cancelAnimationFrame(follow);
   const t0 = performance.now();
-  const loop = () => { place(); if (performance.now() - t0 < 900) follow = requestAnimationFrame(loop); };
+  const loop = () => { place(); if (performance.now() - t0 < 1000) follow = requestAnimationFrame(loop); };
   follow = requestAnimationFrame(loop);
   card.querySelector("[data-tour-next]")?.focus({ preventScroll: true });
 }
 
 function buttons(s, i) {
-  if (s.first) {
-    return `<button type="button" class="tour-next" data-tour-next>Start the tour</button>
-      <button type="button" class="tour-back" data-tour-end>Not now</button>`;
-  }
   if (s.last) {
     const own = api.readersCountry();
-    return `${own && own !== ID ? `<button type="button" class="tour-next" data-tour-country="${own}">Start with ${api.nameOf(own)}</button>` : ""}
-      <button type="button" class="${own && own !== ID ? "tour-back" : "tour-next"}" data-tour-end>Explore the map</button>
+    const mine = own && own !== ID;
+    return `${mine ? `<button type="button" class="tour-next" data-tour-to="#${own}">Start with ${api.nameOf(own)}</button>` : ""}
+      <button type="button" class="${mine ? "tour-back" : "tour-next"}" data-tour-end>Explore the map</button>
       <button type="button" class="tour-back" data-tour-again>Start again</button>`;
   }
   return `<button type="button" class="tour-back" data-tour-back${i <= 1 ? " disabled" : ""}>Back</button>
@@ -327,52 +356,124 @@ function wireCard() {
   card.querySelector("[data-tour-next]")?.addEventListener("click", () => go(at + 1));
   card.querySelector("[data-tour-back]")?.addEventListener("click", () => go(at - 1));
   card.querySelector("[data-tour-again]")?.addEventListener("click", () => go(1));
-  for (const b of card.querySelectorAll("[data-tour-end]")) b.addEventListener("click", end);
-  card.querySelector("[data-tour-country]")?.addEventListener("click", (e) => {
-    const id = e.currentTarget.dataset.tourCountry;
-    end();
-    location.hash = `#${id}`;
-  });
+  for (const b of card.querySelectorAll("[data-tour-end]")) b.addEventListener("click", () => end());
+  card.querySelector("[data-tour-to]")?.addEventListener("click", (e) => end({ to: e.currentTarget.dataset.tourTo }));
 }
 
 // ------------------------------------------------------------------------------------------------
-// the layer: a dimmed screen with holes where the lit parts are, rings around them, and the card
+// what is shown: the lit parts and the kept ones, in their places; everything else is invisible
 
-let dim, rings, card;
+const hidden = () => document.querySelectorAll(".tour-hide, .tour-inert, .tour-mute");
+const bareText = (el) => [...el.childNodes].some((n) => n.nodeType === 3 && n.textContent.trim());
+
+function hideAround(s) {
+  for (const el of hidden()) el.classList.remove("tour-hide", "tour-inert", "tour-mute");
+  const all = (sels) => sels.flatMap((x) => [...document.querySelectorAll(x)]);
+  const lit = all((s.holes ?? []).flat());
+  const keep = all(s.keep ?? []);
+  const shown = [...lit, ...keep];
+  for (const el of keep) el.classList.add("tour-inert");
+  // The panel's lower card is one box: when anything in it shows, its frame stays and only its
+  // contents go.
+  const lower = ["frame", "view", "foot"].map((x) => document.getElementById(x));
+  const lowerUsed = shown.some((x) => lower.some((b) => b.contains(x)));
+  const walk = (parent) => {
+    for (const el of parent.children) {
+      if (SKIP.has(el.id) || ["SCRIPT", "STYLE", "LINK"].includes(el.tagName)) continue;
+      el.classList.add("tour-fx");
+      if (shown.includes(el)) continue;
+      if (shown.some((x) => el.contains(x)) || (lowerUsed && lower.includes(el))) {
+        // Loose words in a box that stays ("Figures: …") go with a transparent colour; its
+        // elements keep theirs.
+        if (bareText(el)) {
+          el.classList.remove("tour-mute");
+          el.style.setProperty("--tour-c", getComputedStyle(el).color);
+          el.classList.add("tour-mute");
+        }
+        walk(el);
+        continue;
+      }
+      el.classList.add("tour-hide");
+    }
+  };
+  walk(document.body);
+}
+
+// The finale: every part comes in, one group after the other.
+function reveal() {
+  const order = [".head", "#frame", "#view", "#foot", "#foodrail", "#whatif", "#legend"];
+  const els = hidden();
+  for (const el of els) {
+    const k = order.findIndex((sel) => el.closest(sel));
+    el.style.transitionDelay = `${calm() ? 0 : 120 + 110 * (k < 0 ? 2 : k)}ms`;
+    el.classList.remove("tour-hide", "tour-inert", "tour-mute");
+  }
+  setTimeout(() => {
+    for (const el of document.querySelectorAll(".tour-fx")) { el.style.transitionDelay = ""; if (at < 0) el.classList.remove("tour-fx"); }
+  }, 1400);
+}
+
+// ------------------------------------------------------------------------------------------------
+// the layer: rings around the lit parts and the card
 
 function build() {
   root = document.createElement("div");
   root.id = "tour";
   root.hidden = true;
-  root.innerHTML = `<div class="tour-dim"></div><span class="tour-ring"></span><span class="tour-ring"></span>
+  root.innerHTML = `<span class="tour-ring"></span><span class="tour-ring"></span>
     <section class="tour-card" role="dialog" aria-modal="false" aria-labelledby="tour-title"></section>`;
   document.body.append(root);
-  dim = root.querySelector(".tour-dim");
   rings = [...root.querySelectorAll(".tour-ring")];
   card = root.querySelector(".tour-card");
+  rule = document.createElement("style");
+  document.head.append(rule);
 
   addEventListener("resize", () => at >= 0 && place());
   document.addEventListener("scroll", () => at >= 0 && place(), true);
+  // The app redraws parts of the page as it goes (data arriving, a menu opening): keep what is
+  // hidden hidden, and move on when the page now shows what the next step is about.
+  new MutationObserver((records) => {
+    if (at < 0 || records.every((r) => root.contains(r.target))) return;
+    const s = list[at];
+    if (!s.reveal) hideAround(s);
+    if (list[at + 1]?.reached?.() && !s.reached) go(at + 1);
+  }).observe(document.body, { childList: true, subtree: true });
   addEventListener("hashchange", () => {
     if (at < 0) return;
-    // A click on the lit part that leads to the next step's page moves the tour on.
     const next = list[at + 1];
     if (next?.hash && next.hash === location.hash && list[at].hash !== location.hash) go(at + 1);
     else setTimeout(place, 50);
   });
+  // Clicks: in the tour, a link goes only where the next step is; a choice in a menu only to the
+  // example's; the app's own buttons that would leave the tour do nothing.
+  document.addEventListener("click", (e) => {
+    if (at < 0 || root.contains(e.target)) return;
+    const s = list[at];
+    const t = e.target.closest?.("a[href], [data-food], [data-pick], [data-end], [data-go], [data-seller], [data-back], [data-tour]");
+    if (!t) return;
+    const next = list[at + 1];
+    const ok = t.matches("a[href]") ? t.getAttribute("href") === next?.hash
+      : t.matches("[data-food]") ? t.dataset.food === s.only?.food
+      : t.matches("[data-pick]") ? t.dataset.pick === s.only?.scenario
+      : false;
+    if (ok) return;
+    e.preventDefault();
+    e.stopPropagation();
+    nudge();
+  }, true);
   document.addEventListener("keydown", (e) => {
     if (at < 0) return;
-    if (e.target.closest?.("input, select, textarea")) { if (e.key === "Escape") end(); return; }
+    if (e.target.closest?.("input, select, textarea")) { if (e.key === "Escape" && !e.target.value) end(); return; }
     const k = e.key;
     if (k === "Escape") { end(); e.preventDefault(); return; }
     if (["ArrowRight", "ArrowDown", "PageDown"].includes(k)) { go(at + 1); e.preventDefault(); }
     else if (["ArrowLeft", "ArrowUp", "PageUp"].includes(k) && at > 1) { go(at - 1); e.preventDefault(); }
   }, true);
-  // Scrolling over the dimmed part, or swiping it, moves through the tour; the lit parts scroll as usual.
+  // Scrolling over the card, or swiping it, moves through the tour.
   let wheel = 0, lastStep = 0;
-  dim.addEventListener("wheel", (e) => {
+  card.addEventListener("wheel", (e) => {
     e.preventDefault();
-    if (performance.now() - lastStep < 700) return;
+    if (at < 1 || performance.now() - lastStep < 700) return;
     wheel += e.deltaY;
     if (Math.abs(wheel) < 60) return;
     const d = Math.sign(wheel);
@@ -381,21 +482,21 @@ function build() {
     if (d > 0 && at < list.length - 1) go(at + 1);
     else if (d < 0 && at > 1) go(at - 1);
   }, { passive: false });
-  let y0 = null;
-  dim.addEventListener("touchstart", (e) => { y0 = e.touches[0].clientY; }, { passive: true });
-  dim.addEventListener("touchend", (e) => {
-    if (y0 == null) return;
-    const dy = y0 - e.changedTouches[0].clientY;
-    y0 = null;
-    if (dy > 50 && at < list.length - 1) go(at + 1);
-    else if (dy < -50 && at > 1) go(at - 1);
+  let x0 = null;
+  card.addEventListener("touchstart", (e) => { x0 = e.touches[0].clientX; }, { passive: true });
+  card.addEventListener("touchend", (e) => {
+    if (x0 == null || at < 1) return;
+    const dx = x0 - e.changedTouches[0].clientX;
+    x0 = null;
+    if (dx > 60 && at < list.length - 1) go(at + 1);
+    else if (dx < -60 && at > 1) go(at - 1);
   });
-  // A click on the dimmed part only draws the eye back to the card.
-  dim.addEventListener("click", () => {
-    card.classList.remove("nudge");
-    void card.offsetWidth;
-    card.classList.add("nudge");
-  });
+}
+
+function nudge() {
+  card.classList.remove("nudge");
+  void card.offsetWidth;
+  card.classList.add("nudge");
 }
 
 // The nearest ancestor that scrolls (the detail on wide screens, the sheet on phones).
@@ -407,7 +508,7 @@ function scroller(el) {
   return null;
 }
 
-// A hole: the parts it lights, as one rectangle, cut to what its scrolling box shows.
+// A ring: the parts it lights, as one rectangle, cut to what its scrolling box shows.
 function rectOf(sels) {
   let r = null;
   for (const sel of sels) {
@@ -424,35 +525,21 @@ function rectOf(sels) {
   return { x: r.l - PAD, y: r.t - PAD, w: r.r - r.l + 2 * PAD, h: r.b - r.t + 2 * PAD };
 }
 
-// Rounded rectangle as a path; a hole of size 0 where there is none, so the path always has the
-// same shape and the browser can animate from one step's holes to the next.
-function hole({ x, y, w, h }) {
-  const r = Math.min(RADIUS, w / 2, h / 2);
-  const f = (v) => v.toFixed(1);
-  return `M${f(x + r)} ${f(y)}H${f(x + w - r)}A${f(r)} ${f(r)} 0 0 1 ${f(x + w)} ${f(y + r)}V${f(y + h - r)}`
-    + `A${f(r)} ${f(r)} 0 0 1 ${f(x + w - r)} ${f(y + h)}H${f(x + r)}A${f(r)} ${f(r)} 0 0 1 ${f(x)} ${f(y + h - r)}`
-    + `V${f(y + r)}A${f(r)} ${f(r)} 0 0 1 ${f(x + r)} ${f(y)}Z`;
-}
-
 function place() {
   if (at < 0) return;
-  const W = innerWidth, H = innerHeight;
-  const rects = lit.map(rectOf).filter(Boolean).slice(0, 2);
-  const none = (c) => ({ x: c.x + c.w / 2, y: c.y + c.h / 2, w: 0, h: 0 });
-  const centre = { x: W / 2, y: H / 2, w: 0, h: 0 };
-  const holes = [rects[0] ?? centre, rects[1] ?? none(rects[0] ?? centre)];
-  dim.style.clipPath = `path(evenodd, "M0 0H${W}V${H}H0Z${holes.map(hole).join("")}")`;
+  const s = list[at];
+  const rects = (s.holes ?? []).map(rectOf).filter(Boolean).slice(0, 2);
   rings.forEach((ring, k) => {
-    const r = rects[k];
+    const r = s.reveal ? null : rects[k];
     ring.classList.toggle("on", !!r);
     if (r) Object.assign(ring.style, { transform: `translate(${r.x}px, ${r.y}px)`, width: `${r.w}px`, height: `${r.h}px` });
   });
-  placeCard(rects);
+  placeCard(s.reveal ? [] : rects, s);
 }
 
-// Next to the first lit part where there is room (right, left, below, above), else over the map;
-// on phones above or below the sheet, whichever half is free.
-function placeCard(rects) {
+// Next to the first lit part where there is room (right, left, below, above); without one, in the
+// middle of the map (of the screen on the landing); on phones above or below the sheet.
+function placeCard(rects, s) {
   const W = innerWidth, H = innerHeight, gap = 14, m = 10;
   const cw = card.offsetWidth, ch = card.offsetHeight;
   const clampX = (x) => Math.max(m, Math.min(x, W - cw - m));
@@ -460,12 +547,14 @@ function placeCard(rects) {
   let x, y;
   const r = rects[0];
   if (phone()) {
-    x = m;
-    const lowest = Math.max(...rects.map((q) => q.y + q.h), 0);
-    const highest = Math.min(...rects.map((q) => q.y), H);
-    y = !rects.length ? (H - ch) / 2 : highest > ch + 2 * m ? m : clampY(lowest + gap);
+    x = (W - cw) / 2;
+    const lowest = Math.max(...rects.map((v) => v.y + v.h), 0);
+    const highest = Math.min(...rects.map((v) => v.y), H);
+    const sheet = document.getElementById("panel").getBoundingClientRect().top;
+    y = !rects.length ? (s.landing ? (H - ch) / 2 : Math.max(m, sheet - ch - gap))
+      : highest > ch + 2 * m ? Math.min(m + 46, highest - ch - gap) : clampY(lowest + gap);
   } else if (!r) {
-    const left = document.getElementById("panel").getBoundingClientRect().right;
+    const left = s.landing ? 0 : document.getElementById("panel").getBoundingClientRect().right;
     x = left + (W - left - cw) / 2;
     y = (H - ch) / 2;
   } else if (r.x + r.w + gap + cw + m <= W) {

@@ -286,6 +286,12 @@ async function onMapLoad() {
     id: "atlas-nodata", type: "fill", source: "countries",
     paint: { "fill-pattern": "hatch" }, filter: ["in", ["get", "iso3"], ["literal", []]],
   });
+  // The tour's veil: plain land over the colours, all of it or all but the countries a step is
+  // about; its opacity fades, so the colours come and go (tour.js, setVeil).
+  map.addLayer({
+    id: "tour-veil", type: "fill", source: "countries",
+    paint: { "fill-color": BACKDROP, "fill-opacity": 0, "fill-opacity-transition": { duration: 900, delay: 0 } },
+  });
   map.addLayer({
     id: "atlas-line", type: "line", source: "countries",
     paint: { "line-color": "#f8f6f1", "line-width": ["interpolate", ["linear"], ["zoom"], 1, 0.4, 5, 1.2] },
@@ -312,6 +318,7 @@ async function onMapLoad() {
   addLabels();
 
   state.mapReady = true;
+  setVeil(veil);
   addRegionLayers();
   state.bloc = map.getZoom() < EU_ZOOM;
   paintMap();
@@ -490,7 +497,12 @@ function link(view) {
 let returnTo = "#";
 function route() {
   // #tour starts the tour (over the world map), so it can be linked to.
-  if (location.hash === "#tour") { history.replaceState(null, "", "#"); startTour(); }
+  if (location.hash === "#tour" || location.hash === "#welcome") {
+    const at = location.hash === "#welcome" ? 0 : 1;
+    history.replaceState(null, "", "#");
+    startTour(at);
+  } else if (!location.hash && landingDue() && !state.toured) startTour(0);
+  state.toured = true;
   const prev = `${state.iso3}/${state.group}/${state.level}/${state.flow}`;
   if (state.level && !PAGES.includes(state.level)) returnTo = hashFor(state);
   const next = parseHash();
@@ -512,6 +524,12 @@ function route() {
 // A click on the map keeps the reader on the same level (and food) for the new country.
 let clickedOnMap = false;
 function select(clicked) {
+  // In the tour only the example country can be picked, and it is picked itself, not the EU.
+  if (tourGate) {
+    if (!tourGate("country", clicked)) return;
+    location.hash = `#${clicked}`;
+    return;
+  }
   // Zoomed out, the tooltip names the EU for its members, so a click picks the EU too. The trade
   // map colours every country on its own, so there a click picks the member.
   const iso3 = state.level === "trade" ? clicked : entity(clicked);
@@ -1654,11 +1672,37 @@ function wire(el) {
 // ------------------------------------------------------------------------------------------------
 // the tour (tour.js, loaded on first use): what it reads and does, as plain functions
 
-function startTour() {
-  import("./tour.js").then((m) => m.startTour({
+// The tour may let only some choices through (the example country, its food, its scenario).
+let tourGate = null;
+// The veil over the map: "full" (no veil), "blank" (all plain land) or "focus" (all but `ids`).
+let veil = { mode: "full", ids: [] };
+function setVeil(v) {
+  veil = v;
+  if (!state.mapReady) return;
+  map.setFilter("tour-veil", v.mode === "focus" ? ["!", ["in", ["get", "iso3"], ["literal", v.ids]]] : null);
+  map.setPaintProperty("tour-veil", "fill-opacity", v.mode === "full" ? 0 : 1);
+}
+
+// The first visit to the bare address opens with the tour's own start: the tour, or the map.
+const LANDING_KEY = "atlas.landing";
+function landingDue() {
+  if (location.hash === "#welcome") return true;
+  if (location.hash.length > 1) return false;
+  try { return !localStorage.getItem(LANDING_KEY); } catch { return false; }
+}
+if (landingDue()) {
+  document.documentElement.classList.add("tour-boot"); // nothing of the app shows before the tour does
+  veil = { mode: "blank", ids: [] };
+}
+
+function startTour(at = 1) {
+  if (at === 0) { try { localStorage.setItem(LANDING_KEY, "seen"); } catch { /* private window */ } }
+  import("./tour.js").then((m) => m.startTour(at, {
     state, country, pctFor, lasts, forHowLong, lastDay, nameOf, inText, listOf, shortTonnes, food, groupInfo,
     shares, perCapita, USES, regionsFor, regionName, loadScenario, setScenario, scenInfo, scenValue, readersCountry,
     setGroup: (group) => { state.group = group; render(); },
+    setVeil, setGate: (f) => { tourGate = f; },
+    showWorld, showEurope: () => state.mapReady && frame([[-6, 36], [26, 56]]),
   })).catch((e) => console.error(e));
 }
 
@@ -1677,8 +1721,11 @@ function viewIntro() {
       .concat(country(EU) ? [EU] : [])
       .map((id) => `<button type="button" data-go="${goTo(id)}">${id === EU ? "European Union" : nameOf(id)}</button>`)
       .join("")}</div>
-    <button type="button" class="tour-go" data-tour>New here? Take the tour, with ${nameOf("ITA")} as the example ›</button>`;
+    <button type="button" class="tour-go" data-tour>${ICON_TOUR}<span>Start the tour</span></button>`;
 }
+
+// The tour: a path with a start and an end.
+const ICON_TOUR = `<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="6" cy="18" r="2.2" /><circle cx="18" cy="6" r="2.2" /><path d="M8 18h6.5a3.5 3.5 0 0 0 0-7h-5a3.5 3.5 0 0 1 0-7H16" /></svg>`;
 
 // Where a start-page button goes: the country, on the food the map shows.
 function goTo(id) {
@@ -3241,7 +3288,8 @@ function buildCountryPicker() {
   const show = () => {
     const q = plain(input.value.trim());
     if (!q) { close(); return; }
-    hits = [...all.filter((r) => r.key.startsWith(q)), ...all.filter((r) => !r.key.startsWith(q) && r.key.includes(q))].slice(0, 8);
+    const open = all.filter((r) => !tourGate || tourGate("country", r.id));
+    hits = [...open.filter((r) => r.key.startsWith(q)), ...open.filter((r) => !r.key.startsWith(q) && r.key.includes(q))].slice(0, 8);
     at = 0;
     list.innerHTML = hits.length
       ? hits.map((r, i) => {

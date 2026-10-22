@@ -3,6 +3,7 @@ import { defineConfig } from "@playwright/test";
 
 const PORT = 5181; // the dev server, for every test but one
 const BUILT = 5182; // the built site (tests/build.spec.js), built into dist-test so dist stays the release
+const seen = (port) => ({ cookies: [], origins: [{ origin: `http://localhost:${port}`, localStorage: [{ name: "atlas.landing", value: "seen" }] }] });
 export default defineConfig({
   testDir: "tests",
   timeout: 120_000,
@@ -14,9 +15,11 @@ export default defineConfig({
   // Reduced motion: the panel hands details over instantly, so the data tests need not wait out the
   // fades (the animation itself is checked by hand).
   use: { viewport: { width: 1280, height: 900 }, channel: "chrome", contextOptions: { reducedMotion: "reduce" } },
+  // A first visit to the bare address opens with the tour's start (main.js, landingDue); the tests
+  // come as returning readers, except tests/tour.spec.js, which clears this.
   projects: [
-    { name: "dev", testIgnore: /build\.spec\.js/, use: { baseURL: `http://localhost:${PORT}/` } },
-    { name: "built", testMatch: /build\.spec\.js/, use: { baseURL: `http://localhost:${BUILT}/` } },
+    { name: "dev", testIgnore: /build\.spec\.js/, use: { baseURL: `http://localhost:${PORT}/`, storageState: seen(PORT) } },
+    { name: "built", testMatch: /build\.spec\.js/, use: { baseURL: `http://localhost:${BUILT}/`, storageState: seen(BUILT) } },
   ],
   webServer: [
     {
