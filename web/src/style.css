@@ -135,9 +135,9 @@ svg { flex: none; }
 
 #foot {
   padding: 10px 20px 12px; border-top: 1px solid var(--edge); background: var(--sunken);
-  font-size: 13px; color: var(--ink-soft); line-height: 1.45;
+  font-size: 12px; color: var(--ink-soft); line-height: 1.45;
 }
-#foot .tools { display: flex; gap: 18px; margin-bottom: 3px; }
+#foot .tools { display: flex; gap: 18px; margin-bottom: 3px; font-size: 13px; }
 #foot .tools a { font-weight: 700; color: var(--ink); text-decoration: none; }
 #foot .tools a:hover, #foot .tools a[aria-current] { text-decoration: underline; }
 #foot a { color: var(--ink-soft); }
@@ -145,6 +145,16 @@ svg { flex: none; }
 
 /* the sheet's handle and its folded summary exist on phones only */
 #grab, #peek { display: none; }
+
+/* Wide screens: the brand and the search are a card of their own above the rest of the panel. */
+@media (min-width: 761px) {
+  #panel { background: none; border: 0; border-radius: 0; overflow: visible; }
+  .head { margin-bottom: 8px; background: var(--paper); border: 1px solid var(--edge-strong); border-radius: 12px; }
+  #frame, #view, #foot { background-color: var(--paper); border-left: 1px solid var(--edge-strong); border-right: 1px solid var(--edge-strong); }
+  #frame:not([hidden]), #frame[hidden] + #view { border-top: 1px solid var(--edge-strong); border-radius: 12px 12px 0 0; }
+  #view { min-height: 0; }
+  #foot { background-color: var(--sunken); border-bottom: 1px solid var(--edge-strong); border-radius: 0 0 12px 12px; }
+}
 
 /* ------------------------------------------------------------------------------------------------
    typography of the views */
@@ -450,7 +460,8 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   .wf-track { height: 5px; margin-top: 4px; }
   #card .marker { height: 40px; }
   #view { padding: 12px 14px 18px; }
-  #foot { font-size: 12px; padding: 8px 14px 10px; }
+  #foot { font-size: 11.5px; padding: 8px 14px 10px; }
+  #foot .tools { font-size: 12px; }
   .hero { font-size: 27px; }
   h2, .answer { font-size: 24px; }
   /* The same menu button as on wide screens, over the whole width. Open, the foods stand in two
