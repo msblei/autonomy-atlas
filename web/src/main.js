@@ -489,6 +489,8 @@ function link(view) {
 // Where the back button of the site's own pages (about, legal, privacy) returns to.
 let returnTo = "#";
 function route() {
+  // #tour starts the tour (over the world map), so it can be linked to.
+  if (location.hash === "#tour") { history.replaceState(null, "", "#"); startTour(); }
   const prev = `${state.iso3}/${state.group}/${state.level}/${state.flow}`;
   if (state.level && !PAGES.includes(state.level)) returnTo = hashFor(state);
   const next = parseHash();
@@ -1577,8 +1579,8 @@ function renderFootBody() {
   const here = (level) => (state.level === level ? ` aria-current="page"` : "");
   const tools = state.iso3 && country(state.iso3)
     ? `<div class="tools"><a href="${link({ level: "sources" })}"${here("sources")}>How do we know?</a>
-       <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a></div>`
-    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a></div>`;
+       <a href="${link({ level: "table" })}"${here("table")}>All the numbers</a><a href="#tour">Tour</a></div>`
+    : `<div class="tools"><a href="#about"${here("about")}>How do we know?</a><a href="#tour">Tour</a></div>`;
   if (fieldsOn()) {
     el.innerHTML = `${tools}Map: <a href="https://data.jrc.ec.europa.eu/dataset/15f86c84-eae1-4723-8e00-c1b35c8f56b9" target="_blank"
       rel="noopener">JRC EUCROPMAP ${state.cropmap.meta.year}</a> (crop shares at 2 km). List: Eurostat crop statistics by region.
@@ -1611,6 +1613,7 @@ function keepFocus(selector) {
 
 // Clickable rows (foods, rankings, examples) navigate; selects in the table level re-render.
 function wire(el) {
+  for (const b of el.querySelectorAll("[data-tour]")) b.onclick = () => startTour();
   for (const b of el.querySelectorAll("[data-go]")) {
     b.onclick = () => { location.hash = b.dataset.go; };
   }
@@ -1649,6 +1652,17 @@ function wire(el) {
 }
 
 // ------------------------------------------------------------------------------------------------
+// the tour (tour.js, loaded on first use): what it reads and does, as plain functions
+
+function startTour() {
+  import("./tour.js").then((m) => m.startTour({
+    state, country, pctFor, lasts, forHowLong, lastDay, nameOf, inText, listOf, shortTonnes, food, groupInfo,
+    shares, perCapita, USES, regionsFor, regionName, loadScenario, setScenario, scenInfo, scenValue, readersCountry,
+    setGroup: (group) => { state.group = group; render(); },
+  })).catch((e) => console.error(e));
+}
+
+// ------------------------------------------------------------------------------------------------
 // views
 
 function viewIntro() {
@@ -1662,7 +1676,8 @@ function viewIntro() {
     <div class="chips">${EXAMPLES.filter((id) => country(id) && id !== own)
       .concat(country(EU) ? [EU] : [])
       .map((id) => `<button type="button" data-go="${goTo(id)}">${id === EU ? "European Union" : nameOf(id)}</button>`)
-      .join("")}</div>`;
+      .join("")}</div>
+    <button type="button" class="tour-go" data-tour>New here? Take the tour, with ${nameOf("ITA")} as the example ›</button>`;
 }
 
 // Where a start-page button goes: the country, on the food the map shows.

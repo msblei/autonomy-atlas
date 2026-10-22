@@ -574,3 +574,77 @@ i.hatch { background: repeating-linear-gradient(-45deg, #ebe9e3 0 3px, #b9b5aa 3
   #whatif .open, #whatif .badge .name, #whatif .badge .x { font-size: 13px; padding: 6px 11px; }
 }
 #view .pageback { margin: 0 0 10px; }
+
+/* ------------------------------------------------------------------------------------------------
+   the tour (tour.js): the screen dimmed around the part it explains, a ring around that part, and
+   a card next to it. The holes are cut with clip-path, so clicks reach the lit part only. */
+
+.tour-go {
+  display: block; margin: 18px 0 0; padding: 0; border: 0; background: none; cursor: pointer;
+  font: inherit; font-size: 15px; color: var(--ink-soft); text-align: left;
+  text-decoration: underline; text-decoration-thickness: 1px; text-underline-offset: 3px;
+}
+.tour-go:hover { color: var(--ink); }
+
+#tour[hidden] { display: none; }
+#tour { position: fixed; inset: 0; z-index: 50; pointer-events: none; }
+#tour.leaving { animation: leave .16s ease-in forwards; }
+.tour-dim {
+  position: absolute; inset: 0; pointer-events: auto;
+  background: rgb(35 32 27 / .46);
+  transition: clip-path .45s cubic-bezier(.65, 0, .35, 1);
+  animation: tour-fade .3s ease;
+}
+.tour-ring {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; border-radius: 10px;
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px rgb(35 32 27 / .35);
+  opacity: 0; transition: transform .45s cubic-bezier(.65, 0, .35, 1), width .45s cubic-bezier(.65, 0, .35, 1),
+    height .45s cubic-bezier(.65, 0, .35, 1), opacity .2s;
+}
+.tour-ring.on { opacity: 1; }
+.tour-card {
+  position: absolute; left: 0; top: 0; width: 340px; box-sizing: border-box; pointer-events: auto;
+  padding: 14px 18px 16px; background: var(--paper); border: 1px solid var(--edge-strong); border-radius: 12px;
+  box-shadow: 0 6px 28px rgb(0 0 0 / .18);
+  transition: transform .45s cubic-bezier(.65, 0, .35, 1), opacity .2s;
+}
+.tour-card.wide { width: 400px; }
+.tour-card.waiting { opacity: .75; }
+.tour-card.in > * { animation: enter .3s cubic-bezier(.22, 1, .36, 1) both; }
+.tour-card.nudge { animation: tour-nudge .3s ease; }
+.tour-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 6px; }
+.tour-count { font-size: 13px; color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+.tour-x {
+  display: inline-grid; place-items: center; width: 30px; height: 30px; margin-right: -6px;
+  border: 0; border-radius: 6px; background: none; color: var(--ink-soft); cursor: pointer;
+}
+.tour-x:hover { background: var(--sunken); color: var(--ink); }
+.tour-x svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; }
+.tour-progress { height: 3px; margin: 0 0 12px; border-radius: 2px; background: var(--sunken); overflow: hidden; }
+.tour-progress span { display: block; height: 100%; background: var(--ink); transition: width .45s cubic-bezier(.65, 0, .35, 1); }
+.tour-card h2 { margin: 0 0 6px; font-size: 22px; line-height: 1.2; letter-spacing: -.01em; }
+.tour-card.wide h2 { font-size: 28px; }
+.tour-card p { margin: 0 0 8px; font-size: 16px; line-height: 1.45; color: var(--ink-soft); }
+.tour-card p strong { color: var(--ink); }
+.tour-card .tour-hint { font-size: 14px; color: var(--ink-faint); }
+.tour-btns { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.tour-btns button {
+  flex: 1 1 auto; min-height: 44px; padding: 0 16px; border-radius: 8px; cursor: pointer;
+  font: inherit; font-size: 16px; font-weight: 700;
+}
+.tour-next { background: var(--ink); color: var(--paper); border: 0; }
+.tour-next:hover { background: #000; }
+.tour-back { background: var(--card); color: var(--ink); border: 1px solid var(--edge-strong); }
+.tour-back:hover:not(:disabled) { border-color: var(--ink); }
+.tour-back:disabled { color: var(--ink-faint); cursor: default; }
+.tour-card.wide .tour-btns { flex-direction: column; }
+@keyframes tour-fade { from { opacity: 0; } }
+@keyframes tour-nudge { 50% { box-shadow: 0 0 0 4px rgb(35 32 27 / .25), 0 6px 28px rgb(0 0 0 / .18); } }
+
+@media (max-width: 760px) {
+  .tour-card, .tour-card.wide { width: calc(100% - 20px); padding: 12px 14px 14px; }
+  .tour-card h2 { font-size: 19px; }
+  .tour-card.wide h2 { font-size: 24px; }
+  .tour-card p { font-size: 15px; }
+  .tour-btns { margin-top: 10px; }
+}
