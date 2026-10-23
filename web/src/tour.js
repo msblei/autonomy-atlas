@@ -167,9 +167,8 @@ function steps() {
     },
     {
       title: "Your turn", hash: "#", group: "all", map: "full", reveal: true, last: true,
-      holes: [[".head .search"]],
       camera: () => api.showWorld(1600),
-      text: () => `That was ${it}. Find your own country in the search box, or click one on the map.`,
+      text: () => "",
     },
   ];
 }
@@ -191,7 +190,7 @@ export function startTour(from, a) {
 }
 
 // The end of the tour, early or not: every part of the app comes in, the map gets its colours.
-function end({ to } = {}) {
+function end() {
   if (at < 0) return;
   list[at]?.leave?.();
   endScenario();
@@ -209,7 +208,6 @@ function end({ to } = {}) {
     root.classList.remove("leaving");
     document.body.classList.remove("touring", "tour-all");
   }, calm() ? 0 : 200);
-  if (to) location.hash = to;
 }
 
 async function go(i) {
@@ -316,10 +314,7 @@ function show(s, i) {
 
 function buttons(s, i) {
   if (s.last) {
-    const own = api.readersCountry();
-    const mine = own && own !== ID;
-    return `${mine ? `<button type="button" class="tour-next" data-tour-to="#${own}">Start with ${api.nameOf(own)}</button>` : ""}
-      <button type="button" class="${mine ? "tour-back" : "tour-next"}" data-tour-end>Explore the map</button>
+    return `<button type="button" class="tour-next" data-tour-end>Explore the map</button>
       <button type="button" class="tour-back" data-tour-again>Start again</button>`;
   }
   return `<button type="button" class="tour-back" data-tour-back${i <= 1 ? " disabled" : ""}>Back</button>
@@ -331,7 +326,6 @@ function wireCard() {
   card.querySelector("[data-tour-back]")?.addEventListener("click", () => go(at - 1));
   card.querySelector("[data-tour-again]")?.addEventListener("click", () => go(1));
   for (const b of card.querySelectorAll("[data-tour-end]")) b.addEventListener("click", () => end());
-  card.querySelector("[data-tour-to]")?.addEventListener("click", (e) => end({ to: e.currentTarget.dataset.tourTo }));
 }
 
 // ------------------------------------------------------------------------------------------------

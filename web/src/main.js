@@ -1702,7 +1702,7 @@ function startTour(at = 1) {
   if (at === 0) { try { localStorage.setItem(LANDING_KEY, "seen"); } catch { /* private window */ } }
   import("./tour.js").then((m) => m.startTour(at, {
     state, country, pctFor, lasts, forHowLong, lastDay, nameOf, inText, listOf, shortTonnes, food, groupInfo,
-    shares, perCapita, USES, regionsFor, regionName, loadScenario, setScenario, scenInfo, scenValue, readersCountry,
+    shares, perCapita, USES, regionsFor, regionName, loadScenario, setScenario, scenInfo, scenValue,
     setGroup: (group) => { state.group = group; render(); },
     setVeil, setGate: (f) => { tourGate = f; paintMap(); },
     showWorld, flyTo, setRoom: (r) => { tourRoom = r; }, showEurope: () => state.mapReady && frame([[-6, 36], [26, 56]]),
