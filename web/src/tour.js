@@ -7,7 +7,6 @@
 
 const ID = "ITA";
 const FOOD = "cereals";
-const SCENARIO = "black_sea";
 const PAD = 6; // around each lit part
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August",
   "September", "October", "November", "December"];
@@ -37,14 +36,13 @@ const ROW = (r) => `#card .sum-row[data-row="${r}"]`;
 // the steps
 //   hash      the page it opens          holes   what it lights (each a list of parts, one ring)
 //   keep      shown for orientation, not clickable   map   "blank" | "focus" (Italy) | "full"
-//   only      the one choice let through (country, food, scenario)   reached   moved on to by a state
+//   only      the one choice let through (country, food)   camera   where the map looks
 
 function steps() {
   const { state, country, pctFor, lasts, forHowLong, lastDay, nameOf, inText, listOf, shortTonnes } = api;
   const it = nameOf(ID);
   const foodName = api.food(FOOD);
   const foodLabel = api.groupInfo(FOOD).label;
-  const scen = () => api.scenInfo(SCENARIO)?.label ?? "";
   const place = ["#where"];
   return [
     {
@@ -58,7 +56,6 @@ function steps() {
       camera: () => api.showWorld(),
       text: () => `Every country has one colour: how many months its own harvests, herds and catches
         would feed its people. Red runs out within half a year, dark green has more than it needs.`,
-      hint: "Counted in calories, so bread, oil and sugar weigh most.",
     },
     {
       title: "Pick a country", hash: "#", group: "all", map: "focus",
@@ -77,7 +74,6 @@ function steps() {
         return `Food produced in ${it} alone would give enough calories ${forHowLong(v)}${day
           ? `: eaten from 1 January, it would run out on ${day}` : ""}.`;
       },
-      hint: "The boxes are the months of the year.",
     },
     {
       title: "Behind the answer", hash: `#${ID}`, map: "focus",
@@ -91,23 +87,18 @@ function steps() {
       },
     },
     {
-      title: "Food by food", hash: `#${ID}`, map: "focus",
-      holes: [["#view .detail > h3", "#view .foodlist"]], keep: place,
+      title: "Choose a food", hash: `#${ID}`, map: "focus",
+      holes: [["#foodrail"]], keep: place,
+      only: { food: FOOD },
       text: () => {
         const rows = state.data.groups.filter((g) => g.key !== "all")
           .map((g) => ({ name: g.label.toLowerCase(), v: pctFor(ID, g.key) })).filter((r) => r.v != null);
         const spare = rows.filter((r) => r.v >= 100).sort((a, b) => b.v - a.v).slice(0, 2).map((r) => r.name);
         const short = rows.filter((r) => r.v < 75).sort((a, b) => a.v - b.v).slice(0, 2).map((r) => r.name);
-        return `The same question for each food on its own.${spare.length ? ` ${it} produces more ${listOf(spare)}
-          than it uses` : ""}${short.length ? `${spare.length ? ", but" : ""} its own ${listOf(short)} would run out first` : ""}.`;
+        return `Each food has its own answer.${spare.length ? ` ${it} produces more ${listOf(spare)} than it uses` : ""}${
+          short.length ? `${spare.length ? ", but" : ""} its own ${listOf(short)} would run out first` : ""}. This menu
+          switches the map and the page to one food: open it and choose <strong>${foodLabel}</strong>.`;
       },
-    },
-    {
-      title: "Choose a food", hash: `#${ID}`, map: "focus",
-      holes: [["#foodrail"]], keep: place,
-      only: { food: FOOD },
-      text: () => `This menu switches the map and the page to one food. Open it and choose
-        <strong>${foodLabel}</strong>.`,
     },
     {
       title: foodLabel, hash: `#${ID}/${FOOD}`, map: "full",
@@ -168,25 +159,6 @@ function steps() {
       },
     },
     {
-      title: "What if…?", hash: `#${ID}/${FOOD}`, map: "focus",
-      holes: [["#whatif .open", "#whatif .menu"]], keep: place,
-      only: { scenario: SCENARIO },
-      enter: async () => { endScenario(); await api.loadScenario(); },
-      ready: () => !!state.scen,
-      text: () => `Scenarios stop some countries from selling. Click <strong>What if…?</strong> and choose
-        <strong>${scen()}</strong>.`,
-    },
-    {
-      title: scen, hash: `#${ID}/${FOOD}`, map: "full",
-      holes: [["#whatif .badge"], ["#view .lack"]], keep: [...place, "#legend"],
-      reached: () => state.scenario === SCENARIO,
-      enter: async () => { await api.loadScenario(); if (state.scenario !== SCENARIO) api.setScenario(SCENARIO); },
-      leave: () => endScenario(),
-      ready: () => state.scenario === SCENARIO && api.scenValue(ID, FOOD) != null,
-      text: () => `${it} would miss <strong>${pct(api.scenValue(ID, FOOD))}</strong> of the ${foodName} it uses.
-        The map shows the share for every country.`,
-    },
-    {
       title: "How do we know?", hash: `#${ID}/${FOOD}`, map: "focus",
       holes: [["#foot .tools"]], keep: place,
       text: () => `Every figure has its sources. <strong>How do we know?</strong> walks through the sum for
@@ -227,6 +199,7 @@ function end({ to } = {}) {
   busy++;
   cancelAnimationFrame(follow);
   api.setGate(null);
+  api.setRoom({ left: 0, top: 0 });
   rule.textContent = "";
   root.classList.add("leaving");
   reveal();
@@ -249,6 +222,8 @@ async function go(i) {
   card.classList.add("waiting");
   api.setGate((kind, v) => (kind === "country" ? s.only?.country === v : true));
   rule.textContent = gateRules(s);
+  // the card's room beside the panel, kept free of the map's countries (none on the landing and the finale)
+  api.setRoom(s.landing || s.reveal ? { left: 0, top: 0 } : phone() ? { left: 0, top: 190 } : { left: 360, top: 0 });
   // What the step is not about goes at once; its own parts come in as the page draws them.
   if (!s.reveal) { document.body.classList.remove("tour-all"); hideAround(s); }
   if (s.group && !api.state.iso3 && api.state.group !== s.group) api.setGroup(s.group);
@@ -262,7 +237,8 @@ async function go(i) {
   document.documentElement.classList.remove("tour-boot");
   api.setVeil({ mode: s.map ?? "full", ids: [ID] });
   if (s.reveal) { reveal(); document.body.classList.add("tour-all"); } else { document.body.classList.remove("tour-all"); hideAround(s); }
-  s.camera?.();
+  if (s.camera) s.camera();
+  else if (s.map === "focus" && api.state.iso3 === ID) api.flyTo(ID);
   show(s, i);
 }
 
@@ -290,7 +266,6 @@ function gateRules(s) {
   const off = "opacity: .35 !important; pointer-events: none !important;";
   return [
     s.only?.food ? `#foods .list [data-food]:not([data-food="${s.only.food}"]) { ${off} }` : "",
-    s.only?.scenario ? `#whatif [data-pick]:not([data-pick="${s.only.scenario}"]) { ${off} }` : "",
   ].join("\n");
 }
 
@@ -322,7 +297,6 @@ function show(s, i) {
     <div class="tour-progress" aria-hidden="true"><span style="width:${(i / n) * 100}%"></span></div>
     <h2 id="tour-title">${title}</h2>
     ${text ? `<p>${text}</p>` : ""}
-    ${s.hint ? `<p class="tour-hint">${s.hint}</p>` : ""}
     <div class="tour-btns">${buttons(s, i)}</div>`;
   card.classList.toggle("landing", !!s.landing);
   card.classList.toggle("wide", !!s.last);
@@ -454,7 +428,6 @@ function build() {
     const next = list[at + 1];
     const ok = t.matches("a[href]") ? t.getAttribute("href") === next?.hash
       : t.matches("[data-food]") ? t.dataset.food === s.only?.food
-      : t.matches("[data-pick]") ? t.dataset.pick === s.only?.scenario
       : false;
     if (ok) return;
     e.preventDefault();
@@ -553,18 +526,18 @@ function placeCard(rects, s) {
     const sheet = document.getElementById("panel").getBoundingClientRect().top;
     y = !rects.length ? (s.landing ? (H - ch) / 2 : Math.max(m, sheet - ch - gap))
       : highest > ch + 2 * m ? Math.min(m + 46, highest - ch - gap) : clampY(lowest + gap);
-  } else if (!r) {
+  } else if (s.landing || s.reveal) {
     const left = s.landing ? 0 : document.getElementById("panel").getBoundingClientRect().right;
     x = left + (W - left - cw) / 2;
     y = (H - ch) / 2;
-  } else if (r.x + r.w + gap + cw + m <= W) {
-    x = r.x + r.w + gap; y = clampY(r.y);
-  } else if (r.x - gap - cw >= m) {
-    x = r.x - gap - cw; y = clampY(r.y);
-  } else if (r.y + r.h + gap + ch + m <= H) {
-    x = clampX(r.x); y = r.y + r.h + gap;
   } else {
-    x = clampX(r.x); y = Math.max(m, r.y - gap - ch);
+    // In the room kept free beside the panel (the map frames its countries to the right of it),
+    // level with the first lit part.
+    x = document.getElementById("panel").getBoundingClientRect().right + gap;
+    y = r ? clampY(r.y) : (H - ch) / 2;
+    // A lit part out on the map (the key at the bottom) is not covered: the card goes above it.
+    const hit = rects.find((v) => x < v.x + v.w && x + cw > v.x && y < v.y + v.h && y + ch > v.y);
+    if (hit) y = hit.y > H / 2 ? Math.max(m, hit.y - ch - gap) : clampY(hit.y + hit.h + gap);
   }
   card.style.transform = `translate(${Math.round(clampX(x))}px, ${Math.round(clampY(y))}px)`;
 }

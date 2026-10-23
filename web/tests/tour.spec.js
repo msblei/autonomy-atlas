@@ -51,7 +51,7 @@ test("every step shows its part and says something whole, and the end brings the
     await next(page);
   }
   expect(seen.at(-1)).toBe("Your turn");
-  expect(seen.length).toBeGreaterThan(12);
+  expect(seen.length).toBeGreaterThan(9);
   await tourCard(page).getByRole("button", { name: "Explore the map" }).click();
   await expect(page.locator("#tour")).toBeHidden();
   await expect(page.locator(".tour-hide")).toHaveCount(0);
@@ -68,7 +68,7 @@ test("the example's clicks move the tour on, others do nothing; Esc ends it", as
   await page.locator("#country").fill("Ita");
   await page.locator("#country-list [data-id='ITA']").click();
   await expect(title(page)).toHaveText("Italy", { timeout: 8000 });
-  await next(page); await next(page); await next(page); // to the food menu
+  await next(page); await next(page); // to the food menu
   await expect(title(page)).toHaveText("Choose a food");
   await page.locator("#foods .current").click();
   await expect(page.locator("#foods [data-food='fruit']")).toHaveCSS("pointer-events", "none");

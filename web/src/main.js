@@ -543,15 +543,17 @@ function select(clicked) {
 }
 
 // The part of the map not covered by the panel (left), the food menu (right) and the key (bottom).
+// Room the tour keeps free for its card beside the panel (wide) or above the sheet (phones).
+let tourRoom = { left: 0, top: 0 };
 function openArea(extra = 0) {
   const wide = window.innerWidth > 760;
   const panel = document.getElementById("panel");
   const rail = document.getElementById("foodrail");
   const key = document.getElementById("legend");
   return wide
-    ? { left: panel.offsetWidth + 40 + extra, right: rail.offsetWidth + 40 + extra, top: 40 + extra,
+    ? { left: panel.offsetWidth + 40 + extra + tourRoom.left, right: rail.offsetWidth + 40 + extra, top: 40 + extra,
       bottom: key.offsetHeight + 40 + extra }
-    : { left: 20, right: 20, top: rail.offsetHeight + key.offsetHeight + 30, bottom: panel.offsetHeight + 20 };
+    : { left: 20, right: 20, top: rail.offsetHeight + key.offsetHeight + 30 + tourRoom.top, bottom: panel.offsetHeight + 20 };
 }
 
 // Trade view: frame the country and its biggest partners (the ones with arcs).
@@ -611,7 +613,8 @@ function flyTo(iso3) {
 
 // Zoomed out, every member state is coloured with the EU27 bloc's figures.
 function entity(iso3) {
-  if (state.bloc && state.data.meta.eu_members.includes(iso3) && state.data.countries[EU]) return EU;
+  // Not in the tour: there its example is always itself, zoomed out or not.
+  if (state.bloc && !tourGate && state.data.meta.eu_members.includes(iso3) && state.data.countries[EU]) return EU;
   return iso3;
 }
 
@@ -1701,8 +1704,8 @@ function startTour(at = 1) {
     state, country, pctFor, lasts, forHowLong, lastDay, nameOf, inText, listOf, shortTonnes, food, groupInfo,
     shares, perCapita, USES, regionsFor, regionName, loadScenario, setScenario, scenInfo, scenValue, readersCountry,
     setGroup: (group) => { state.group = group; render(); },
-    setVeil, setGate: (f) => { tourGate = f; },
-    showWorld, showEurope: () => state.mapReady && frame([[-6, 36], [26, 56]]),
+    setVeil, setGate: (f) => { tourGate = f; paintMap(); },
+    showWorld, flyTo, setRoom: (r) => { tourRoom = r; }, showEurope: () => state.mapReady && frame([[-6, 36], [26, 56]]),
   })).catch((e) => console.error(e));
 }
 
