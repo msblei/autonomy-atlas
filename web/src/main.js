@@ -290,7 +290,12 @@ async function onMapLoad() {
   // about; its opacity fades, so the colours come and go (tour.js, setVeil).
   map.addLayer({
     id: "tour-veil", type: "fill", source: "countries",
-    paint: { "fill-color": BACKDROP, "fill-opacity": 0, "fill-opacity-transition": { duration: 900, delay: 0 } },
+    // Starts as the veil already is, so a first visit never shows the colours fading out.
+    paint: {
+      "fill-color": BACKDROP, "fill-opacity": veil.mode === "full" ? 0 : 1,
+      "fill-opacity-transition": { duration: 900, delay: 0 },
+    },
+    ...(veil.mode === "focus" && { filter: ["!", ["in", ["get", "iso3"], ["literal", veil.ids]]] }),
   });
   map.addLayer({
     id: "atlas-line", type: "line", source: "countries",

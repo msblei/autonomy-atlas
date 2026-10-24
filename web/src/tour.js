@@ -533,5 +533,9 @@ function placeCard(rects, s) {
     const hit = rects.find((v) => x < v.x + v.w && x + cw > v.x && y < v.y + v.h && y + ch > v.y);
     if (hit) y = hit.y > H / 2 ? Math.max(m, hit.y - ch - gap) : clampY(hit.y + hit.h + gap);
   }
+  // The first placement is not animated: the card appears where it belongs, not from the corner.
+  const first = !card.style.transform;
+  if (first) card.style.transition = "none";
   card.style.transform = `translate(${Math.round(clampX(x))}px, ${Math.round(clampY(y))}px)`;
+  if (first) { void card.offsetWidth; card.style.transition = ""; }
 }

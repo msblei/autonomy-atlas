@@ -18,6 +18,15 @@
     <link rel="preload" href="./data/ssr_core.json" as="fetch" crossorigin fetchpriority="high" />
     <link rel="preload" href="./data/countries.topojson" as="fetch" crossorigin fetchpriority="high" />
     <link rel="stylesheet" href="./src/style.css" />
+    <script>
+      // A first visit opens with the tour's start: hide the app before the first paint, not only
+      // once main.js has run (landingDue in main.js, same rule).
+      (() => {
+        let due = location.hash === "#welcome";
+        if (!due && location.hash.length <= 1) { try { due = !localStorage.getItem("atlas.landing"); } catch { /* private window */ } }
+        if (due) document.documentElement.classList.add("tour-boot");
+      })();
+    </script>
   </head>
   <body>
     <div id="map"></div>
